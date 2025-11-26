@@ -8,3 +8,5 @@ obj/
 *.userprefs
 *.csproj.user
 .vs/
+.bin/
+.obj/
