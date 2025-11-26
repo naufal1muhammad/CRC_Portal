@@ -1,0 +1,24 @@
+﻿** Highlights
+     Tables that will be recreated with data migrated
+       None
+     Clustered indexes that will be dropped
+       None
+     Clustered indexes that will be created
+       None
+     Possible data issues
+       None
+
+** User actions
+     Create
+       [dbo].[Asset] (Table)
+       [dbo].[Branch] (Table)
+       [dbo].[Patient] (Table)
+       [dbo].[PatientDocument] (Table)
+       [dbo].[Staff] (Table)
+       [dbo].[StaffDocument] (Table)
+       [dbo].[Users] (Table)
+       [dbo].[Users].[IX_Users_Username] (Index)
+       [dbo].[DF_PatientDocument_UploadedOn] (Default Constraint)
+       [dbo].[DF_StaffDocument_UploadedOn] (Default Constraint)
+
+** Supporting actions

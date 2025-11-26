@@ -1,0 +1,20 @@
+﻿** Highlights
+     Tables that will be recreated with data migrated
+       None
+     Clustered indexes that will be dropped
+       None
+     Clustered indexes that will be created
+       None
+     Possible data issues
+       None
+
+** User actions
+     Create
+       [dbo].[spBranch_ListActive] (Procedure)
+       [dbo].[spPatient_Delete] (Procedure)
+       [dbo].[spPatient_GetById] (Procedure)
+       [dbo].[spPatient_Insert] (Procedure)
+       [dbo].[spPatient_ListByStage] (Procedure)
+       [dbo].[spPatient_Update] (Procedure)
+
+** Supporting actions

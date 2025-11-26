@@ -1,0 +1,23 @@
+﻿** Highlights
+     Tables that will be recreated with data migrated
+       None
+     Clustered indexes that will be dropped
+       None
+     Clustered indexes that will be created
+       None
+     Possible data issues
+       None
+
+** User actions
+     Create
+       [dbo].[spStaff_Delete] (Procedure)
+       [dbo].[spStaff_GetById] (Procedure)
+       [dbo].[spStaff_Insert] (Procedure)
+       [dbo].[spStaff_List] (Procedure)
+       [dbo].[spStaff_Update] (Procedure)
+       [dbo].[spStaffDocument_Delete] (Procedure)
+       [dbo].[spStaffDocument_GetById] (Procedure)
+       [dbo].[spStaffDocument_Insert] (Procedure)
+       [dbo].[spStaffDocument_List] (Procedure)
+
+** Supporting actions

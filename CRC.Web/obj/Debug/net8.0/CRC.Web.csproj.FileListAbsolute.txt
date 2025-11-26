@@ -1,0 +1,163 @@
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\appsettings.Development.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\appsettings.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.staticwebassets.runtime.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.staticwebassets.endpoints.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.exe
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.deps.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.runtimeconfig.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.pdb
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\rpswa.dswa.cache.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.AssemblyInfoInputs.cache
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.AssemblyInfo.cs
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.csproj.CoreCompileInputs.cache
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.RazorAssemblyInfo.cache
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.RazorAssemblyInfo.cs
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.sourcelink.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\rjimswa.dswa.cache.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\scopedcss\Views\Shared\_Layout.cshtml.rz.scp.css
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\scopedcss\bundle\CRC.Web.styles.css
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\scopedcss\projectbundle\CRC.Web.bundle.scp.css
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\staticwebassets.build.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\staticwebassets.build.json.cache
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\staticwebassets.development.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\staticwebassets.build.endpoints.json
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\swae.build.ex.cache
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\refint\CRC.Web.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.pdb
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.genruntimeconfig.cache
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\ref\CRC.Web.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Azure.Core.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Azure.Identity.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Bcl.AsyncInterfaces.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Bcl.Cryptography.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Data.SqlClient.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Extensions.Caching.Memory.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Extensions.Logging.Abstractions.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Extensions.Options.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Identity.Client.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Identity.Client.Extensions.Msal.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.IdentityModel.Abstractions.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.IdentityModel.JsonWebTokens.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.IdentityModel.Logging.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.IdentityModel.Tokens.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.SqlServer.Server.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.ClientModel.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.Configuration.ConfigurationManager.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.Diagnostics.EventLog.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.IdentityModel.Tokens.Jwt.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.Memory.Data.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.Security.Cryptography.Pkcs.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.Security.Cryptography.ProtectedData.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\cs\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\de\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\es\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\fr\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\it\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\ja\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\ko\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\pl\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\pt-BR\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\ru\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\tr\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\zh-Hans\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\zh-Hant\Microsoft.Data.SqlClient.resources.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\unix\lib\net8.0\Microsoft.Data.SqlClient.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\win\lib\net8.0\Microsoft.Data.SqlClient.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\win-arm64\native\Microsoft.Data.SqlClient.SNI.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\win-x64\native\Microsoft.Data.SqlClient.SNI.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\win-x86\native\Microsoft.Data.SqlClient.SNI.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\win\lib\net8.0\System.Diagnostics.EventLog.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\win\lib\net8.0\System.Security.Cryptography.Pkcs.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.csproj.AssemblyReference.cache
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.csproj.Up2Date
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\appsettings.Development.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\appsettings.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.staticwebassets.runtime.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.staticwebassets.endpoints.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.exe
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.deps.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.runtimeconfig.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Web.pdb
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Azure.Core.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Azure.Identity.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Bcl.AsyncInterfaces.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Bcl.Cryptography.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Data.SqlClient.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Extensions.Caching.Memory.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Extensions.Logging.Abstractions.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Extensions.Options.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Identity.Client.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.Identity.Client.Extensions.Msal.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.IdentityModel.Abstractions.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.IdentityModel.JsonWebTokens.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.IdentityModel.Logging.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.IdentityModel.Tokens.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\Microsoft.SqlServer.Server.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.ClientModel.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.Configuration.ConfigurationManager.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.Diagnostics.EventLog.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.IdentityModel.Tokens.Jwt.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.Memory.Data.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.Security.Cryptography.Pkcs.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\System.Security.Cryptography.ProtectedData.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\cs\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\de\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\es\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\fr\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\it\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\ja\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\ko\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\pl\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\pt-BR\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\ru\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\tr\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\zh-Hans\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\zh-Hant\Microsoft.Data.SqlClient.resources.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\unix\lib\net8.0\Microsoft.Data.SqlClient.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\win\lib\net8.0\Microsoft.Data.SqlClient.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\win-arm64\native\Microsoft.Data.SqlClient.SNI.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\win-x64\native\Microsoft.Data.SqlClient.SNI.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\win-x86\native\Microsoft.Data.SqlClient.SNI.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\win\lib\net8.0\System.Diagnostics.EventLog.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\bin\Debug\net8.0\runtimes\win\lib\net8.0\System.Security.Cryptography.Pkcs.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.csproj.AssemblyReference.cache
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\rpswa.dswa.cache.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.GeneratedMSBuildEditorConfig.editorconfig
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.AssemblyInfoInputs.cache
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.AssemblyInfo.cs
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.csproj.CoreCompileInputs.cache
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.MvcApplicationPartsAssemblyInfo.cache
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.RazorAssemblyInfo.cache
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.RazorAssemblyInfo.cs
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\rjimswa.dswa.cache.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\scopedcss\Views\Shared\_Layout.cshtml.rz.scp.css
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\scopedcss\bundle\CRC.Web.styles.css
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\scopedcss\projectbundle\CRC.Web.bundle.scp.css
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\staticwebassets.build.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\staticwebassets.build.json.cache
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\staticwebassets.development.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\staticwebassets.build.endpoints.json
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\swae.build.ex.cache
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.csproj.Up2Date
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\refint\CRC.Web.dll
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.pdb
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.genruntimeconfig.cache
+C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\ref\CRC.Web.dll

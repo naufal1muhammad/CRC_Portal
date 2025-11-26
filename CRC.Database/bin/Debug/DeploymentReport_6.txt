@@ -1,0 +1,24 @@
+﻿** Highlights
+     Tables that will be recreated with data migrated
+       None
+     Clustered indexes that will be dropped
+       None
+     Clustered indexes that will be created
+       None
+     Possible data issues
+       None
+
+** User actions
+     Create
+       [dbo].[spAsset_Delete] (Procedure)
+       [dbo].[spAsset_GetById] (Procedure)
+       [dbo].[spAsset_Insert] (Procedure)
+       [dbo].[spAsset_ListByBranch] (Procedure)
+       [dbo].[spAsset_Update] (Procedure)
+       [dbo].[spBranch_Delete] (Procedure)
+       [dbo].[spBranch_GetById] (Procedure)
+       [dbo].[spBranch_Insert] (Procedure)
+       [dbo].[spBranch_ListAll] (Procedure)
+       [dbo].[spBranch_Update] (Procedure)
+
+** Supporting actions

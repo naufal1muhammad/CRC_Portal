@@ -1,0 +1,94 @@
+html {
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+}
+
+.primary-color {
+    background-color: #826ccb;
+}
+
+.secondary-color{
+    background-color: #e1c6ee;
+}
+
+/* Sidebar styling */
+.sidebar-main {
+    width: 250px;
+    min-height: 100vh;
+    /*background-color: #040e2dcc;*/
+    /*font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;*/
+}
+
+    /* Brand at the top */
+    .sidebar-main .navbar-brand {
+        color: white;
+        font-weight: 900;
+        letter-spacing: 0.03em;
+        font-size: 1.25rem;
+    }
+
+        .sidebar-main .navbar-brand:hover {
+            color: #000;
+            text-decoration: none;
+        }
+
+    /* Menu items */
+    .sidebar-main .list-group-item {
+        background-color: transparent;
+        border: 0;
+        color: white;
+        font-weight: 600;
+        font-size: 0.95rem;
+        padding-top: 0.6rem;
+        padding-bottom: 0.6rem;
+    }
+
+        /* Icons – keep a neat aligned width */
+        .sidebar-main .list-group-item i {
+            width: 18px;
+        }
+
+        /* Active item */
+        .sidebar-main .list-group-item.active {
+            background-color: rgba(255, 255, 255, 0.85);
+            color: #000;
+            border: 0;
+        }
+
+        /* Hover state (but not disabled/active) */
+        .sidebar-main .list-group-item:hover:not(.disabled):not(.active) {
+            background-color: rgba(255, 255, 255, 0.45);
+            color: #000;
+        }
+
+    /* Section header (e.g. "Branch") */
+    .sidebar-main .text-muted.text-uppercase.small {
+        color: #3f2a1f;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+    }
+
+    /* Logout */
+    .sidebar-main .list-group-item.text-danger {
+        color: red !important;
+        font-weight: 700;
+    }
+
+        .sidebar-main .list-group-item.text-danger:hover {
+            background-color: rgba(255, 255, 255, 0.45);
+        }
+
+
+html {
+  position: relative;
+  min-height: 100%;
+}

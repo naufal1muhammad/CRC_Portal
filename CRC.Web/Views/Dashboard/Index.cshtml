@@ -1,0 +1,33 @@
+﻿@{
+    ViewData["Title"] = "Dashboard";
+    var fullName = User.Claims.FirstOrDefault(c => c.Type == "FullName")?.Value ?? User.Identity?.Name;
+}
+
+<div class="container mt-4">
+    <h2 class="mb-3">Dashboard</h2>
+    <p>Welcome, @fullName</p>
+
+    <hr />
+
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card p-3">
+                <h5>Active Branches</h5>
+                <p id="activeBranchesCount" class="fs-3">0</p>
+            </div>
+        </div>
+
+        <div class="col-md-9">
+            <div class="card p-3">
+                <h5>Patients by Stage (T2, T3, T4, T5)</h5>
+                <canvas id="patientsStageChartCanvas" style="max-height: 300px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <!-- Chart.js from CDN for now; later you can switch to local Falcon vendor file -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="~/js/dashboard/index.js"></script>
+}

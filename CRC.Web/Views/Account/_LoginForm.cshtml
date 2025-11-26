@@ -1,0 +1,22 @@
+﻿<form asp-action="Login" method="post">
+    @Html.AntiForgeryToken()
+
+    @if (ViewData["LoginError"] is string error && !string.IsNullOrWhiteSpace(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    <div class="mb-3">
+        <label class="form-label" for="Username">Username</label>
+        <input class="form-control" id="Username" name="Username" autocomplete="username" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="Password">Password</label>
+        <input class="form-control" id="Password" name="Password" type="password" autocomplete="current-password" />
+    </div>
+
+    <button type="submit" class="btn btn-primary w-100">
+        <i class="fas fa-sign-in-alt me-1"></i> Login
+    </button>
+</form>

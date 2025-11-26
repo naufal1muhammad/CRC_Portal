@@ -1,0 +1,10 @@
+﻿@{
+    Layout = "_LoginLayout";
+    ViewData["Title"] = "Login";
+}
+
+@await Html.PartialAsync("_LoginForm")
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

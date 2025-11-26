@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="CRC.Database/CRC.Database.sqlproj" Id="6e3f1057-5332-47c3-a161-1e4bdf76d155">
+    <Build />
+    <Deploy />
+  </Project>
+  <Project Path="CRC.Web/CRC.Web.csproj" />
+</Solution>
