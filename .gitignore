@@ -1,12 +1,10 @@
-*.v2
-*.vsidx
-/.vs/CRC_Portal.slnx/v18
-*.cache
-CRC.Web/obj/Debug/net8.0/staticwebassets.build.json.cache
-CRC.Web/obj/Debug/net8.0/staticwebassets.build.json
-CRC.Web/bin/Debug/net8.0/CRC.Web.dll
-*.dbmdl
-CRC.Web/bin/Debug/net8.0/CRC.Web.dll
-CRC.Web/bin/Debug/net8.0/CRC.Web.exe
-CRC.Web/bin/Debug/net8.0/CRC.Web.pdb
-CRC.Database/CRC.Database.dbmdl
+# Build output
+bin/
+obj/
+
+# VS / Rider / tooling
+*.user
+*.suo
+*.userprefs
+*.csproj.user
+.vs/
