@@ -20,7 +20,7 @@
         txtId.value = '';
         txtName.value = '';
         txtLocation.value = '';
-        txtState.value = '';
+        if (txtState) txtState.value = '';
         if (selStatus) selStatus.value = '1';
         if (hiddenIsNew) hiddenIsNew.value = 'true';
         if (msg) {
@@ -92,6 +92,39 @@
         } catch (err) {
             console.error(err);
             tableBody.innerHTML = '<tr><td colspan="6">Error loading branches.</td></tr>';
+        }
+    }
+
+    async function loadStates() {
+        if (!txtState) return;
+
+        // Clear existing options
+        txtState.innerHTML = '';
+
+        // Add default option
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = '-- Select State --';
+        txtState.appendChild(defaultOpt);
+
+        try {
+            const response = await fetch('/Branch/GetStates');
+
+            if (!response.ok) {
+                console.error('Failed to load states');
+                return;
+            }
+
+            const states = await response.json(); // [{stateId, stateName}, ...]
+
+            states.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.stateName;      // we store stateName in Branch_State column
+                opt.textContent = s.stateName;
+                txtState.appendChild(opt);
+            });
+        } catch (err) {
+            console.error('Error loading states', err);
         }
     }
 
@@ -187,6 +220,7 @@
             if (msg) msg.textContent = '';
             if (modal) modal.hide();
 
+            loadStates();
             loadBranches();
         } catch (err) {
             console.error(err);
@@ -221,6 +255,7 @@
                 return;
             }
 
+            loadStates();
             loadBranches();
         } catch (err) {
             console.error(err);
@@ -251,6 +286,7 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+        loadStates();
         loadBranches();
         attachRowHandlers();
 

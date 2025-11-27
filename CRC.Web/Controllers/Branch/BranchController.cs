@@ -178,5 +178,23 @@ namespace CRC.Web.Controllers.Branch
                 return Ok(new { success = false, message = "An unexpected error occurred." });
             }
         }
+
+        [HttpGet]
+        public async Task<IActionResult> GetStates()
+        {
+            var dt = await _db.ExecuteDataTableAsync("spLU_STATES_List");
+            var list = new List<object>();
+
+            foreach (DataRow row in dt.Rows)
+            {
+                list.Add(new
+                {
+                    stateId = row["State_ID"] == DBNull.Value ? 0 : Convert.ToInt32(row["State_ID"]),
+                    stateName = row["State_Name"]?.ToString() ?? string.Empty
+                });
+            }
+
+            return Ok(list);
+        }
     }
 }

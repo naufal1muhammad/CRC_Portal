@@ -8972,6 +8972,6 @@ wwwroot\lib\xlsx\package\xlsxworker.js
 wwwroot\uploads\patient\A00004\20251125022610997_MCKK PORTAL slides.pdf
 wwwroot\uploads\patient\A00004\20251125023231237_MCKK PORTAL slides.pdf
 wwwroot\uploads\patient\A00004\20251126084921024_MCKK PORTAL slides.pdf
-wwwroot\uploads\patient\A00008\20251125123718736_MCKK PORTAL slides.pdf
 wwwroot\uploads\staff\K00001\20251125052921396_MCKK PORTAL slides.pdf
 wwwroot\uploads\staff\K00002\20251126084800301_MCKK PORTAL slides.pdf
+wwwroot\uploads\staff\K00003\20251126094559977_MCKK PORTAL slides.pdf

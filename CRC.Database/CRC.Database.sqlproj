@@ -67,6 +67,7 @@
     <Folder Include="Stored Procedures\Staff" />
     <Folder Include="Stored Procedures\StaffDocument" />
     <Folder Include="Stored Procedures\Asset" />
+    <Folder Include="Stored Procedures\LU_STATES" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="dbo\Tables\Users.sql" />
@@ -108,5 +109,7 @@
     <Build Include="Stored Procedures\Asset\spAsset_Insert.sql" />
     <Build Include="Stored Procedures\Asset\spAsset_Update.sql" />
     <Build Include="Stored Procedures\Asset\spAsset_Delete.sql" />
+    <Build Include="dbo\Tables\LU_STATES.sql" />
+    <Build Include="Stored Procedures\LU_STATES\spLU_STATES_List.sql" />
   </ItemGroup>
 </Project>
