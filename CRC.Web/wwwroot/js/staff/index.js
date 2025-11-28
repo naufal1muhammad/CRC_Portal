@@ -1,6 +1,7 @@
 ﻿// @ts-nocheck
 (function () {
     const btnAdd = document.getElementById('btnAddStaff');
+    const txtSearch = document.getElementById('staffSearch');
     const modalEl = document.getElementById('staffModal');
     const modal = modalEl ? new bootstrap.Modal(modalEl) : null;
 
@@ -147,11 +148,40 @@
 
                 tableBody.appendChild(tr);
             });
+            applyStaffSearchFilter();
         } catch (err) {
             console.error(err);
             tableBody.innerHTML = '<tr><td colspan="8">Error loading staff.</td></tr>';
         }
     }
+
+    function applyStaffSearchFilter() {
+    if (!txtSearch) return;
+
+    const filter = txtSearch.value.trim().toLowerCase();
+    const tbody = document.querySelector('#staffTable tbody');
+    if (!tbody) return;
+
+    const rows = tbody.querySelectorAll('tr');
+
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length < 2) {
+            return; // skip if row not data row
+        }
+
+        const idText = (cells[0].textContent || '').toLowerCase();
+        const nameText = (cells[1].textContent || '').toLowerCase();
+        const combined = idText + ' ' + nameText;
+
+        if (!filter || combined.includes(filter)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
 
     async function loadStaffDocuments(staffId) {
         if (!docsList) return;
@@ -225,6 +255,7 @@
 
         const formData = new FormData();
         formData.append('staffId', staffId);
+        formData.append('staffName',txtName.value.trim());
 
         for (let i = 0; i < fileInput.files.length; i++) {
             const file = fileInput.files[i];
@@ -512,6 +543,12 @@
 
         if (btnSave) {
             btnSave.addEventListener('click', saveStaff);
+        }
+
+        if (txtSearch) {
+        txtSearch.addEventListener('input', function () {
+            applyStaffSearchFilter();
+            });
         }
     });
 })();

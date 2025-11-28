@@ -7,6 +7,7 @@ BEGIN
     SELECT TOP 1
         [StaffDocument_ID],
         [Staff_ID],
+        [Staff_Name],
         [FileName],
         [FilePath],
         [ContentType],

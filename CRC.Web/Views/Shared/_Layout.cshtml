@@ -128,6 +128,11 @@
                     </a>
                 </div>
 
+                <a asp-controller="DocumentManagement" asp-action="Index"
+                   class="list-group-item list-group-item-action @activeClass("DocumentManagement", "Index")">
+                    <i class="fas fa-folder-open me-2"></i> Document Management
+                </a>
+
                 <!-- Reports (placeholder for future) -->
                 <a asp-controller="Reports" asp-action="Index"
                    class="list-group-item list-group-item-action disabled">
@@ -174,7 +179,7 @@
 
             <!-- Footer -->
             <footer class="bg-light border-top text-center py-2 small text-muted">
-                &copy; @DateTime.Now.Year - CRC Screening Program Portal
+                &copy; @DateTime.Now.Year - CRC Web Portal
             </footer>
         </div>
     </div>

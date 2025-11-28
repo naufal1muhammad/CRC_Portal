@@ -262,6 +262,7 @@ namespace CRC.Web.Controllers.Patient
                 {
                     documentId = Convert.ToInt32(row["PatientDocument_ID"]),
                     patientId = row["Patient_ID"].ToString(),
+                    patientName = row["Patient_Name"].ToString(),
                     fileName = row["FileName"].ToString(),
                     filePath = row["FilePath"].ToString(),
                     uploadedOn = row["UploadedOn"] == DBNull.Value
@@ -273,63 +274,123 @@ namespace CRC.Web.Controllers.Patient
             return Ok(new { success = true, data = list });
         }
 
-        // POST: /Patient/UploadPatientDocuments
         [HttpPost]
-        [DisableRequestSizeLimit] // optional; configure global limits if needed
-        public async Task<IActionResult> UploadPatientDocuments(string patientId, List<IFormFile> files)
+        public async Task<IActionResult> UploadPatientDocuments(string patientId, string patientName, List<IFormFile> files)
         {
             if (string.IsNullOrWhiteSpace(patientId))
             {
-                return BadRequest(new { success = false, message = "Patient ID is required." });
+                return Ok(new { success = false, message = "Patient ID is required." });
             }
 
             if (files == null || files.Count == 0)
             {
-                return Ok(new { success = true, message = "No files to upload." });
+                return Ok(new { success = false, message = "No files to upload." });
             }
 
-            var uploadsRoot = Path.Combine(_env.WebRootPath, "uploads", "patient", patientId);
-
-            if (!Directory.Exists(uploadsRoot))
+            try
             {
-                Directory.CreateDirectory(uploadsRoot);
-            }
-
-            foreach (var file in files)
-            {
-                if (file.Length <= 0)
-                    continue;
-
-                // Only accept PDF for now
-                if (!file.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
+                // Adjust this if you use IHostEnvironment or IWebHostEnvironment
+                var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "patient");
+                if (!Directory.Exists(uploadsFolder))
                 {
-                    // You can choose to skip or fail the entire request; here we skip non-PDFs
-                    continue;
+                    Directory.CreateDirectory(uploadsFolder);
                 }
 
-                // Generate a safe file name
-                var originalFileName = Path.GetFileName(file.FileName);
-                var timeStamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
-                var safeFileName = $"{timeStamp}_{originalFileName}";
-
-                var physicalPath = Path.Combine(uploadsRoot, safeFileName);
-
-                // Save to disk
-                using (var stream = new FileStream(physicalPath, FileMode.Create))
+                foreach (var file in files)
                 {
-                    await file.CopyToAsync(stream);
+                    if (file == null || file.Length == 0) continue;
+
+                    var originalFileName = Path.GetFileName(file.FileName);
+                    var extension = Path.GetExtension(originalFileName);
+                    var uniqueFileName = Guid.NewGuid().ToString("N") + extension;
+
+                    var physicalPath = Path.Combine(uploadsFolder, uniqueFileName);
+                    using (var stream = new FileStream(physicalPath, FileMode.Create))
+                    {
+                        await file.CopyToAsync(stream);
+                    }
+
+                    // This is what the browser will use to access the file
+                    var relativePath = "/uploads/patient/" + uniqueFileName;
+
+                    var parameters = new[]
+                    {
+                new SqlParameter("@Patient_ID", patientId),
+                new SqlParameter("@Patient_Name", (object?)patientName ?? DBNull.Value), // ✅ NEW
+                new SqlParameter("@FileName", originalFileName),                         // original name
+                new SqlParameter("@FilePath", relativePath),
+                new SqlParameter("@ContentType", file.ContentType)
+            };
+
+                    await _db.ExecuteNonQueryAsync("spPatientDocument_Insert", parameters);
                 }
 
-                // Build relative path for serving
-                var relativePath = $"/uploads/patient/{patientId}/{safeFileName}";
-
-                var parameters = new[]
-                { new SqlParameter("@Patient_ID", patientId), new SqlParameter("@FileName", originalFileName), new SqlParameter("@FilePath", relativePath), new SqlParameter("@ContentType", file.ContentType) };
-
-                await _db.ExecuteNonQueryAsync("spPatientDocument_Insert", parameters);
+                return Ok(new { success = true });
             }
-            return Ok(new { success = true, message = "Files uploaded successfully." });
+            catch (Exception ex)
+            {
+                // Log ex as needed
+                return Ok(new { success = false, message = "Error uploading documents." });
+            }
         }
+
+        //// POST: /Patient/UploadPatientDocuments
+        //[HttpPost]
+        //[DisableRequestSizeLimit]
+        //public async Task<IActionResult> UploadPatientDocuments(string patientId, List<IFormFile> files)
+        //{
+        //    if (string.IsNullOrWhiteSpace(patientId))
+        //    {
+        //        return BadRequest(new { success = false, message = "Patient ID is required." });
+        //    }
+
+        //    if (files == null || files.Count == 0)
+        //    {
+        //        return Ok(new { success = true, message = "No files to upload." });
+        //    }
+
+        //    var uploadsRoot = Path.Combine(_env.WebRootPath, "uploads", "patient", patientId);
+
+        //    if (!Directory.Exists(uploadsRoot))
+        //    {
+        //        Directory.CreateDirectory(uploadsRoot);
+        //    }
+
+        //    foreach (var file in files)
+        //    {
+        //        if (file.Length <= 0)
+        //            continue;
+
+        //        // Only accept PDF for now
+        //        if (!file.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
+        //        {
+        //            // You can choose to skip or fail the entire request; here we skip non-PDFs
+        //            continue;
+        //        }
+
+        //        // Generate a safe file name
+        //        var originalFileName = Path.GetFileName(file.FileName);
+        //        var timeStamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
+        //        var safeFileName = $"{timeStamp}_{originalFileName}";
+
+        //        var physicalPath = Path.Combine(uploadsRoot, safeFileName);
+
+        //        // Save to disk
+        //        using (var stream = new FileStream(physicalPath, FileMode.Create))
+        //        {
+        //            await file.CopyToAsync(stream);
+        //        }
+
+        //        // Build relative path for serving
+        //        var relativePath = $"/uploads/patient/{patientId}/{safeFileName}";
+
+        //        var parameters = new[]
+        //        { new SqlParameter("@Patient_ID", patientId), new SqlParameter("@Patient_Name", patientName), new SqlParameter("@FileName", originalFileName), new SqlParameter("@FilePath", relativePath), new SqlParameter("@ContentType", file.ContentType) };
+
+        //        await _db.ExecuteNonQueryAsync("spPatientDocument_Insert", parameters);
+        //    }
+        //    return Ok(new { success = true, message = "Files uploaded successfully." });
+        //}
 
         public class DeletePatientDocumentRequest
         {

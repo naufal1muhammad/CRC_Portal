@@ -3,69 +3,82 @@
 }
 
 <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2>Patient</h2>
-        <button id="btnAddPatient" class="btn btn-primary" type="button">Add Patient</button>
-    </div>
-
-    <ul class="nav nav-tabs" id="patientStageTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="tab-T2" data-bs-toggle="tab"
-                    data-bs-target="#pane-T2" type="button" role="tab"
-                    aria-controls="pane-T2" aria-selected="true" data-stage="T2">
-                T2 (Screening)
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-T3" data-bs-toggle="tab"
-                    data-bs-target="#pane-T3" type="button" role="tab"
-                    aria-controls="pane-T3" aria-selected="false" data-stage="T3">
-                T3 (Diagnosis)
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-T4" data-bs-toggle="tab"
-                    data-bs-target="#pane-T4" type="button" role="tab"
-                    aria-controls="pane-T4" aria-selected="false" data-stage="T4">
-                T4 (Staging)
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-T5" data-bs-toggle="tab"
-                    data-bs-target="#pane-T5" type="button" role="tab"
-                    aria-controls="pane-T5" aria-selected="false" data-stage="T5">
-                T5 (Treatment)
-            </button>
-        </li>
-    </ul>
-
-    <div class="tab-content mt-3">
-        @foreach (var stage in new[] { "T2", "T3", "T4", "T5" })
-        {
-            var active = stage == "T2" ? "show active" : "";
-            <div class="tab-pane fade @active" id="pane-@stage" role="tabpanel" aria-labelledby="tab-@stage">
-                <div class="table-responsive">
-                    <table class="table table-striped table-sm table-bordered" id="table-@stage">
-                        <thead class="table-secondary">
-                            <tr>
-                                <th>ID</th>
-                                <th>Name</th>
-                                <th>NRIC</th>
-                                <th>Phone</th>
-                                <th>Email</th>
-                                <th>Branch</th>
-                                <th>Stage</th>
-                                <th>Appointment Date</th>
-                                <th style="width: 120px;">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- populated by JS -->
-                        </tbody>
-                    </table>
+    <div class="card mb-3">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2>Patient</h2>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <button id="btnAddPatient" class="btn btn-primary" type="button">Add Patient</button>
+                <div class="ms-2" style="max-width: 260px;">
+                    <input id="patientSearch"
+                           type="text"
+                           class="form-control form-control-sm"
+                           placeholder="Search by ID or Name..."
+                           autocomplete="off" />
                 </div>
             </div>
-        }
+
+            <ul class="nav nav-tabs" id="patientStageTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="tab-T2" data-bs-toggle="tab"
+                            data-bs-target="#pane-T2" type="button" role="tab"
+                            aria-controls="pane-T2" aria-selected="true" data-stage="T2">
+                        T2 (Screening)
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-T3" data-bs-toggle="tab"
+                            data-bs-target="#pane-T3" type="button" role="tab"
+                            aria-controls="pane-T3" aria-selected="false" data-stage="T3">
+                        T3 (Diagnosis)
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-T4" data-bs-toggle="tab"
+                            data-bs-target="#pane-T4" type="button" role="tab"
+                            aria-controls="pane-T4" aria-selected="false" data-stage="T4">
+                        T4 (Staging)
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-T5" data-bs-toggle="tab"
+                            data-bs-target="#pane-T5" type="button" role="tab"
+                            aria-controls="pane-T5" aria-selected="false" data-stage="T5">
+                        T5 (Treatment)
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content mt-3">
+                @foreach (var stage in new[] { "T2", "T3", "T4", "T5" })
+                {
+                    var active = stage == "T2" ? "show active" : "";
+                    <div class="tab-pane fade @active" id="pane-@stage" role="tabpanel" aria-labelledby="tab-@stage">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-sm table-bordered" id="table-@stage">
+                                <thead class="table-secondary">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Name</th>
+                                        <th>NRIC</th>
+                                        <th>Phone</th>
+                                        <th>Email</th>
+                                        <th>Branch</th>
+                                        <th>Stage</th>
+                                        <th>Appointment Date</th>
+                                        <th style="width: 120px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
     </div>
 </div>
 

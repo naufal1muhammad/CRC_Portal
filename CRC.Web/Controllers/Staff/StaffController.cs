@@ -240,6 +240,7 @@ namespace CRC.Web.Controllers.Staff
                 {
                     documentId = Convert.ToInt32(row["StaffDocument_ID"]),
                     staffId = row["Staff_ID"].ToString(),
+                    staffName = row["Staff_Name"].ToString(),
                     fileName = row["FileName"].ToString(),
                     filePath = row["FilePath"].ToString(),
                     uploadedOn = row["UploadedOn"] == DBNull.Value
@@ -254,7 +255,7 @@ namespace CRC.Web.Controllers.Staff
         // POST: /Staff/UploadStaffDocuments
         [HttpPost]
         [DisableRequestSizeLimit]
-        public async Task<IActionResult> UploadStaffDocuments(string staffId, List<IFormFile> files)
+        public async Task<IActionResult> UploadStaffDocuments(string staffId, string staffName, List<IFormFile> files)
         {
             if (string.IsNullOrWhiteSpace(staffId))
             {
@@ -299,6 +300,7 @@ namespace CRC.Web.Controllers.Staff
                 var parameters = new[]
                 {
                     new SqlParameter("@Staff_ID", staffId),
+                    new SqlParameter("@Staff_Name", staffName),
                     new SqlParameter("@FileName", originalFileName),
                     new SqlParameter("@FilePath", relativePath),
                     new SqlParameter("@ContentType", file.ContentType)

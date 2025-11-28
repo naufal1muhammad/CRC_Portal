@@ -1,5 +1,6 @@
 ﻿CREATE PROCEDURE [dbo].[spPatientDocument_Insert]
     @Patient_ID VARCHAR(100),
+    @Patient_Name VARCHAR(100),
     @FileName   VARCHAR(255),
     @FilePath   VARCHAR(500),
     @ContentType VARCHAR(100)
@@ -9,12 +10,14 @@ BEGIN
 
     INSERT INTO [dbo].[PatientDocument] (
         [Patient_ID],
+        [Patient_Name],
         [FileName],
         [FilePath],
         [ContentType]
     )
     VALUES (
         @Patient_ID,
+        @Patient_Name,
         @FileName,
         @FilePath,
         @ContentType

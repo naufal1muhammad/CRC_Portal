@@ -11,7 +11,6 @@
 
     <!-- Row 1: Active Branches + Pie Chart -->
     <div class="row mb-4 align-items-stretch">
-        <!-- Active Branches (length B) -->
         <div class="col-md-4 mb-3">
             <div class="card p-3 dashboard-card">
                 <h5>Active Branches</h5>
@@ -19,11 +18,10 @@
             </div>
         </div>
 
-        <!-- Pie Chart (length C, slightly larger than B) -->
         <div class="col-md-8 mb-3">
             <div class="card dashboard-card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Patients by Stage (Per State)</h5>
+                    <h5 class="mb-0">Patients by State</h5>
                     <select id="ddlPatientStateFilter" class="form-select form-select-sm w-auto">
                         <option value="">All States</option>
                     </select>
@@ -40,11 +38,11 @@
         </div>
     </div>
 
-    <!-- Row 2: Bar Graph (length B + C = full width) -->
+    <!-- Row 2: Bar Graph -->
     <div class="row mb-4">
         <div class="col-12">
             <div class="card p-3 dashboard-card">
-                <h5>Patients by Stage (T2, T3, T4, T5)</h5>
+                <h5>Patients by Stage</h5>
                 <div class="chart-container">
                     <canvas id="patientsStageChartCanvas"></canvas>
                 </div>
@@ -54,7 +52,5 @@
 </div>
 
 @section Scripts {
-    <!-- Chart.js from CDN for now; later you can switch to local Falcon vendor file -->
-    @* <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> *@
     <script src="~/js/dashboard/index.js"></script>
 }

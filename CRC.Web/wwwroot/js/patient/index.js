@@ -3,6 +3,7 @@
     const stages = ['T2', 'T3', 'T4', 'T5'];
 
     const btnAdd = document.getElementById('btnAddPatient');
+    const txtSearch = document.getElementById('patientSearch');
     const modalEl = document.getElementById('patientModal');
     const modal = modalEl ? new bootstrap.Modal(modalEl) : null;
 
@@ -56,12 +57,6 @@
 
                 selBranch.appendChild(opt);
             });
-            //data.forEach(b => {
-            //   const opt = document.createElement('option');
-            // opt.value = b.branchId;
-            //opt.textContent = b.branchName;
-            //selBranch.appendChild(opt);
-            //});
         } catch (err) {
             console.error(err);
             selBranch.innerHTML = '<option value="">Error loading branches</option>';
@@ -124,11 +119,41 @@
 
                 table.appendChild(tr);
             });
+            applyPatientSearchFilter(stage);
         } catch (err) {
             console.error(err);
             table.innerHTML = '<tr><td colspan="9">Error loading patients.</td></tr>';
         }
     }
+
+    function applyPatientSearchFilter(stage) {
+    if (!txtSearch) return;
+
+    const filter = txtSearch.value.trim().toLowerCase();
+    const targetStage = stage || getCurrentStage();
+
+    const tbody = document.querySelector('#table-' + targetStage + ' tbody');
+    if (!tbody) return;
+
+    const rows = tbody.querySelectorAll('tr');
+
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length < 2) {
+            return; // skip weird rows
+        }
+
+        const idText = (cells[0].textContent || '').toLowerCase();
+        const nameText = (cells[1].textContent || '').toLowerCase();
+        const combined = idText + ' ' + nameText;
+
+        if (!filter || combined.includes(filter)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
 
     async function loadPatientDocuments(patientId) {
         if (!docsList) return;
@@ -199,6 +224,7 @@
 
         const formData = new FormData();
         formData.append('patientId', patientId);
+        formData.append('patientName', txtName.value.trim());
 
         for (let i = 0; i < fileInput.files.length; i++) {
             const file = fileInput.files[i];
@@ -557,6 +583,12 @@ async function savePatient() {
 
         if (btnSave) {
             btnSave.addEventListener('click', savePatient);
+        }
+
+        if (txtSearch) {
+        txtSearch.addEventListener('input', function () {
+            applyPatientSearchFilter(); // filters current tab
+            });
         }
     });
 })(); 

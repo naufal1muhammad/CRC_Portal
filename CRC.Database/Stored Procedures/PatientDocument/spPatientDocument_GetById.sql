@@ -7,6 +7,7 @@ BEGIN
     SELECT TOP 1
         [PatientDocument_ID],
         [Patient_ID],
+        [Patient_Name],
         [FileName],
         [FilePath],
         [ContentType],
