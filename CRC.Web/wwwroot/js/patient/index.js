@@ -1,5 +1,5 @@
 ﻿// @ts-nocheck
-(function () {
+(function() {
     const stages = ['T2', 'T3', 'T4', 'T5'];
 
     const btnAdd = document.getElementById('btnAddPatient');
@@ -50,8 +50,18 @@
                 const opt = document.createElement('option');
                 opt.value = b.branchId;
                 opt.textContent = b.branchName;
+
+                opt.setAttribute('data-branch-name', b.branchName || '');
+                opt.setAttribute('data-branch-state', b.state || b.branchState || '');
+
                 selBranch.appendChild(opt);
             });
+            //data.forEach(b => {
+            //   const opt = document.createElement('option');
+            // opt.value = b.branchId;
+            //opt.textContent = b.branchName;
+            //selBranch.appendChild(opt);
+            //});
         } catch (err) {
             console.error(err);
             selBranch.innerHTML = '<option value="">Error loading branches</option>';
@@ -325,77 +335,93 @@
         }
     }
 
-    async function savePatient() {
-        if (!txtId) return;
+async function savePatient() {
+    if (!txtId) return;
 
-        msg.textContent = '';
-        msg.classList.remove('text-success');
-        msg.classList.add('text-danger');
+    msg.textContent = '';
+    msg.classList.remove('text-success');
+    msg.classList.add('text-danger');
 
-        const isNew = hiddenIsNew.value === 'true';
+    const isNew = hiddenIsNew.value === 'true';
 
-        const branchId = selBranch.value;
-        const branchName = selBranch.options[selBranch.selectedIndex]?.text || '';
+    // ✅ Get branchId, branchName, branchState from selected option
+    let branchId = '';
+    let branchName = '';
+    let branchState = '';
 
-        const payload = {
-            isNew: isNew,
-            patientId: txtId.value.trim(),
-            name: txtName.value.trim(),
-            nric: txtNRIC.value.trim(),
-            phone: txtPhone.value.trim(),
-            email: txtEmail.value.trim(),
-            branchId: branchId,
-            branchName: branchName,
-            stage: selStage.value,
-            remarks: txtRemarks.value.trim(),
-            appointmentDate: txtAppointmentDate.value || null
-        };
+    if (selBranch && selBranch.value) {
+        const selectedOption = selBranch.options[selBranch.selectedIndex];
 
-        if (!payload.patientId || !payload.name || !payload.nric || !payload.phone || !payload.email ||
-            !payload.branchId || !payload.stage) {
-            msg.textContent = 'Please fill in all required fields.';
+        branchId = selBranch.value;
+        branchName =
+            selectedOption.getAttribute('data-branch-name')
+            || selectedOption.textContent
+            || '';
+
+        branchState = selectedOption.getAttribute('data-branch-state') || '';
+    }
+
+    const payload = {
+        isNew: isNew,
+        patientId: txtId.value.trim(),
+        name: txtName.value.trim(),
+        nric: txtNRIC.value.trim(),
+        phone: txtPhone.value.trim(),
+        email: txtEmail.value.trim(),
+        branchId: branchId,
+        branchName: branchName,
+        branchState: branchState,
+        stage: selStage.value,
+        remarks: txtRemarks.value.trim(),
+        appointmentDate: txtAppointmentDate.value || null
+    };
+
+    if (!payload.patientId || !payload.name || !payload.nric || !payload.phone || !payload.email ||
+        !payload.branchId || !payload.stage) {
+        msg.textContent = 'Please fill in all required fields.';
+        return;
+    }
+
+    try {
+        console.log('savePatient payload:', payload);
+        const response = await fetch('/Patient/SavePatient', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            msg.textContent = 'Server error while saving patient.';
             return;
         }
 
-        try {
-            const response = await fetch('/Patient/SavePatient', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            });
+        const result = await response.json();
 
-            if (!response.ok) {
-                msg.textContent = 'Server error while saving patient.';
-                return;
-            }
-
-            const result = await response.json();
-
-            if (!result.success) {
-                msg.textContent = result.message || 'Failed to save patient.';
-                return;
-            }
-
-            // Patient saved successfully; now handle file uploads (if any)
-            const patientId = payload.patientId;
-
-            if (fileInput && fileInput.files && fileInput.files.length > 0) {
-                await uploadPatientFiles(patientId);
-            }
-
-            msg.textContent = '';
-            if (modal) modal.hide();
-
-            // Reload all stages to reflect stage changes
-            stages.forEach(s => loadPatients(s));
-        } catch (err) {
-            console.error(err);
-            msg.textContent = 'An unexpected error occurred.';
+        if (!result.success) {
+            msg.textContent = result.message || 'Failed to save patient.';
+            return;
         }
+
+        // Patient saved successfully; now handle file uploads (if any)
+        const patientId = payload.patientId;
+
+        if (fileInput && fileInput.files && fileInput.files.length > 0) {
+            await uploadPatientFiles(patientId);
+        }
+
+        msg.textContent = '';
+        if (modal) modal.hide();
+
+        // Reload all stages to reflect stage changes
+        stages.forEach(s => loadPatients(s));
+    } catch (err) {
+        console.error(err);
+        msg.textContent = 'An unexpected error occurred.';
     }
+}
 
     async function deletePatient(patientId) {
         if (!confirm('Are you sure you want to delete this patient?')) {
@@ -473,7 +499,7 @@
     function attachTabHandlers() {
         const tabs = document.querySelectorAll('#patientStageTabs .nav-link');
         tabs.forEach(tab => {
-            tab.addEventListener('shown.bs.tab', function (e) {
+            tab.addEventListener('shown.bs.tab', function(e) {
                 const stage = e.target.getAttribute('data-stage');
                 if (stage) {
                     loadPatients(stage);
@@ -483,7 +509,7 @@
     }
 
     function attachRowActionHandlers() {
-        document.addEventListener('click', function (e) {
+        document.addEventListener('click', function(e) {
             const target = e.target;
 
             const editBtn = target.closest('.btn-patient-edit');
@@ -513,7 +539,7 @@
         });
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('DOMContentLoaded', function() {
         attachTabHandlers();
         attachRowActionHandlers();
         loadBranches();
@@ -522,7 +548,7 @@
         stages.forEach(s => loadPatients(s));
 
         if (btnAdd) {
-            btnAdd.addEventListener('click', function () {
+            btnAdd.addEventListener('click', function() {
                 loadBranches().then(() => {
                     openAddPatientModal();
                 });
@@ -533,4 +559,4 @@
             btnSave.addEventListener('click', savePatient);
         }
     });
-})();
+})(); 

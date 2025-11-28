@@ -6,6 +6,7 @@
     @Patient_Email    VARCHAR(100),
     @Branch_ID        VARCHAR(100),
     @Branch_Name      VARCHAR(100),
+    @Branch_State     VARCHAR(100),
     @Patient_Stage    VARCHAR(10),
     @Patient_Remarks  VARCHAR(MAX),
     @Appointment_Date DATETIME2
@@ -27,6 +28,7 @@ BEGIN
         [Patient_Email] = @Patient_Email,
         [Branch_ID] = @Branch_ID,
         [Branch_Name] = @Branch_Name,
+        [Branch_State] = @Branch_State,
         [Patient_Stage] = @Patient_Stage,
         [Patient_Remarks] = @Patient_Remarks,
         [Appointment_Date] = @Appointment_Date

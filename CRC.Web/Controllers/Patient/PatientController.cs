@@ -39,7 +39,8 @@ namespace CRC.Web.Controllers.Patient
                 list.Add(new
                 {
                     branchId = row["Branch_ID"].ToString(),
-                    branchName = row["Branch_Name"].ToString()
+                    branchName = row["Branch_Name"].ToString(),
+                    branchState = row["Branch_State"].ToString()
                 });
             }
 
@@ -78,6 +79,7 @@ namespace CRC.Web.Controllers.Patient
                     email = row["Patient_Email"].ToString(),
                     branchId = row["Branch_ID"].ToString(),
                     branchName = row["Branch_Name"].ToString(),
+                    branchState = row["Branch_State"].ToString(),
                     stage = row["Patient_Stage"].ToString(),
                     remarks = row["Patient_Remarks"] == DBNull.Value ? null : row["Patient_Remarks"].ToString(),
                     appointmentDate = appointment?.ToString("yyyy-MM-dd")
@@ -126,6 +128,7 @@ namespace CRC.Web.Controllers.Patient
                     email = row["Patient_Email"].ToString(),
                     branchId = row["Branch_ID"].ToString(),
                     branchName = row["Branch_Name"].ToString(),
+                    branch_state = row["Branch_State"].ToString(),
                     stage = row["Patient_Stage"].ToString(),
                     remarks = row["Patient_Remarks"] == DBNull.Value ? null : row["Patient_Remarks"].ToString(),
                     appointmentDate = appointment?.ToString("yyyy-MM-dd")
@@ -143,6 +146,7 @@ namespace CRC.Web.Controllers.Patient
             public string Email { get; set; } = string.Empty;
             public string BranchId { get; set; } = string.Empty;
             public string BranchName { get; set; } = string.Empty;
+            public string BranchState { get; set; } = string.Empty;
             public string Stage { get; set; } = string.Empty;
             public string? Remarks { get; set; }
             public DateTime? AppointmentDate { get; set; }
@@ -183,6 +187,7 @@ namespace CRC.Web.Controllers.Patient
                 new SqlParameter("@Patient_Email", model.Email),
                 new SqlParameter("@Branch_ID", model.BranchId),
                 new SqlParameter("@Branch_Name", model.BranchName),
+                new SqlParameter("@Branch_State", model.BranchState),
                 new SqlParameter("@Patient_Stage", model.Stage),
                 new SqlParameter("@Patient_Remarks", (object?)model.Remarks ?? DBNull.Value),
                 new SqlParameter("@Appointment_Date", (object?)model.AppointmentDate ?? DBNull.Value)

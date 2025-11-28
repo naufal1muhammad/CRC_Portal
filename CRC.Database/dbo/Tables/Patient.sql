@@ -7,7 +7,8 @@
     [Patient_Email] VARCHAR(100) NOT NULL,
     [Branch_ID] VARCHAR(100) NOT NULL,
     [Branch_Name] VARCHAR(100) NOT NULL,
-    [Patient_Stage] VARCHAR(10) NOT NULL, -- e.g. T2, T3, T4, T5
+    [Branch_State] VARCHAR(100) NULL,
+    [Patient_Stage] VARCHAR(10) NOT NULL,
     [Patient_Remarks] VARCHAR(MAX) NULL,
     [Appointment_Date] DATETIME2 NULL
 );

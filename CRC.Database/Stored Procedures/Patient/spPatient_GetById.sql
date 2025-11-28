@@ -12,6 +12,7 @@ BEGIN
         [Patient_Email],
         [Branch_ID],
         [Branch_Name],
+        [Branch_State],
         [Patient_Stage],
         [Patient_Remarks],
         [Appointment_Date]

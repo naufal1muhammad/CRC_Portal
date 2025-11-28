@@ -58,5 +58,66 @@ namespace CRC.Web.Controllers.Dashboard
                 t5
             });
         }
+
+        [HttpGet]
+        public async Task<IActionResult> GetPatientStates()
+        {
+            var dt = await _db.ExecuteDataTableAsync("spDashboard_PatientStates");
+            var list = new List<string>();
+
+            foreach (DataRow row in dt.Rows)
+            {
+                var state = row["Branch_State"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(state))
+                {
+                    list.Add(state);
+                }
+            }
+
+            return Ok(list);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetPatientStageCountsByState(string state)
+        {
+            var parameters = new[]
+            {
+        new SqlParameter("@Branch_State", (object?)state ?? DBNull.Value)
+    };
+
+            var dt = await _db.ExecuteDataTableAsync("spDashboard_PatientStageCountsByState", parameters);
+
+            // Build a dictionary for T2–T5, default 0
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["T2"] = 0,
+                ["T3"] = 0,
+                ["T4"] = 0,
+                ["T5"] = 0
+            };
+
+            foreach (DataRow row in dt.Rows)
+            {
+                var stage = row["Patient_Stage"]?.ToString() ?? "";
+                var value = row["PatientCount"] == DBNull.Value ? 0 : Convert.ToInt32(row["PatientCount"]);
+
+                if (counts.ContainsKey(stage))
+                {
+                    counts[stage] = value;
+                }
+            }
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    t2 = counts["T2"],
+                    t3 = counts["T3"],
+                    t4 = counts["T4"],
+                    t5 = counts["T5"]
+                }
+            });
+        }
     }
 }

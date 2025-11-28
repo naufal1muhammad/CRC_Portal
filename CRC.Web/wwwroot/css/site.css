@@ -20,12 +20,19 @@ html {
     background-color: #e1c6ee;
 }
 
+.dashboard-card {
+    height: 300px;
+}
+
+.chart-container {
+    position: relative;
+    height: 180px;
+}
+
 /* Sidebar styling */
 .sidebar-main {
     width: 250px;
     min-height: 100vh;
-    /*background-color: #040e2dcc;*/
-    /*font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;*/
 }
 
     /* Brand at the top */
