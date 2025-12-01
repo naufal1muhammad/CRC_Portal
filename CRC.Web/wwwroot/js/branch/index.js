@@ -210,12 +210,12 @@
             txtLocation.value = b.location || '';
             if (selState) {
             selState.value = b.state || '';
-            selState.disabled = true;             // ✅ lock State in Edit
+            selState.disabled = true;
             }
             selStatus.value = b.status ? '1' : '0';
             if (selOrg && b.organizationId) {
             selOrg.value = b.organizationId;
-            selOrg.disabled = true;               // ✅ lock Org in Edit
+            selOrg.disabled = true;
             }
 
             if (modal) modal.show();

@@ -160,7 +160,6 @@ namespace CRC.Web.Controllers.Branch
                 }
                 else
                 {
-                    // UPDATE: Branch_ID must exist
                     if (string.IsNullOrWhiteSpace(model.BranchId))
                     {
                         return Ok(new { success = false, message = "Branch ID is required for update." });
