@@ -4,6 +4,8 @@
     [Branch_Name] VARCHAR(100) NOT NULL,
     [Branch_Location] VARCHAR(200) NOT NULL,
     [Branch_State] VARCHAR(100) NOT NULL,
-    [Branch_Status] BIT NOT NULL -- 1 = Active, 0 = Inactive
+    [Branch_Status] BIT NOT NULL,
+    [Organization_ID]   VARCHAR(100) NULL,
+    [Organization_Name] VARCHAR(100) NULL
 );
 GO

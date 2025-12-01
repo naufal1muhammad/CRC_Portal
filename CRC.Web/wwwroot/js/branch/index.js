@@ -7,7 +7,8 @@
     const txtId = document.getElementById('BranchId');
     const txtName = document.getElementById('BranchName');
     const txtLocation = document.getElementById('BranchLocation');
-    const txtState = document.getElementById('BranchState');
+    const selState = document.getElementById('BranchState');
+    const selOrg = document.getElementById('BranchOrganization');
     const selStatus = document.getElementById('BranchStatus');
     const hiddenIsNew = document.getElementById('BranchIsNew');
     const msg = document.getElementById('branchFormMessage');
@@ -20,9 +21,16 @@
         txtId.value = '';
         txtName.value = '';
         txtLocation.value = '';
-        if (txtState) txtState.value = '';
+        if (selState) {
+        selState.value = '';
+        selState.disabled = false;
+        }
         if (selStatus) selStatus.value = '1';
         if (hiddenIsNew) hiddenIsNew.value = 'true';
+        if (selOrg) {
+        selOrg.value = '';
+        selOrg.disabled = false;
+        }
         if (msg) {
             msg.textContent = '';
             msg.classList.remove('text-success');
@@ -95,17 +103,54 @@
         }
     }
 
+    async function loadOrganizations() {
+    if (!selOrg) return;
+
+    selOrg.innerHTML = '<option value="">Loading organizations...</option>';
+
+    try {
+        const response = await fetch('/Branch/GetOrganizations', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+
+        if (!response.ok) {
+            selOrg.innerHTML = '<option value="">Error loading organizations</option>';
+            return;
+        }
+
+        const data = await response.json();
+
+        if (!data || data.length === 0) {
+            selOrg.innerHTML = '<option value="">No organizations found</option>';
+            return;
+        }
+
+        selOrg.innerHTML = '<option value="">-- Select Organization --</option>';
+
+        data.forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = o.organizationId;
+            opt.textContent = o.organizationName;
+            selOrg.appendChild(opt);
+        });
+    } catch (err) {
+        console.error('Error loading organizations', err);
+        selOrg.innerHTML = '<option value="">Error loading organizations</option>';
+    }
+}
+
     async function loadStates() {
-        if (!txtState) return;
+        if (!selState) return;
 
         // Clear existing options
-        txtState.innerHTML = '';
+        selState.innerHTML = '';
 
         // Add default option
         const defaultOpt = document.createElement('option');
         defaultOpt.value = '';
         defaultOpt.textContent = '-- Select State --';
-        txtState.appendChild(defaultOpt);
+        selState.appendChild(defaultOpt);
 
         try {
             const response = await fetch('/Branch/GetStates');
@@ -115,13 +160,13 @@
                 return;
             }
 
-            const states = await response.json(); // [{stateId, stateName}, ...]
+            const states = await response.json();
 
             states.forEach(s => {
                 const opt = document.createElement('option');
-                opt.value = s.stateName;      // we store stateName in Branch_State column
+                opt.value = s.stateName;
                 opt.textContent = s.stateName;
-                txtState.appendChild(opt);
+                selState.appendChild(opt);
             });
         } catch (err) {
             console.error('Error loading states', err);
@@ -135,6 +180,10 @@
         if (label) label.textContent = 'Edit Branch';
 
         try {
+            if (selOrg) {
+                await loadOrganizations();
+                }
+
             const response = await fetch('/Branch/GetBranch?branchId=' + encodeURIComponent(branchId), {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
@@ -159,8 +208,15 @@
             txtId.value = b.branchId || '';
             txtName.value = b.name || '';
             txtLocation.value = b.location || '';
-            txtState.value = b.state || '';
+            if (selState) {
+            selState.value = b.state || '';
+            selState.disabled = true;             // ✅ lock State in Edit
+            }
             selStatus.value = b.status ? '1' : '0';
+            if (selOrg && b.organizationId) {
+            selOrg.value = b.organizationId;
+            selOrg.disabled = true;               // ✅ lock Org in Edit
+            }
 
             if (modal) modal.show();
         } catch (err) {
@@ -181,17 +237,33 @@
 
         const isNew = hiddenIsNew && hiddenIsNew.value === 'true';
 
+        let organizationId = '';
+        let organizationName = '';
+
+        if (selOrg && selOrg.value) {
+        organizationId = selOrg.value;
+        const selectedOption = selOrg.options[selOrg.selectedIndex];
+        organizationName = selectedOption ? selectedOption.textContent : '';
+        }
+
         const payload = {
             isNew: isNew,
             branchId: txtId.value.trim(),
             name: txtName.value.trim(),
             location: txtLocation.value.trim(),
-            state: txtState.value.trim(),
+            state: selState.value.trim(),
+            organizationId: organizationId,
+            organizationName: organizationName,
             status: selStatus ? (selStatus.value === '1') : true
         };
 
-        if (!payload.branchId || !payload.name || !payload.location || !payload.state) {
+        if (!payload.name || !payload.location || !payload.state) {
             if (msg) msg.textContent = 'Please fill in all required fields.';
+            return;
+        }
+
+        if (!isNew && !payload.branchId) {
+            msg.textContent = 'Branch ID is missing for update.';
             return;
         }
 
@@ -290,15 +362,15 @@
         loadBranches();
         attachRowHandlers();
 
+        if (selOrg) {
+            loadOrganizations();
+            }
+
         if (btnAdd) {
             btnAdd.addEventListener('click', function () {
                 clearForm();
                 if (modal) modal.show();
             });
-        }
-
-        if (btnSave) {
-            // we'll get btnSave via ID
         }
     });
 

@@ -3,7 +3,6 @@ wwwroot\images\cancer-icon.avif
 wwwroot\images\cancer-icon.png
 wwwroot\js\account\register.js
 wwwroot\js\asset\index.js
-wwwroot\js\branch\index.js
 wwwroot\js\builders\customs\ApplicationGroupSelection.js
 wwwroot\js\builders\customs\FilterNextSelectElement.js
 wwwroot\js\builders\DataTableFalcon.js
@@ -8970,31 +8969,12 @@ wwwroot\lib\xlsx\package\types\tsconfig.json
 wwwroot\lib\xlsx\package\xlsx.js
 wwwroot\lib\xlsx\package\xlsx.mjs
 wwwroot\lib\xlsx\package\xlsxworker.js
-wwwroot\uploads\patient\0b44b820d5394352b87ec84313fe31fa.pdf
-wwwroot\uploads\patient\1f6f316dd3874990940945f0c21071c7.pdf
-wwwroot\uploads\patient\2295df70fe5544b7803b384a70c01a55.pdf
-wwwroot\uploads\patient\29771ba0dc50437bb93ec844b099cf5f.pdf
-wwwroot\uploads\patient\2b73fff53e9e46f1a8007e802a38b582.pdf
-wwwroot\uploads\patient\2e9bc962b5614de5aba4877532fd8331.pdf
-wwwroot\uploads\patient\9d150143a1614135b6548ea6093f2132.pdf
-wwwroot\uploads\patient\A00002\20251128095255286_MCKK PORTAL slides.pdf
-wwwroot\uploads\patient\A00002\20251128095325423_MCKK PORTAL slides.pdf
 wwwroot\uploads\patient\A00004\20251125022610997_MCKK PORTAL slides.pdf
 wwwroot\uploads\patient\A00004\20251125023231237_MCKK PORTAL slides.pdf
 wwwroot\uploads\patient\A00004\20251126084921024_MCKK PORTAL slides.pdf
-wwwroot\uploads\patient\A00007\20251128100010180_MCKK PORTAL slides.pdf
-wwwroot\uploads\patient\A00007\20251128100157314_MCKK PORTAL slides.pdf
-wwwroot\uploads\patient\adcc56369ebd4fcd9ab8dde4edd577f5.pdf
-wwwroot\uploads\patient\cad27457899247aa95190302cdb8e56d.pdf
 wwwroot\uploads\patient\G00001\20251128072220445_MCKK PORTAL slides.pdf
 wwwroot\uploads\staff\E0009\20251128072346506_MCKK PORTAL slides.pdf
-wwwroot\uploads\staff\E0009\20251128101540863_MCKK PORTAL slides.pdf
-wwwroot\uploads\staff\E0009\20251128102025742_MCKK PORTAL slides.pdf
-wwwroot\uploads\staff\E0009\20251128120555097_MCKK PORTAL slides.pdf
-wwwroot\uploads\staff\E0010\20251128120649397_IC_Pic_FrontBackNaufal.pdf
-wwwroot\uploads\staff\E0010\20251128120727095_LETTER OF CONFIRMATION-Muhd Naufal.pdf
 wwwroot\uploads\staff\K00001\20251125052921396_MCKK PORTAL slides.pdf
 wwwroot\uploads\staff\K00002\20251126084800301_MCKK PORTAL slides.pdf
 wwwroot\uploads\staff\K00003\20251126094559977_MCKK PORTAL slides.pdf
-wwwroot\uploads\staff\STAFF-DOC-0002\20251128143907457_STAFF-DOC-0002.pdf
-wwwroot\uploads\staff\STAFF-DOC-0005\20251128143913940_STAFF-DOC-0005.pdf
+wwwroot\js\branch\index.js

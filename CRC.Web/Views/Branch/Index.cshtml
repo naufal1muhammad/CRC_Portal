@@ -43,8 +43,11 @@
                 <input type="hidden" id="BranchIsNew" value="true" />
 
                 <div class="mb-3">
-                    <label for="BranchId" class="form-label">ID</label>
-                    <input id="BranchId" class="form-control" type="text" />
+                    <label for="BranchId" class="form-label">Branch ID</label>
+                    <input id="BranchId" class="form-control" readonly />
+                    <div class="form-text">
+                        For new branches, Branch ID will be generated automatically on save.
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -62,6 +65,14 @@
                     <select id="BranchState" class="form-select">
                         <option value="">-- Select State --</option>
                         @* Options will be loaded via JS from LU_STATES *@
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label for="BranchOrganization" class="form-label">Organization Name</label>
+                    <select id="BranchOrganization" class="form-select">
+                        <option value="">Loading...</option>
+                        @* Options will be loaded via JS from LU_ORGANIZATION *@
                     </select>
                 </div>
 

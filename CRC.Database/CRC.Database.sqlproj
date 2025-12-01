@@ -68,6 +68,7 @@
     <Folder Include="Stored Procedures\StaffDocument" />
     <Folder Include="Stored Procedures\Asset" />
     <Folder Include="Stored Procedures\LU_STATES" />
+    <Folder Include="Stored Procedures\LU_ORGANIZATION" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="dbo\Tables\Users.sql" />
@@ -113,5 +114,7 @@
     <Build Include="Stored Procedures\LU_STATES\spLU_STATES_List.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_PatientStates.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_PatientStageCountsByState.sql" />
+    <Build Include="dbo\Tables\LU_ORGANIZATION.sql" />
+    <Build Include="Stored Procedures\LU_ORGANIZATION\spLU_ORGANIZATION_List.sql" />
   </ItemGroup>
 </Project>

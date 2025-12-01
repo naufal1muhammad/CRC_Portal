@@ -43,7 +43,9 @@ namespace CRC.Web.Controllers.Branch
                     state = row["Branch_State"].ToString(),
                     status = row["Branch_Status"] == DBNull.Value
                         ? false
-                        : Convert.ToBoolean(row["Branch_Status"])
+                        : Convert.ToBoolean(row["Branch_Status"]),
+                    organizationId = row["Organization_ID"].ToString(),
+                    organizationName = row["Organization_Name"].ToString()
                 });
             }
 
@@ -84,7 +86,9 @@ namespace CRC.Web.Controllers.Branch
                     state = row["Branch_State"].ToString(),
                     status = row["Branch_Status"] == DBNull.Value
                         ? false
-                        : Convert.ToBoolean(row["Branch_Status"])
+                        : Convert.ToBoolean(row["Branch_Status"]),
+                    organizationId = row["Organization_ID"].ToString(),
+                    organizationName = row["Organization_Name"].ToString()
                 }
             });
         }
@@ -97,6 +101,8 @@ namespace CRC.Web.Controllers.Branch
             public string Location { get; set; } = string.Empty;
             public string State { get; set; } = string.Empty;
             public bool Status { get; set; }
+            public string OrganizationId { get; set; } = string.Empty;
+            public string OrganizationName { get; set; } = string.Empty;
         }
 
         public class DeleteBranchRequest
@@ -110,46 +116,85 @@ namespace CRC.Web.Controllers.Branch
         {
             if (model == null)
             {
-                return BadRequest(new { success = false, message = "Invalid data." });
+                return Ok(new { success = false, message = "Invalid request." });
             }
 
-            if (string.IsNullOrWhiteSpace(model.BranchId) ||
-                string.IsNullOrWhiteSpace(model.Name) ||
-                string.IsNullOrWhiteSpace(model.Location) ||
-                string.IsNullOrWhiteSpace(model.State))
+            // Basic validation
+            if (string.IsNullOrWhiteSpace(model.Name) ||
+                string.IsNullOrWhiteSpace(model.State) ||
+                string.IsNullOrWhiteSpace(model.OrganizationId))
             {
-                return Ok(new { success = false, message = "Please fill in all required fields." });
+                return Ok(new { success = false, message = "Please fill in branch name, state and organization." });
             }
-
-            var parameters = new[]
-            {
-                new SqlParameter("@Branch_ID", model.BranchId),
-                new SqlParameter("@Branch_Name", model.Name),
-                new SqlParameter("@Branch_Location", model.Location),
-                new SqlParameter("@Branch_State", model.State),
-                new SqlParameter("@Branch_Status", model.Status)
-            };
 
             try
             {
                 if (model.IsNew)
                 {
-                    await _db.ExecuteNonQueryAsync("spBranch_Insert", parameters);
+                    // INSERT: Branch_ID is auto-generated in spBranch_Insert
+                    var insertParams = new[]
+                    {
+                new SqlParameter("@Branch_Name", model.Name),
+                new SqlParameter("@Branch_Location", (object?)model.Location ?? DBNull.Value),
+                new SqlParameter("@Branch_State", (object?)model.State ?? DBNull.Value),
+                new SqlParameter("@Branch_Status", (object?)model.Status ?? DBNull.Value),
+                new SqlParameter("@Organization_ID", (object?)model.OrganizationId ?? DBNull.Value),
+                new SqlParameter("@Organization_Name", (object?)model.OrganizationName ?? DBNull.Value)
+            };
+
+                    // spBranch_Insert ends with: SELECT @Branch_ID AS NewBranch_ID;
+                    var dt = await _db.ExecuteDataTableAsync("spBranch_Insert", insertParams);
+
+                    string newBranchId = string.Empty;
+                    if (dt.Rows.Count > 0 && dt.Columns.Contains("NewBranch_ID"))
+                    {
+                        newBranchId = dt.Rows[0]["NewBranch_ID"]?.ToString() ?? "";
+                    }
+
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "Branch created successfully.",
+                        branchId = newBranchId
+                    });
                 }
                 else
                 {
-                    await _db.ExecuteNonQueryAsync("spBranch_Update", parameters);
-                }
+                    // UPDATE: Branch_ID must exist
+                    if (string.IsNullOrWhiteSpace(model.BranchId))
+                    {
+                        return Ok(new { success = false, message = "Branch ID is required for update." });
+                    }
 
-                return Ok(new { success = true, message = "Branch saved successfully." });
+                    var updateParams = new[]
+                    {
+                new SqlParameter("@Branch_ID", model.BranchId),
+                new SqlParameter("@Branch_Name", model.Name),
+                new SqlParameter("@Branch_Location", (object?)model.Location ?? DBNull.Value),
+                new SqlParameter("@Branch_State", (object?)model.State ?? DBNull.Value),
+                new SqlParameter("@Branch_Status", (object?)model.Status ?? DBNull.Value),
+                new SqlParameter("@Organization_ID", (object?)model.OrganizationId ?? DBNull.Value),
+                new SqlParameter("@Organization_Name", (object?)model.OrganizationName ?? DBNull.Value)
+            };
+
+                    await _db.ExecuteNonQueryAsync("spBranch_Update", updateParams);
+
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "Branch updated successfully.",
+                        branchId = model.BranchId
+                    });
+                }
             }
             catch (SqlException ex)
             {
+                // You can log ex here
                 return Ok(new { success = false, message = ex.Message });
             }
             catch (Exception)
             {
-                return Ok(new { success = false, message = "An unexpected error occurred." });
+                return Ok(new { success = false, message = "Error saving branch." });
             }
         }
 
@@ -196,5 +241,23 @@ namespace CRC.Web.Controllers.Branch
 
             return Ok(list);
         }
+
+        [HttpGet]
+        public async Task<IActionResult> GetOrganizations()
+        {
+            var dt = await _db.ExecuteDataTableAsync("spLU_ORGANIZATION_List");
+            var list = new List<object>();
+
+            foreach (DataRow row in dt.Rows)
+            {
+                list.Add(new
+                {
+                    organizationId = row["Organization_ID"]?.ToString() ?? "",
+                    organizationName = row["Organization_Name"]?.ToString() ?? ""
+                });
+            }
+            return Ok(list);
+        }
+
     }
 }
