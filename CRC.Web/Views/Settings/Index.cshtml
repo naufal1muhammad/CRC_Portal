@@ -1,0 +1,41 @@
+﻿@{
+    ViewData["Title"] = "Settings - Staff Document Requirements";
+    Layout = "_Layout";
+}
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12 col-lg-8 col-xl-6">
+            <div class="card shadow-sm mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Staff Document Settings</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="SettingsStaffType" class="form-label fw-semibold">Staff Type</label>
+                        <select id="SettingsStaffType" class="form-select">
+                            <option value="">-- Select Staff Type --</option>
+                        </select>
+                    </div>
+
+                    <div id="settingsMessage" class="small mb-2 text-muted">
+                        Please select a staff type to view and configure mandatory documents.
+                    </div>
+
+                    <div id="documentTypeList">
+                        <p class="text-muted mb-0">No staff type selected.</p>
+                    </div>
+                </div>
+                <div class="card-footer text-end">
+                    <button id="btnSaveSettings" type="button" class="btn btn-primary btn-sm">
+                        <i class="fas fa-save me-1"></i> Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/settings/index.js"></script>
+}

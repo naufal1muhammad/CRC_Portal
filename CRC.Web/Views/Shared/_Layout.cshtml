@@ -133,12 +133,17 @@
                     <i class="fas fa-folder-open me-2"></i> Document Management
                 </a>
 
+                <a asp-controller="Settings" asp-action="Index"
+                   class="list-group-item list-group-item-action @activeClass("Settings", "Index")">
+                    <i class="fas fa-gear me-2"></i> Settings
+                </a>
+
                 <!-- Reports (placeholder for future) -->
                 <a asp-controller="Reports" asp-action="Index"
                    class="list-group-item list-group-item-action disabled">
                     <i class="fas fa-chart-line me-2"></i> Reports (coming soon)
                 </a>
-                <!-- Reports (placeholder for future) -->
+                <!-- Cost Center (placeholder for future) -->
                 <a asp-controller="CostCenter" asp-action="Index"
                    class="list-group-item list-group-item-action disabled">
                     <i class="fas fa-solid fa-coins me-2"></i> Cost-center (coming soon)

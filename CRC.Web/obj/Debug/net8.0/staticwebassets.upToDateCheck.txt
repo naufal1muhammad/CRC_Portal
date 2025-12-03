@@ -3,6 +3,7 @@ wwwroot\images\cancer-icon.avif
 wwwroot\images\cancer-icon.png
 wwwroot\js\account\register.js
 wwwroot\js\asset\index.js
+wwwroot\js\branch\index.js
 wwwroot\js\builders\customs\ApplicationGroupSelection.js
 wwwroot\js\builders\customs\FilterNextSelectElement.js
 wwwroot\js\builders\DataTableFalcon.js
@@ -35,6 +36,7 @@ wwwroot\js\functions\UrlVariable.js
 wwwroot\js\helpers\FormValidator.js
 wwwroot\js\helpers\FormValidatorFalcon.js
 wwwroot\js\patient\index.js
+wwwroot\js\settings\index.js
 wwwroot\js\site.js
 wwwroot\js\staff\index.js
 wwwroot\lib\admin-lte\css\adminlte.css
@@ -8969,12 +8971,4 @@ wwwroot\lib\xlsx\package\types\tsconfig.json
 wwwroot\lib\xlsx\package\xlsx.js
 wwwroot\lib\xlsx\package\xlsx.mjs
 wwwroot\lib\xlsx\package\xlsxworker.js
-wwwroot\uploads\patient\A00004\20251125022610997_MCKK PORTAL slides.pdf
-wwwroot\uploads\patient\A00004\20251125023231237_MCKK PORTAL slides.pdf
-wwwroot\uploads\patient\A00004\20251126084921024_MCKK PORTAL slides.pdf
-wwwroot\uploads\patient\G00001\20251128072220445_MCKK PORTAL slides.pdf
-wwwroot\uploads\staff\E0009\20251128072346506_MCKK PORTAL slides.pdf
-wwwroot\uploads\staff\K00001\20251125052921396_MCKK PORTAL slides.pdf
-wwwroot\uploads\staff\K00002\20251126084800301_MCKK PORTAL slides.pdf
-wwwroot\uploads\staff\K00003\20251126094559977_MCKK PORTAL slides.pdf
-wwwroot\js\branch\index.js
+wwwroot\uploads\staff\f3180f8100774230af4c60f700ecb0f3_PAT-CENTER1-003.pdf

@@ -56,8 +56,11 @@
                 <div class="row">
                     <div class="col-md-6">
                         <div class="mb-3">
-                            <label for="StaffId" class="form-label">ID</label>
-                            <input id="StaffId" class="form-control" type="text" />
+                            <label for="StaffId" class="form-label">Staff ID</label>
+                            <input id="StaffId" class="form-control" readonly />
+                            <div class="form-text">
+                                For new staff, Staff ID will be generated automatically on save.
+                            </div>
                         </div>
                     </div>
                     <div class="col-md-6">
@@ -105,28 +108,16 @@
                         <div class="mb-3">
                             <label for="StaffType" class="form-label">Staff Type</label>
                             <select id="StaffType" class="form-select">
-                                <option value="">-- Select Staff Type --</option>
-                                <option value="1">Doctor</option>
-                                <option value="2">Nurse</option>
-                                <option value="3">Counsellor</option>
-                                <option value="4">Clerk</option>
+                                <option value="">Loading staff types...</option>
                             </select>
                         </div>
                     </div>
                 </div>
 
                 <div class="mb-3">
-                    <label for="StaffFiles" class="form-label">PDF File Uploader</label>
-                    <input id="StaffFiles" class="form-control" type="file" multiple accept="application/pdf" />
-                    <div class="form-text">
-                        You can select one or more PDF files. They will be uploaded when you click Save.
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Existing Documents</label>
-                    <div id="staffDocumentsList">
-                        <p class="text-muted mb-0">No documents loaded.</p>
+                    <label class="form-label fw-semibold">Mandatory Documents</label>
+                    <div id="mandatoryDocumentsContainer">
+                        <p class="text-muted mb-0">Select a staff type to see required documents.</p>
                     </div>
                 </div>
 

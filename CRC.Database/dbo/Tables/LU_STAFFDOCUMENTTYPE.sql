@@ -1,0 +1,7 @@
+﻿CREATE TABLE [dbo].[LU_STAFFDOCUMENTTYPE]
+(
+    [StaffDocumentType_ID]   VARCHAR(100) NOT NULL,
+    [StaffDocumentType_Name] VARCHAR(100) NOT NULL,
+    CONSTRAINT [PK_LU_STAFFDOCUMENTTYPE] PRIMARY KEY ([StaffDocumentType_ID])
+);
+GO

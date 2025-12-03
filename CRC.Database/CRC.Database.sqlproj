@@ -69,6 +69,9 @@
     <Folder Include="Stored Procedures\Asset" />
     <Folder Include="Stored Procedures\LU_STATES" />
     <Folder Include="Stored Procedures\LU_ORGANIZATION" />
+    <Folder Include="Stored Procedures\LU_STAFFTYPE" />
+    <Folder Include="Stored Procedures\LU_STAFFDOCUMENTTYPE" />
+    <Folder Include="Stored Procedures\StaffDocumentSettings" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="dbo\Tables\Users.sql" />
@@ -116,5 +119,14 @@
     <Build Include="Stored Procedures\Dashboard\spDashboard_PatientStageCountsByState.sql" />
     <Build Include="dbo\Tables\LU_ORGANIZATION.sql" />
     <Build Include="Stored Procedures\LU_ORGANIZATION\spLU_ORGANIZATION_List.sql" />
+    <Build Include="dbo\Tables\LU_STAFFTYPE.sql" />
+    <Build Include="dbo\Tables\LU_STAFFDOCUMENTTYPE.sql" />
+    <Build Include="dbo\Tables\StaffDocumentSettings.sql" />
+    <Build Include="Stored Procedures\LU_STAFFTYPE\spLU_STAFFTYPE_List.sql" />
+    <Build Include="Stored Procedures\LU_STAFFDOCUMENTTYPE\spLU_STAFFDOCUMENTTYPE_List.sql" />
+    <Build Include="Stored Procedures\StaffDocumentSettings\spStaffDocumentSettings_GetByStaffType.sql" />
+    <Build Include="Stored Procedures\StaffDocumentSettings\spStaffDocumentSettings_DeleteByStaffType.sql" />
+    <Build Include="Stored Procedures\StaffDocumentSettings\spStaffDocumentSettings_Insert.sql" />
+    <Build Include="Stored Procedures\StaffDocument\spStaffDocument_Search.sql" />
   </ItemGroup>
 </Project>

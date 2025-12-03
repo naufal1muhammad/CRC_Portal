@@ -68,7 +68,7 @@ namespace CRC.Web.Controllers.Staff
                     email = row["Staff_Email"].ToString(),
                     branchId = row["Branch_ID"].ToString(),
                     branchName = row["Branch_Name"].ToString(),
-                    staffType = row["Staff_Type"] == DBNull.Value ? 0 : Convert.ToInt32(row["Staff_Type"])
+                    staffTypeId = row["Staff_Type"]?.ToString() ?? ""
                 });
             }
 
@@ -110,7 +110,7 @@ namespace CRC.Web.Controllers.Staff
                     email = row["Staff_Email"].ToString(),
                     branchId = row["Branch_ID"].ToString(),
                     branchName = row["Branch_Name"].ToString(),
-                    staffType = row["Staff_Type"] == DBNull.Value ? 0 : Convert.ToInt32(row["Staff_Type"])
+                    staffTypeId = row["Staff_Type"]?.ToString() ?? ""
                 }
             });
         }
@@ -118,14 +118,18 @@ namespace CRC.Web.Controllers.Staff
         public class SaveStaffRequest
         {
             public bool IsNew { get; set; }
+
             public string StaffId { get; set; } = string.Empty;
             public string Name { get; set; } = string.Empty;
             public string NRIC { get; set; } = string.Empty;
             public string Phone { get; set; } = string.Empty;
             public string Email { get; set; } = string.Empty;
+
             public string BranchId { get; set; } = string.Empty;
             public string BranchName { get; set; } = string.Empty;
-            public int StaffType { get; set; }
+
+            // This stores StaffType_ID from LU_STAFFTYPE
+            public string StaffTypeId { get; set; } = string.Empty;
         }
 
         public class DeleteStaffRequest
@@ -142,42 +146,77 @@ namespace CRC.Web.Controllers.Staff
                 return BadRequest(new { success = false, message = "Invalid data." });
             }
 
-            if (string.IsNullOrWhiteSpace(model.StaffId) ||
-                string.IsNullOrWhiteSpace(model.Name) ||
+            if (string.IsNullOrWhiteSpace(model.Name) ||
                 string.IsNullOrWhiteSpace(model.NRIC) ||
                 string.IsNullOrWhiteSpace(model.Phone) ||
                 string.IsNullOrWhiteSpace(model.Email) ||
                 string.IsNullOrWhiteSpace(model.BranchId) ||
                 string.IsNullOrWhiteSpace(model.BranchName) ||
-                model.StaffType <= 0)
+                string.IsNullOrWhiteSpace(model.StaffTypeId))
             {
                 return Ok(new { success = false, message = "Please fill in all required fields." });
             }
-
-            var parameters = new[]
-            {
-                new SqlParameter("@Staff_ID", model.StaffId),
-                new SqlParameter("@Staff_Name", model.Name),
-                new SqlParameter("@Staff_NRIC", model.NRIC),
-                new SqlParameter("@Staff_Phone", model.Phone),
-                new SqlParameter("@Staff_Email", model.Email),
-                new SqlParameter("@Branch_ID", model.BranchId),
-                new SqlParameter("@Branch_Name", model.BranchName),
-                new SqlParameter("@Staff_Type", model.StaffType)
-            };
 
             try
             {
                 if (model.IsNew)
                 {
-                    await _db.ExecuteNonQueryAsync("spStaff_Insert", parameters);
+                    // INSERT: Staff_ID is auto-generated in spStaff_Insert
+                    var insertParams = new[]
+                    {
+                new SqlParameter("@Staff_Name",  model.Name),
+                new SqlParameter("@Staff_NRIC",  model.NRIC),
+                new SqlParameter("@Staff_Phone", model.Phone),
+                new SqlParameter("@Staff_Email", model.Email),
+                new SqlParameter("@Branch_ID",   model.BranchId),
+                new SqlParameter("@Branch_Name", (object?)model.BranchName ?? DBNull.Value),
+                new SqlParameter("@Staff_Type",  model.StaffTypeId) // StaffType_ID
+            };
+
+                    var dt = await _db.ExecuteDataTableAsync("spStaff_Insert", insertParams);
+
+                    string newStaffId = string.Empty;
+                    if (dt.Rows.Count > 0 && dt.Columns.Contains("NewStaff_ID"))
+                    {
+                        newStaffId = dt.Rows[0]["NewStaff_ID"]?.ToString() ?? "";
+                    }
+
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "Staff created successfully.",
+                        staffId = newStaffId
+                    });
                 }
                 else
                 {
-                    await _db.ExecuteNonQueryAsync("spStaff_Update", parameters);
-                }
+                    // UPDATE: Staff_ID must exist
+                    if (string.IsNullOrWhiteSpace(model.StaffId))
+                    {
+                        return Ok(new { success = false, message = "Staff ID is required for update." });
+                    }
 
-                return Ok(new { success = true, message = "Staff saved successfully." });
+                    var updateParams = new[]
+                    {
+                new SqlParameter("@Staff_ID",    model.StaffId),
+                new SqlParameter("@Staff_Name",  model.Name),
+                new SqlParameter("@Staff_NRIC",  model.NRIC),
+                new SqlParameter("@Staff_Phone", model.Phone),
+                new SqlParameter("@Staff_Email", model.Email),
+                new SqlParameter("@Branch_ID",   model.BranchId),
+                new SqlParameter("@Branch_Name", (object?)model.BranchName ?? DBNull.Value),
+                new SqlParameter("@Staff_Type",  model.StaffTypeId)
+            };
+
+                    await _db.ExecuteNonQueryAsync("spStaff_Update", updateParams);
+
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "Staff updated successfully.",
+                        staffId = model.StaffId
+                    });
+                }
             }
             catch (SqlException ex)
             {
@@ -223,15 +262,16 @@ namespace CRC.Web.Controllers.Staff
         {
             if (string.IsNullOrWhiteSpace(staffId))
             {
-                return BadRequest(new { success = false, message = "Staff ID is required." });
+                return Ok(new { success = false, message = "Staff ID is required." });
             }
 
             var parameters = new[]
             {
-                new SqlParameter("@Staff_ID", staffId)
-            };
+        new SqlParameter("@Staff_ID", staffId)
+    };
 
             var dt = await _db.ExecuteDataTableAsync("spStaffDocument_List", parameters);
+
             var list = new List<object>();
 
             foreach (DataRow row in dt.Rows)
@@ -239,13 +279,14 @@ namespace CRC.Web.Controllers.Staff
                 list.Add(new
                 {
                     documentId = Convert.ToInt32(row["StaffDocument_ID"]),
-                    staffId = row["Staff_ID"].ToString(),
-                    staffName = row["Staff_Name"].ToString(),
-                    fileName = row["FileName"].ToString(),
-                    filePath = row["FilePath"].ToString(),
-                    uploadedOn = row["UploadedOn"] == DBNull.Value
-                        ? null
-                        : ((DateTime)row["UploadedOn"]).ToString("yyyy-MM-dd HH:mm")
+                    staffId = row["Staff_ID"]?.ToString() ?? "",
+                    staffName = row["Staff_Name"]?.ToString() ?? "",
+                    staffDocumentTypeId = row["StaffDocumentType_ID"]?.ToString() ?? "",
+                    staffDocumentTypeName = row["StaffDocumentType_Name"]?.ToString() ?? "",
+                    fileName = row["FileName"]?.ToString() ?? "",
+                    filePath = row["FilePath"]?.ToString() ?? "",
+                    contentType = row["ContentType"]?.ToString() ?? "",
+                    uploadedOn = row["UploadedOn"]?.ToString() ?? ""
                 });
             }
 
@@ -254,12 +295,16 @@ namespace CRC.Web.Controllers.Staff
 
         // POST: /Staff/UploadStaffDocuments
         [HttpPost]
-        [DisableRequestSizeLimit]
-        public async Task<IActionResult> UploadStaffDocuments(string staffId, string staffName, List<IFormFile> files)
+        public async Task<IActionResult> UploadStaffDocuments(
+            string staffId,
+            string staffName,
+            List<IFormFile> files,
+            List<string>? docTypeIds,
+            List<string>? docTypeNames)
         {
             if (string.IsNullOrWhiteSpace(staffId))
             {
-                return BadRequest(new { success = false, message = "Staff ID is required." });
+                return Ok(new { success = false, message = "Staff ID is required for document upload." });
             }
 
             if (files == null || files.Count == 0)
@@ -267,49 +312,59 @@ namespace CRC.Web.Controllers.Staff
                 return Ok(new { success = true, message = "No files to upload." });
             }
 
-            var uploadsRoot = Path.Combine(_env.WebRootPath, "uploads", "staff", staffId);
+            docTypeIds ??= new List<string>();
+            docTypeNames ??= new List<string>();
 
-            if (!Directory.Exists(uploadsRoot))
+            // Adjust path as per your project
+            var uploadRoot = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "staff");
+            if (!Directory.Exists(uploadRoot))
             {
-                Directory.CreateDirectory(uploadsRoot);
+                Directory.CreateDirectory(uploadRoot);
             }
 
-            foreach (var file in files)
+            try
             {
-                if (file.Length <= 0)
-                    continue;
-
-                if (!file.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
+                for (int i = 0; i < files.Count; i++)
                 {
-                    continue; // skip non-PDF
+                    var file = files[i];
+                    if (file == null || file.Length == 0) continue;
+
+                    string docTypeId = (i < docTypeIds.Count) ? docTypeIds[i] : string.Empty;
+                    string docTypeName = (i < docTypeNames.Count) ? docTypeNames[i] : string.Empty;
+
+                    var originalFileName = Path.GetFileName(file.FileName);
+                    var uniqueFileName = $"{Guid.NewGuid():N}_{originalFileName}";
+
+                    var filePath = Path.Combine(uploadRoot, uniqueFileName);
+
+                    using (var stream = new FileStream(filePath, FileMode.Create))
+                    {
+                        await file.CopyToAsync(stream);
+                    }
+
+                    var relativePath = $"/uploads/staff/{uniqueFileName}";
+                    var contentType = file.ContentType ?? "application/octet-stream";
+
+                    var parameters = new[]
+                    {
+                new SqlParameter("@Staff_ID",             staffId),
+                new SqlParameter("@Staff_Name",           (object?)staffName ?? DBNull.Value),
+                new SqlParameter("@StaffDocumentType_ID", (object?)docTypeId ?? DBNull.Value),
+                new SqlParameter("@StaffDocumentType_Name",(object?)docTypeName ?? DBNull.Value),
+                new SqlParameter("@FileName",             originalFileName),
+                new SqlParameter("@FilePath",             relativePath),
+                new SqlParameter("@ContentType",          contentType)
+            };
+
+                    await _db.ExecuteNonQueryAsync("spStaffDocument_Insert", parameters);
                 }
 
-                var originalFileName = Path.GetFileName(file.FileName);
-                var timeStamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
-                var safeFileName = $"{timeStamp}_{originalFileName}";
-
-                var physicalPath = Path.Combine(uploadsRoot, safeFileName);
-
-                using (var stream = new FileStream(physicalPath, FileMode.Create))
-                {
-                    await file.CopyToAsync(stream);
-                }
-
-                var relativePath = $"/uploads/staff/{staffId}/{safeFileName}";
-
-                var parameters = new[]
-                {
-                    new SqlParameter("@Staff_ID", staffId),
-                    new SqlParameter("@Staff_Name", staffName),
-                    new SqlParameter("@FileName", originalFileName),
-                    new SqlParameter("@FilePath", relativePath),
-                    new SqlParameter("@ContentType", file.ContentType)
-                };
-
-                await _db.ExecuteNonQueryAsync("spStaffDocument_Insert", parameters);
+                return Ok(new { success = true, message = "Files uploaded successfully." });
             }
-
-            return Ok(new { success = true, message = "Files uploaded successfully." });
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error uploading staff documents." });
+            }
         }
 
         public class DeleteStaffDocumentRequest
@@ -370,6 +425,56 @@ namespace CRC.Web.Controllers.Staff
             {
                 return Ok(new { success = false, message = "An unexpected error occurred." });
             }
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetStaffTypes()
+        {
+            var dt = await _db.ExecuteDataTableAsync("spLU_STAFFTYPE_List");
+            var list = new List<object>();
+
+            foreach (DataRow row in dt.Rows)
+            {
+                list.Add(new
+                {
+                    staffTypeId = row["StaffType_ID"]?.ToString() ?? "",
+                    staffTypeName = row["StaffType_Name"]?.ToString() ?? ""
+                });
+            }
+
+            return Ok(list);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetMandatoryDocumentsForStaffType(string staffTypeId)
+        {
+            if (string.IsNullOrWhiteSpace(staffTypeId))
+            {
+                return Ok(new { success = false, message = "Staff type is required." });
+            }
+
+            var parameters = new[]
+            {
+        new SqlParameter("@StaffType_ID", staffTypeId)
+    };
+
+            var dt = await _db.ExecuteDataTableAsync("spStaffDocumentSettings_GetByStaffType", parameters);
+            var list = new List<object>();
+
+            foreach (DataRow row in dt.Rows)
+            {
+                bool isMandatory = row["IsMandatory"] != DBNull.Value && Convert.ToInt32(row["IsMandatory"]) == 1;
+                if (!isMandatory)
+                    continue;
+
+                list.Add(new
+                {
+                    staffDocumentTypeId = row["StaffDocumentType_ID"]?.ToString() ?? "",
+                    staffDocumentTypeName = row["StaffDocumentType_Name"]?.ToString() ?? ""
+                });
+            }
+
+            return Ok(new { success = true, data = list });
         }
     }
 }
