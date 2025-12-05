@@ -2,7 +2,6 @@ wwwroot\css\site.css
 wwwroot\images\cancer-icon.avif
 wwwroot\images\cancer-icon.png
 wwwroot\js\account\register.js
-wwwroot\js\asset\index.js
 wwwroot\js\branch\index.js
 wwwroot\js\builders\customs\ApplicationGroupSelection.js
 wwwroot\js\builders\customs\FilterNextSelectElement.js
@@ -8971,4 +8970,6 @@ wwwroot\lib\xlsx\package\types\tsconfig.json
 wwwroot\lib\xlsx\package\xlsx.js
 wwwroot\lib\xlsx\package\xlsx.mjs
 wwwroot\lib\xlsx\package\xlsxworker.js
+wwwroot\uploads\staff\41804f72bb154fcfa7b85ae394ef6f98_PAT-CENTER1-001-T3.pdf
 wwwroot\uploads\staff\f3180f8100774230af4c60f700ecb0f3_PAT-CENTER1-003.pdf
+wwwroot\uploads\staff\f48be7df5a8b4d3aa857fdd6b5ae5c92_STAFF-DOC-0006.pdf

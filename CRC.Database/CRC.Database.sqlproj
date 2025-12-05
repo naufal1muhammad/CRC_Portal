@@ -66,7 +66,6 @@
     <Folder Include="Stored Procedures\PatientDocument" />
     <Folder Include="Stored Procedures\Staff" />
     <Folder Include="Stored Procedures\StaffDocument" />
-    <Folder Include="Stored Procedures\Asset" />
     <Folder Include="Stored Procedures\LU_STATES" />
     <Folder Include="Stored Procedures\LU_ORGANIZATION" />
     <Folder Include="Stored Procedures\LU_STAFFTYPE" />
@@ -78,7 +77,6 @@
     <Build Include="dbo\Tables\Branch.sql" />
     <Build Include="dbo\Tables\Patient.sql" />
     <Build Include="dbo\Tables\Staff.sql" />
-    <Build Include="dbo\Tables\Asset.sql" />
     <Build Include="dbo\Tables\PatientDocument.sql" />
     <Build Include="dbo\Tables\StaffDocument.sql" />
     <Build Include="Stored Procedures\Users\spUsers_Register.sql" />
@@ -108,11 +106,6 @@
     <Build Include="Stored Procedures\Branch\spBranch_Insert.sql" />
     <Build Include="Stored Procedures\Branch\spBranch_Update.sql" />
     <Build Include="Stored Procedures\Branch\spBranch_Delete.sql" />
-    <Build Include="Stored Procedures\Asset\spAsset_ListByBranch.sql" />
-    <Build Include="Stored Procedures\Asset\spAsset_GetById.sql" />
-    <Build Include="Stored Procedures\Asset\spAsset_Insert.sql" />
-    <Build Include="Stored Procedures\Asset\spAsset_Update.sql" />
-    <Build Include="Stored Procedures\Asset\spAsset_Delete.sql" />
     <Build Include="dbo\Tables\LU_STATES.sql" />
     <Build Include="Stored Procedures\LU_STATES\spLU_STATES_List.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_PatientStates.sql" />
