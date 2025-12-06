@@ -32,6 +32,33 @@
                     </button>
                 </div>
             </div>
+            <div class="card shadow-sm mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Patient Document Settings</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="SettingsDischargeType" class="form-label">
+                            Discharge Type <span class="text-danger">*</span>
+                        </label>
+                        <select id="SettingsDischargeType"
+                                class="form-select form-select-sm">
+                            <option value="">-- Select Discharge Type --</option>
+                        </select>
+                    </div>
+                    <div id="dischargeSettingsMessage" class="small mb-2 text-muted">
+                        Please select a staff type to view and configure mandatory documents.
+                    </div>
+                    <div id="dischargeDocumentTypeList">
+                        <p class="text-muted mb-0">No discharge type selected.</p>
+                    </div>
+                </div>
+                <div class="card-footer text-end">
+                    <button id="btnSaveDischargeSettings" type="button" class="btn btn-primary btn-sm">
+                        <i class="fas fa-save me-1"></i> Save Settings
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 </div>

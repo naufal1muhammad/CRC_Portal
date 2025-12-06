@@ -1,0 +1,6 @@
+﻿CREATE TABLE [dbo].[LU_RACE]
+(
+    [Race_ID]   VARCHAR(100) NOT NULL PRIMARY KEY,
+    [Race_Name] VARCHAR(100) NOT NULL
+);
+GO

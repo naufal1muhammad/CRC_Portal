@@ -34,7 +34,13 @@ wwwroot\js\functions\SrollTop.js
 wwwroot\js\functions\UrlVariable.js
 wwwroot\js\helpers\FormValidator.js
 wwwroot\js\helpers\FormValidatorFalcon.js
-wwwroot\js\patient\index.js
+wwwroot\js\patient\active-list.js
+wwwroot\js\patient\discharged-list.js
+wwwroot\js\patient\edit-appointment.js
+wwwroot\js\patient\edit-basic.js
+wwwroot\js\patient\edit-discharge.js
+wwwroot\js\patient\edit-documents.js
+wwwroot\js\patient\edit-journey.js
 wwwroot\js\settings\index.js
 wwwroot\js\site.js
 wwwroot\js\staff\index.js
@@ -8970,6 +8976,10 @@ wwwroot\lib\xlsx\package\types\tsconfig.json
 wwwroot\lib\xlsx\package\xlsx.js
 wwwroot\lib\xlsx\package\xlsx.mjs
 wwwroot\lib\xlsx\package\xlsxworker.js
+wwwroot\uploads\patient\32ce6095fd89447d8c8ccdfb9a54528d_PAT-CENTER2-001.pdf
+wwwroot\uploads\patient\c8940121f00c4dd29e18bb4cd7c0a6d6_STAFF-DOC-0002.pdf
 wwwroot\uploads\staff\41804f72bb154fcfa7b85ae394ef6f98_PAT-CENTER1-001-T3.pdf
+wwwroot\uploads\staff\5f8a654236974ea288c2bb0b281ae6da_PAT-CENTER1-001-T2.pdf
+wwwroot\uploads\staff\df9d09d80743450ca534e8045fbf9237_PAT-CENTER1-002.pdf
 wwwroot\uploads\staff\f3180f8100774230af4c60f700ecb0f3_PAT-CENTER1-003.pdf
 wwwroot\uploads\staff\f48be7df5a8b4d3aa857fdd6b5ae5c92_STAFF-DOC-0006.pdf

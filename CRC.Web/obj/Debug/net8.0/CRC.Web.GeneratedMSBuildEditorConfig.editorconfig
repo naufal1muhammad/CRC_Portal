@@ -50,8 +50,16 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcSG9tZVxQcml2YWN5LmNzaHRtbA==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/MuhammadNaufalSyedNa/Documents/GitHub/CRC_Portal/CRC.Web/Views/Patient/Index.cshtml]
-build_metadata.AdditionalFiles.TargetPath = Vmlld3NcUGF0aWVudFxJbmRleC5jc2h0bWw=
+[C:/Users/MuhammadNaufalSyedNa/Documents/GitHub/CRC_Portal/CRC.Web/Views/Patient/Active.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcUGF0aWVudFxBY3RpdmUuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/MuhammadNaufalSyedNa/Documents/GitHub/CRC_Portal/CRC.Web/Views/Patient/Discharged.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcUGF0aWVudFxEaXNjaGFyZ2VkLmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/MuhammadNaufalSyedNa/Documents/GitHub/CRC_Portal/CRC.Web/Views/Patient/Edit.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcUGF0aWVudFxFZGl0LmNzaHRtbA==
 build_metadata.AdditionalFiles.CssScope = 
 
 [C:/Users/MuhammadNaufalSyedNa/Documents/GitHub/CRC_Portal/CRC.Web/Views/Settings/Index.cshtml]

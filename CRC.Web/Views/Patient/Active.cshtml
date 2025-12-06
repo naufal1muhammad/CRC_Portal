@@ -1,0 +1,63 @@
+﻿@{
+    ViewData["Title"] = "Active Patients";
+    Layout = "_Layout";
+}
+
+<div class="container-fluid py-3">
+    <div class="card mb-3">
+        <div class="card-header">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="mb-0">Active Patients</h2>
+
+        <div class="d-flex align-items-center">
+            <div class="me-2" style="max-width: 260px;">
+                <input id="activePatientSearch"
+                       type="text"
+                       class="form-control form-control-sm"
+                       placeholder="Search by ID or Name..."
+                       autocomplete="off" />
+            </div>
+
+            <button id="btnAddPatient"
+                    type="button"
+                    class="btn btn-sm btn-primary">
+                <i class="fas fa-user-plus me-1"></i> Add Patient
+            </button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table id="activePatientsTable" class="table table-sm table-striped mb-0">
+                    <thead class="table-secondary">
+                        <tr>
+                            <th>Patient ID</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Branch</th>
+                            <th>Admitted On</th>
+                            <th>Discharge Type</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="8" class="text-center text-muted">
+                                Loading...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/patient/active-list.js"></script>
+}

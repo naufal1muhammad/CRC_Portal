@@ -95,6 +95,22 @@ html {
         }
 
 
+#saveSuccessModal .fa-check-circle {
+    animation: pop-in 0.4s ease-out;
+}
+
+@keyframes pop-in {
+    0% {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
 html {
   position: relative;
   min-height: 100%;

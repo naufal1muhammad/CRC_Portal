@@ -21,6 +21,10 @@ namespace CRC.Web.Controllers.Settings
             return View();
         }
 
+        //------------------------------------------------------
+        //STAFF DOCUMENTS
+        //------------------------------------------------------
+
         // GET: /Settings/GetStaffTypes
         [HttpGet]
         public async Task<IActionResult> GetStaffTypes()
@@ -140,6 +144,114 @@ namespace CRC.Web.Controllers.Settings
             catch (Exception)
             {
                 return Ok(new { success = false, message = "Error saving staff document settings." });
+            }
+        }
+
+        //------------------------------------------------------
+        //PATIENT DOCUMENTS
+        //------------------------------------------------------
+
+        public class SaveDischargeDocumentSettingsRequest
+        {
+            public string DischargeTypeId { get; set; } = string.Empty;
+            public List<string> DocumentTypeIds { get; set; } = new();
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetDischargeTypes()
+        {
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spLU_DischargeType_List",
+                    Array.Empty<SqlParameter>()
+                );
+
+                var list = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        dischargeTypeId = r["DischargeType_ID"]?.ToString(),
+                        dischargeTypeName = r["DischargeType_Name"]?.ToString()
+                    })
+                    .ToList();
+
+                return Ok(new { success = true, data = list });
+            }
+            catch
+            {
+                return Ok(new { success = false, message = "Error loading discharge types." });
+            }
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetDischargeDocumentSettings(string dischargeTypeId)
+        {
+            if (string.IsNullOrWhiteSpace(dischargeTypeId))
+            {
+                return Ok(new { success = true, data = Array.Empty<object>() });
+            }
+
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spPatientDocumentSettings_GetByDischargeType",
+                    new[] { new SqlParameter("@DischargeType_ID", dischargeTypeId) }
+                );
+
+                var list = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        dischargeTypeId = r["DischargeType_ID"]?.ToString(),
+                        dischargeTypeName = r["DischargeType_Name"]?.ToString(),
+                        documentTypeId = r["PatientDocumentType_ID"]?.ToString(),
+                        documentTypeName = r["PatientDocumentType_Name"]?.ToString()
+                    })
+                    .ToList();
+
+                return Ok(new { success = true, data = list });
+            }
+            catch
+            {
+                return Ok(new { success = false, message = "Error loading discharge document settings." });
+            }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> SaveDischargeDocumentSettings(
+    [FromBody] SaveDischargeDocumentSettingsRequest model)
+        {
+            if (model == null || string.IsNullOrWhiteSpace(model.DischargeTypeId))
+            {
+                return Ok(new { success = false, message = "Discharge type is required." });
+            }
+
+            var idsCsv = (model.DocumentTypeIds != null && model.DocumentTypeIds.Count > 0)
+                ? string.Join(",", model.DocumentTypeIds.Where(x => !string.IsNullOrWhiteSpace(x)))
+                : string.Empty;
+
+            try
+            {
+                var parameters = new[]
+                {
+            new SqlParameter("@DischargeType_ID", model.DischargeTypeId),
+            new SqlParameter("@PatientDocumentType_IDs",
+                string.IsNullOrWhiteSpace(idsCsv) ? (object)DBNull.Value : idsCsv)
+        };
+
+                await _db.ExecuteNonQueryAsync(
+                    "spPatientDocumentSettings_SaveForDischargeType",
+                    parameters
+                );
+
+                return Ok(new { success = true, message = "Settings saved successfully." });
+            }
+            catch (SqlException ex)
+            {
+                return Ok(new { success = false, message = ex.Message });
+            }
+            catch
+            {
+                return Ok(new { success = false, message = "Error saving discharge document settings." });
             }
         }
     }

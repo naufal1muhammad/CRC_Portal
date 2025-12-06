@@ -94,10 +94,21 @@
                     <i class="fas fa-home me-2"></i> Dashboard
                 </a>
 
-                <a asp-controller="Patient" asp-action="Index"
-                   class="list-group-item list-group-item-action @activeClass("Patient", "Index")">
-                    <i class="fas fa-user-injured me-2"></i> Patient
-                </a>
+                @* <div class="list-group-item px-0 border-0">
+                    <div class="fw-semibold px-3 text-muted text-uppercase small mt-2 mb-1">
+                        Patient
+                    </div>
+
+                    <a asp-controller="Patient" asp-action="Active"
+                       class="list-group-item list-group-item-action border-0 ps-4 @activeClass("Patient", "Active")">
+                        <i class="fas fa-user-injured me-2"></i> Active Patients
+                    </a>
+
+                    <a asp-controller="Patient" asp-action="Discharged"
+                       class="list-group-item list-group-item-action border-0 ps-4 @activeClass("Patient", "Discharged")">
+                        <i class="fas fa-user-check me-2"></i> Discharged Patients
+                    </a>
+                </div> *@
 
                 <a asp-controller="Staff" asp-action="Index"
                    class="list-group-item list-group-item-action @activeClass("Staff", "Index")">
@@ -110,28 +121,28 @@
                 </a>
 
                 <!-- Dropdown Template -->
-                @* <a class="list-group-item list-group-item-action d-flex align-items-center justify-content-between sidebar-branch-toggle @(isBranchSectionActive ? "" : "collapsed")"
+                <a class="list-group-item list-group-item-action d-flex align-items-center justify-content-between sidebar-branch-toggle @(isBranchSectionActive ? "" : "collapsed")"
                    data-bs-toggle="collapse"
                    href="#sidebarBranchCollapse"
                    role="button"
                    aria-expanded="@(isBranchSectionActive.ToString().ToLower())"
                    aria-controls="sidebarBranchCollapse">
                     <span>
-                        <i class="fas fa-code-branch me-2"></i> Branch
+                        <i class="fas fa-code-branch me-2"></i> Patient
                     </span>
                     <i class="fas fa-chevron-down small branch-toggle-icon"></i>
                 </a>
 
                 <div class="collapse @(isBranchSectionActive ? "show" : "")" id="sidebarBranchCollapse">
-                    <a asp-controller="Branch" asp-action="Index"
-                       class="list-group-item list-group-item-action border-0 ps-4 @activeClass("Branch", "Index")">
-                        <i class="fas fa-building me-2"></i> Branch List
+                    <a asp-controller="Patient" asp-action="Active"
+                       class="list-group-item list-group-item-action border-0 ps-4 @activeClass("Patient", "Active")">
+                        <i class="fas fa-user-injured me-2"></i> Active Patients
                     </a>
-                    <a asp-controller="Asset" asp-action="Index"
-                       class="list-group-item list-group-item-action border-0 ps-4 @activeClass("Asset", "Index")">
-                        <i class="fas fa-boxes-stacked me-2"></i> Asset Management
+                    <a asp-controller="Patient" asp-action="Discharged"
+                       class="list-group-item list-group-item-action border-0 ps-4 @activeClass("Patient", "Discharged")">
+                        <i class="fas fa-user-check me-2"></i> Discharged Patients
                     </a>
-                </div> *@
+                </div>
 
                 <a asp-controller="DocumentManagement" asp-action="Index"
                    class="list-group-item list-group-item-action @activeClass("DocumentManagement", "Index")">

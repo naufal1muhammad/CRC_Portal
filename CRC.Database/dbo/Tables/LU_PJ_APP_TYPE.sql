@@ -1,0 +1,6 @@
+﻿CREATE TABLE [dbo].[LU_PJ_APP_TYPE]
+(
+    [PjAppType_ID]   VARCHAR(100) NOT NULL PRIMARY KEY,
+    [PjAppType_Name] VARCHAR(100) NOT NULL
+);
+GO

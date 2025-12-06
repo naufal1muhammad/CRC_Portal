@@ -1,0 +1,6 @@
+﻿CREATE TABLE [dbo].[LU_DISCHARGETYPE]
+(
+    [DischargeType_ID]   VARCHAR(100) NOT NULL PRIMARY KEY,
+    [DischargeType_Name] VARCHAR(100) NOT NULL
+);
+GO
