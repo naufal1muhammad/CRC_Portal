@@ -168,11 +168,28 @@
     tr.setAttribute('data-staff-id', a.staffId || '');
     tr.setAttribute('data-staff-name', a.staffName || '');
 
+    const statusText = a.status || '';
+    let statusHtml = statusText;
+
+    if (statusText === 'Not Attended') {
+    statusHtml = `
+        <span class="badge rounded-pill bg-danger">
+            ${statusText}
+        </span>
+    `;
+} else if (statusText === 'Attended') {
+    statusHtml = `
+        <span class="badge rounded-pill bg-success">
+            ${statusText}
+        </span>
+    `;
+}
+
     tr.innerHTML = `
         <td>${a.appointmentDateTime || ''}</td>
         <td>${a.typeName || ''}</td>
-        <td>${a.status || ''}</td>
-        <td>${a.staffName || ''}</td>   <!-- NEW column -->
+        <td>${statusHtml}</td>
+        <td>${a.staffName || ''}</td>
         <td>
             <button type="button"
                     class="btn btn-sm btn-secondary btn-app-edit"

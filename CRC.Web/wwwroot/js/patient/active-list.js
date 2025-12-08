@@ -2,35 +2,39 @@
 (function() {
     let tableBody;
     let txtSearch;
+    let dataTable = null;
+
+    function initDataTable() {
+        // Destroy existing instance if any
+        if ($.fn.dataTable.isDataTable('#activePatientsTable')) {
+            $('#activePatientsTable').DataTable().destroy();
+        }
+
+        dataTable = $('#activePatientsTable').DataTable({
+            paging: true,
+            lengthChange: true,
+            pageLength: 10,
+            order: [], // no initial sort, allow clicking headers
+            // You can tweak these if you want:
+            // searching: true,
+            // info: true
+        });
+    }
 
     function applyActiveSearchFilter() {
-        if (!txtSearch || !tableBody) return;
+        if (!txtSearch || !dataTable) return;
 
-        const filter = (txtSearch.value || '').trim().toLowerCase();
-        const rows = tableBody.querySelectorAll('tr[data-id]');
-
-        rows.forEach(row => {
-            const cells = row.querySelectorAll('td');
-            if (cells.length < 2) return;
-
-            const idText = (cells[0].textContent || '').toLowerCase();
-            const nameText = (cells[1].textContent || '').toLowerCase();
-            const combined = idText + ' ' + nameText;
-
-            if (!filter || combined.includes(filter)) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-            }
-        });
+        const filter = txtSearch.value || '';
+        dataTable.search(filter).draw();  // global search across ALL columns
     }
 
     async function loadActivePatients() {
         if (!tableBody) return;
 
+        // Show loading row
         tableBody.innerHTML = `
             <tr>
-                <td colspan="8" class="text-center text-muted">Loading...</td>
+                <td colspan="5" class="text-center text-muted">Loading...</td>
             </tr>
         `;
 
@@ -43,7 +47,7 @@
             if (!response.ok) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="8" class="text-center text-danger">Error loading patients.</td>
+                        <td colspan="5" class="text-center text-danger">Error loading patients.</td>
                     </tr>
                 `;
                 return;
@@ -54,12 +58,15 @@
             if (!data || !Array.isArray(data) || data.length === 0) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="8" class="text-center text-muted">No active patients found.</td>
+                        <td colspan="5" class="text-center text-muted">No active patients found.</td>
                     </tr>
                 `;
+                // Initialise empty DataTable so search & paging still render
+                initDataTable();
                 return;
             }
 
+            // Build rows with the *new* 5 columns
             tableBody.innerHTML = '';
 
             data.forEach(p => {
@@ -69,11 +76,8 @@
                 tr.innerHTML = `
                     <td>${p.patientId || ''}</td>
                     <td>${p.name || ''}</td>
-                    <td>${p.email || ''}</td>
-                    <td>${p.phone || ''}</td>
                     <td>${p.branchName || ''}</td>
                     <td>${p.admittedOn || ''}</td>
-                    <td>${p.dischargeTypeName || ''}</td>
                     <td>
                         <button type="button"
                                 class="btn btn-sm btn-secondary btn-patient-edit"
@@ -83,24 +87,59 @@
                         </button>
                         <button type="button"
                                 class="btn btn-sm btn-danger ms-1 btn-patient-delete"
-                                data-id="${p.patientId}"
+                                data-id="${p.patientId || ''}"
                                 title="Delete">
-                         <i class="fas fa-trash"></i>
-                         </button>
+                            <i class="fas fa-trash"></i>
+                        </button>
                     </td>
                 `;
 
                 tableBody.appendChild(tr);
             });
 
+            // (Re)initialise DataTables AFTER rows are in the DOM
+            initDataTable();
+
+            // Also apply current search text (in case user typed before reload)
             applyActiveSearchFilter();
         } catch (err) {
             console.error('Error loading active patients', err);
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="text-center text-danger">Error loading patients.</td>
+                    <td colspan="5" class="text-center text-danger">Error loading patients.</td>
                 </tr>
             `;
+        }
+    }
+
+    async function deletePatient(patientId) {
+        if (!patientId) return;
+
+        if (!confirm('Are you sure you want to delete this patient and ALL related records?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/Patient/DeletePatient', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ patientId: patientId })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                alert(result.message || 'Error deleting patient.');
+                return;
+            }
+
+            await loadActivePatients();
+        } catch (err) {
+            console.error('Error deleting patient', err);
+            alert('An unexpected error occurred while deleting patient.');
         }
     }
 
@@ -114,47 +153,15 @@
                 }
             }
 
-             const delBtn = e.target.closest('.btn-patient-delete');
-        if (delBtn) {
-           const id = delBtn.getAttribute('data-id');
-           if (id) {
-               deletePatient(id);
-           }
-        }
+            const delBtn = e.target.closest('.btn-patient-delete');
+            if (delBtn) {
+                const id = delBtn.getAttribute('data-id');
+                if (id) {
+                    deletePatient(id);
+                }
+            }
         });
     }
-
-    async function deletePatient(patientId) {
-    if (!patientId) return;
-
-    if (!confirm('Are you sure you want to delete this patient and ALL related records?')) {
-        return;
-    }
-
-    try {
-        const response = await fetch('/Patient/DeletePatient', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({ patientId: patientId })
-        });
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-            alert(result.message || 'Error deleting patient.');
-            return;
-        }
-
-        // Reload the Active list after successful delete
-        await loadActivePatients();
-    } catch (err) {
-        console.error('Error deleting patient', err);
-        alert('An unexpected error occurred while deleting patient.');
-    }
-}
 
     document.addEventListener('DOMContentLoaded', function() {
         tableBody = document.querySelector('#activePatientsTable tbody');
@@ -167,8 +174,9 @@
             });
         }
 
+        // External search box wired to DataTables global search
         if (txtSearch) {
-            txtSearch.addEventListener('input', applyActiveSearchFilter);
+            txtSearch.addEventListener('keyup', applyActiveSearchFilter);
         }
 
         attachRowHandlers();
