@@ -62,6 +62,38 @@ namespace CRC.Web.Controllers
             }
         }
 
+        public class DeletePatientRequest
+        {
+            public string? PatientId { get; set; }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> DeletePatient([FromBody] DeletePatientRequest model)
+        {
+            if (model == null || string.IsNullOrWhiteSpace(model.PatientId))
+            {
+                return Ok(new { success = false, message = "Invalid patient ID." });
+            }
+
+            var patientId = model.PatientId.Trim();
+
+            try
+            {
+                var parameters = new[]
+                {
+            new SqlParameter("@Patient_ID", patientId)
+        };
+
+                await _db.ExecuteNonQueryAsync("spPatient_DeleteCascade", parameters);
+
+                return Ok(new { success = true });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error deleting patient." });
+            }
+        }
+
         //------------------------------------------------------
         //DISCHARGED PATIENTS
         //------------------------------------------------------
@@ -481,11 +513,13 @@ namespace CRC.Web.Controllers
 
         public class SaveAppointmentRequest
         {
-            public int? AppointmentId { get; set; }  // for future use (currently we only insert)
+            public int? AppointmentId { get; set; }  // insert or update
             public string PatientId { get; set; } = string.Empty;
             public string PjAppTypeName { get; set; } = string.Empty;
             public string AppointmentDateTime { get; set; } = string.Empty; // from <input type="datetime-local">
             public string Status { get; set; } = string.Empty;
+            public string StaffId { get; set; } = string.Empty;
+            public string StaffName { get; set; } = string.Empty;
         }
 
         public class DeleteAppointmentRequest
@@ -541,13 +575,25 @@ namespace CRC.Web.Controllers
                         appointmentId = Convert.ToInt32(r["PatientAppointment_ID"]),
                         patientId = r["Patient_ID"]?.ToString(),
                         typeName = r["PjAppType_Name"]?.ToString(),
+
                         appointmentDateTime = r["PatientAppointment_Date"] == DBNull.Value
                             ? ""
-                            : Convert.ToDateTime(r["PatientAppointment_Date"]).ToString("dd/MM/yyyy HH:mm"),
+                            : Convert.ToDateTime(r["PatientAppointment_Date"])
+                                .ToString("dd/MM/yyyy HH:mm"),
+
                         appointmentDateTimeRaw = r["PatientAppointment_Date"] == DBNull.Value
                             ? ""
-                            : Convert.ToDateTime(r["PatientAppointment_Date"]).ToString("yyyy-MM-ddTHH:mm"),
-                        status = r["PatientAppointment_Status"]?.ToString()
+                            : Convert.ToDateTime(r["PatientAppointment_Date"])
+                                .ToString("yyyy-MM-ddTHH:mm"),
+
+                        status = r["PatientAppointment_Status"]?.ToString(),
+
+                        staffId = r.Table.Columns.Contains("Staff_ID")
+                            ? r["Staff_ID"]?.ToString()
+                            : null,
+                        staffName = r.Table.Columns.Contains("Staff_Name")
+                            ? r["Staff_Name"]?.ToString()
+                            : null
                     })
                     .ToList();
 
@@ -571,13 +617,20 @@ namespace CRC.Web.Controllers
             var typeName = model.PjAppTypeName?.Trim() ?? string.Empty;
             var status = model.Status?.Trim() ?? string.Empty;
             var dtStr = model.AppointmentDateTime?.Trim() ?? string.Empty;
+            var staffId = model.StaffId?.Trim() ?? string.Empty;
+            var staffName = model.StaffName?.Trim() ?? string.Empty;
 
+            // ✅ Only these are mandatory
             if (string.IsNullOrWhiteSpace(patientId) ||
                 string.IsNullOrWhiteSpace(typeName) ||
                 string.IsNullOrWhiteSpace(status) ||
                 string.IsNullOrWhiteSpace(dtStr))
             {
-                return Ok(new { success = false, message = "Please fill in all mandatory appointment fields." });
+                return Ok(new
+                {
+                    success = false,
+                    message = "Please fill in all mandatory appointment fields."
+                });
             }
 
             if (!DateTime.TryParse(dtStr, out var apptDateTime))
@@ -585,32 +638,43 @@ namespace CRC.Web.Controllers
                 return Ok(new { success = false, message = "Invalid appointment date/time." });
             }
 
+            // 🔹 If there's no Staff_ID, consider Staff_Name as empty regardless of placeholder text
+            if (string.IsNullOrWhiteSpace(staffId))
+            {
+                staffName = string.Empty;
+            }
+
             try
             {
                 var isUpdate = model.AppointmentId.HasValue && model.AppointmentId.Value > 0;
 
+                object staffIdParam = string.IsNullOrWhiteSpace(staffId) ? DBNull.Value : staffId;
+                object staffNameParam = string.IsNullOrWhiteSpace(staffName) ? DBNull.Value : staffName;
+
                 if (isUpdate)
                 {
-                    // UPDATE existing appointment
                     var parameters = new[]
                     {
-                new SqlParameter("@PatientAppointment_ID", model.AppointmentId.Value),
-                new SqlParameter("@PjAppType_Name",        typeName),
-                new SqlParameter("@PatientAppointment_Date", apptDateTime),
-                new SqlParameter("@PatientAppointment_Status", status)
+                new SqlParameter("@PatientAppointment_ID",      model.AppointmentId.Value),
+                new SqlParameter("@PjAppType_Name",            typeName),
+                new SqlParameter("@PatientAppointment_Date",   apptDateTime),
+                new SqlParameter("@PatientAppointment_Status", status),
+                new SqlParameter("@Staff_ID",                  staffIdParam),
+                new SqlParameter("@Staff_Name",                staffNameParam)
             };
 
                     await _db.ExecuteNonQueryAsync("spPatientAppointment_Update", parameters);
                 }
                 else
                 {
-                    // INSERT new appointment
                     var parameters = new[]
                     {
-                new SqlParameter("@Patient_ID",              patientId),
-                new SqlParameter("@PjAppType_Name",          typeName),
-                new SqlParameter("@PatientAppointment_Date", apptDateTime),
-                new SqlParameter("@PatientAppointment_Status", status)
+                new SqlParameter("@Patient_ID",                patientId),
+                new SqlParameter("@PjAppType_Name",            typeName),
+                new SqlParameter("@PatientAppointment_Date",   apptDateTime),
+                new SqlParameter("@PatientAppointment_Status", status),
+                new SqlParameter("@Staff_ID",                  staffIdParam),
+                new SqlParameter("@Staff_Name",                staffNameParam)
             };
 
                     await _db.ExecuteNonQueryAsync("spPatientAppointment_Insert", parameters);
@@ -749,6 +813,7 @@ namespace CRC.Web.Controllers
             var staffId = model.StaffId?.Trim() ?? string.Empty;
             var remarks = model.Remarks?.Trim() ?? string.Empty;
 
+            // Mandatory fields
             if (string.IsNullOrWhiteSpace(patientId) ||
                 string.IsNullOrWhiteSpace(typeName) ||
                 string.IsNullOrWhiteSpace(dateStr) ||
@@ -764,16 +829,38 @@ namespace CRC.Web.Controllers
 
             try
             {
-                var parameters = new[]
-                {
-            new SqlParameter("@Patient_ID",            patientId),
-            new SqlParameter("@PjAppType_Name",        typeName),
-            new SqlParameter("@PatientJourney_Date",   journeyDate),
-            new SqlParameter("@Staff_ID",              staffId),
-            new SqlParameter("@PatientJourney_Remarks", (object)remarks ?? DBNull.Value)
-        };
+                var isUpdate = model.JourneyId.HasValue && model.JourneyId.Value > 0;
 
-                await _db.ExecuteNonQueryAsync("spPatientJourney_Insert", parameters);
+                if (isUpdate)
+                {
+                    // UPDATE existing journey
+                    var parameters = new[]
+                    {
+                new SqlParameter("@PatientJourney_ID",    model.JourneyId.Value),
+                new SqlParameter("@PjAppType_Name",      typeName),
+                new SqlParameter("@PatientJourney_Date", journeyDate),
+                new SqlParameter("@Staff_ID",            staffId),
+                new SqlParameter("@PatientJourney_Remarks",
+                                 (object)remarks ?? DBNull.Value)
+            };
+
+                    await _db.ExecuteNonQueryAsync("spPatientJourney_Update", parameters);
+                }
+                else
+                {
+                    // INSERT new journey
+                    var parameters = new[]
+                    {
+                new SqlParameter("@Patient_ID",            patientId),
+                new SqlParameter("@PjAppType_Name",        typeName),
+                new SqlParameter("@PatientJourney_Date",   journeyDate),
+                new SqlParameter("@Staff_ID",              staffId),
+                new SqlParameter("@PatientJourney_Remarks",
+                                 (object)remarks ?? DBNull.Value)
+            };
+
+                    await _db.ExecuteNonQueryAsync("spPatientJourney_Insert", parameters);
+                }
 
                 return Ok(new { success = true });
             }
@@ -946,6 +1033,36 @@ namespace CRC.Web.Controllers
             catch (Exception)
             {
                 return Ok(new { success = false, message = "Error uploading patient documents." });
+            }
+        }
+
+        public class DeletePatientDocumentRequest
+        {
+            public int DocumentId { get; set; }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> DeletePatientDocument([FromBody] DeletePatientDocumentRequest model)
+        {
+            if (model == null || model.DocumentId <= 0)
+            {
+                return Ok(new { success = false, message = "Invalid document ID." });
+            }
+
+            try
+            {
+                var parameters = new[]
+                {
+            new SqlParameter("@PatientDocument_ID", model.DocumentId)
+        };
+
+                await _db.ExecuteNonQueryAsync("spPatientDocument_Delete", parameters);
+
+                return Ok(new { success = true });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error deleting patient document." });
             }
         }
     }

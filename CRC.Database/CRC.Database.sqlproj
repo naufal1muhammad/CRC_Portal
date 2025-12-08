@@ -160,5 +160,7 @@
     <Build Include="Stored Procedures\PatientDocumentSettings\spPatientDocumentSettings_SaveForDischargeType.sql" />
     <Build Include="Stored Procedures\PatientDocumentSettings\spPatient_Discharge_CheckMissingDocuments.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_Update.sql" />
+    <Build Include="Stored Procedures\PatientJourney\spPatientJourney_Update.sql" />
+    <Build Include="Stored Procedures\PatientBasic\spPatient_DeleteCascade.sql" />
   </ItemGroup>
 </Project>

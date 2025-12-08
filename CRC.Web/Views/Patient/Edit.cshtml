@@ -244,12 +244,13 @@
                                 <th>Date &amp; Time</th>
                                 <th>Type</th>
                                 <th>Status</th>
+                                <th>Assigned Staff</th>
                                 <th style="width: 120px;">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
-                                <td colspan="4" class="text-center text-muted">
+                                <td colspan="5" class="text-center text-muted">
                                     No appointments loaded.
                                 </td>
                             </tr>
@@ -284,6 +285,16 @@
                                 </label>
                                 <select id="AppointmentType" class="form-select form-select-sm">
                                     <option value="">-- Select Type --</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="AppointmentStaff" class="form-label">
+                                    Assigned Staff (optional)
+                                </label>
+                                <select id="AppointmentStaff"
+                                        class="form-select form-select-sm">
+                                    <option value="">-- Select Staff --</option>
                                 </select>
                             </div>
 
@@ -342,7 +353,7 @@
                                 <th>Journey Type</th>
                                 <th>Staff</th>
                                 <th>Remarks</th>
-                                <th style="width: 80px;">Actions</th>
+                                <th style="width: 120px;">Actions</th>
                             </tr>
                         </thead>
                         <tbody>

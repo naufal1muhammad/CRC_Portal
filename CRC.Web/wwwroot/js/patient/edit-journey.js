@@ -12,6 +12,9 @@
     let modalMsg;
     let modalTitle;
 
+    // 🔹 Track whether we're adding or editing
+    let currentJourneyId = null;
+
     function getPatientId() {
         const root = document.querySelector('[data-patient-id]');
         return root ? (root.getAttribute('data-patient-id') || '') : '';
@@ -159,6 +162,11 @@
             data.forEach(j => {
                 const tr = document.createElement('tr');
                 tr.setAttribute('data-id', j.journeyId || 0);
+                // 🔹 store extra data for edit
+                tr.setAttribute('data-date-raw', j.journeyDateRaw || '');
+                tr.setAttribute('data-type-name', j.typeName || '');
+                tr.setAttribute('data-staff-id', j.staffId || '');
+                tr.setAttribute('data-remarks', j.remarks || '');
 
                 tr.innerHTML = `
                     <td>${j.journeyDate || ''}</td>
@@ -167,7 +175,13 @@
                     <td>${j.remarks || ''}</td>
                     <td>
                         <button type="button"
-                                class="btn btn-sm btn-danger btn-journey-delete"
+                                class="btn btn-sm btn-secondary btn-journey-edit"
+                                data-id="${j.journeyId || 0}"
+                                title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm btn-danger btn-journey-delete ms-1"
                                 data-id="${j.journeyId || 0}"
                                 title="Delete">
                             <i class="fas fa-trash"></i>
@@ -187,12 +201,14 @@
         }
     }
 
-    function openAddJourneyModal() {
+    async function openAddJourneyModal() {
         const patientId = getPatientId();
         if (!patientId) {
             alert('Please save Basic Details first before adding journeys.');
             return;
         }
+
+        currentJourneyId = null; // NEW – add mode
 
         if (modalMsg) {
             modalMsg.textContent = '';
@@ -204,10 +220,48 @@
             modalTitle.textContent = 'Add Journey';
         }
 
+        // ensure dropdowns are populated (safe to call again)
+        await Promise.all([loadJourneyTypes(), loadJourneyStaff()]);
+
         if (txtDate) txtDate.value = '';
         if (selType) selType.value = '';
         if (selStaff) selStaff.value = '';
         if (txtRemarks) txtRemarks.value = '';
+
+        if (modal) modal.show();
+    }
+
+    async function openEditJourneyModal(journeyId, rowEl) {
+        const patientId = getPatientId();
+        if (!patientId) {
+            alert('Please save Basic Details first.');
+            return;
+        }
+
+        currentJourneyId = journeyId; // NEW – edit mode
+
+        if (modalMsg) {
+            modalMsg.textContent = '';
+            modalMsg.classList.remove('text-success');
+            modalMsg.classList.add('text-danger');
+        }
+
+        if (modalTitle) {
+            modalTitle.textContent = 'Edit Journey';
+        }
+
+        const rawDate = rowEl.getAttribute('data-date-raw') || '';
+        const typeName = rowEl.getAttribute('data-type-name') || '';
+        const staffId = rowEl.getAttribute('data-staff-id') || '';
+        const remarks = rowEl.getAttribute('data-remarks') || '';
+
+        // make sure dropdowns are ready
+        await Promise.all([loadJourneyTypes(), loadJourneyStaff()]);
+
+        if (txtDate) txtDate.value = rawDate;
+        if (selType) selType.value = typeName;
+        if (selStaff) selStaff.value = staffId || '';
+        if (txtRemarks) txtRemarks.value = remarks || '';
 
         if (modal) modal.show();
     }
@@ -236,6 +290,7 @@
         }
 
         const payload = {
+            journeyId: currentJourneyId,      // 🔹 tells backend insert vs update
             patientId: patientId,
             pjAppTypeName: typeVal,
             journeyDate: dateVal,
@@ -315,6 +370,21 @@
 
     function attachRowHandlers() {
         document.addEventListener('click', function(e) {
+            // 🔹 Edit
+            const editBtn = e.target.closest('.btn-journey-edit');
+            if (editBtn) {
+                const idStr = editBtn.getAttribute('data-id');
+                const id = idStr ? parseInt(idStr, 10) : 0;
+                if (id > 0) {
+                    const row = editBtn.closest('tr');
+                    if (row) {
+                        openEditJourneyModal(id, row);
+                    }
+                }
+                return;
+            }
+
+            // 🔹 Delete
             const delBtn = e.target.closest('.btn-journey-delete');
             if (delBtn) {
                 const idStr = delBtn.getAttribute('data-id');

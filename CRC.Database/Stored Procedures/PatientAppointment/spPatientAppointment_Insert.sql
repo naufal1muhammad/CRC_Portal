@@ -3,7 +3,9 @@
     @Patient_ID                VARCHAR(100),
     @PjAppType_Name            VARCHAR(100),
     @PatientAppointment_Date   DATETIME,
-    @PatientAppointment_Status VARCHAR(100)
+    @PatientAppointment_Status VARCHAR(100),
+    @Staff_ID                 VARCHAR(100),
+    @Staff_Name               VARCHAR(100)
 )
 AS
 BEGIN
@@ -35,7 +37,9 @@ BEGIN
         [Patient_Phone],
         [PjAppType_Name],
         [PatientAppointment_Date],
-        [PatientAppointment_Status]
+        [PatientAppointment_Status],
+        [Staff_ID],
+        [Staff_Name]
     )
     VALUES
     (
@@ -45,7 +49,9 @@ BEGIN
         @Patient_Phone,
         @PjAppType_Name,
         @PatientAppointment_Date,
-        @PatientAppointment_Status
+        @PatientAppointment_Status,
+        @Staff_ID,
+        @Staff_Name
     );
 END;
 GO

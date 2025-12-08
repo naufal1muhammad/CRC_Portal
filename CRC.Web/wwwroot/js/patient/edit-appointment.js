@@ -7,6 +7,7 @@
     let modal;
     let txtDateTime;
     let selType;
+    let selStaff;
     let selStatus;
     let modalMsg;
     let modalTitle;
@@ -56,6 +57,44 @@
         }
     }
 
+    async function loadAppointmentStaff() {
+    if (!selStaff) return;
+
+    selStaff.innerHTML = '<option value="">Loading staff...</option>';
+
+    try {
+        const response = await fetch('/Patient/GetJourneyStaffList', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+
+        if (!response.ok) {
+            selStaff.innerHTML = '<option value="">Error loading staff</option>';
+            return;
+        }
+
+        const result = await response.json();
+        if (!result.success) {
+            selStaff.innerHTML = '<option value="">Error loading staff</option>';
+            return;
+        }
+
+        const staffList = result.data || [];
+
+        selStaff.innerHTML = '<option value="">-- Select Staff --</option>';
+
+        staffList.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.staffId || '';
+            opt.textContent = s.staffName || '';
+            selStaff.appendChild(opt);
+        });
+    } catch (err) {
+        console.error('Error loading staff list', err);
+        selStaff.innerHTML = '<option value="">Error loading staff</option>';
+    }
+}
+
     async function loadAppointments() {
         if (!tableBody) return;
 
@@ -63,7 +102,7 @@
         if (!patientId) {
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="4" class="text-center text-muted">
+                    <td colspan="5" class="text-center text-muted">
                         Save Basic Details first before adding appointments.
                     </td>
                 </tr>
@@ -76,7 +115,7 @@
 
         tableBody.innerHTML = `
             <tr>
-                <td colspan="4" class="text-center text-muted">Loading...</td>
+                <td colspan="5" class="text-center text-muted">Loading...</td>
             </tr>
         `;
 
@@ -89,7 +128,7 @@
             if (!response.ok) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="4" class="text-center text-danger">Error loading appointments.</td>
+                        <td colspan="5" class="text-center text-danger">Error loading appointments.</td>
                     </tr>
                 `;
                 return;
@@ -99,7 +138,7 @@
             if (!result.success) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="4" class="text-center text-danger">
+                        <td colspan="5" class="text-center text-danger">
                             ${result.message || 'Error loading appointments.'}
                         </td>
                     </tr>
@@ -121,34 +160,37 @@
             tableBody.innerHTML = '';
 
             data.forEach(a => {
-                const tr = document.createElement('tr');
-                tr.setAttribute('data-id', a.appointmentId || 0);
-                tr.setAttribute('data-datetime-raw', a.appointmentDateTimeRaw || '');
-                tr.setAttribute('data-type-name', a.typeName || '');
-                tr.setAttribute('data-status', a.status || '');
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-id', a.appointmentId || 0);
+    tr.setAttribute('data-datetime-raw', a.appointmentDateTimeRaw || '');
+    tr.setAttribute('data-type-name', a.typeName || '');
+    tr.setAttribute('data-status', a.status || '');
+    tr.setAttribute('data-staff-id', a.staffId || '');
+    tr.setAttribute('data-staff-name', a.staffName || '');
 
-                tr.innerHTML = `
-                    <td>${a.appointmentDateTime || ''}</td>
-                    <td>${a.typeName || ''}</td>
-                    <td>${a.status || ''}</td>
-                    <td>
-                        <button type="button"
-                                class="btn btn-sm btn-secondary btn-app-edit"
-                                data-id="${a.appointmentId || 0}"
-                                title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button type="button"
-                                class="btn btn-sm btn-danger btn-app-delete ms-1"
-                                data-id="${a.appointmentId || 0}"
-                                title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </td>
-                `;
+    tr.innerHTML = `
+        <td>${a.appointmentDateTime || ''}</td>
+        <td>${a.typeName || ''}</td>
+        <td>${a.status || ''}</td>
+        <td>${a.staffName || ''}</td>   <!-- NEW column -->
+        <td>
+            <button type="button"
+                    class="btn btn-sm btn-secondary btn-app-edit"
+                    data-id="${a.appointmentId || 0}"
+                    title="Edit">
+                <i class="fas fa-edit"></i>
+            </button>
+            <button type="button"
+                    class="btn btn-sm btn-danger btn-app-delete ms-1"
+                    data-id="${a.appointmentId || 0}"
+                    title="Delete">
+                <i class="fas fa-trash"></i>
+            </button>
+        </td>
+    `;
 
-                tableBody.appendChild(tr);
-            });
+    tableBody.appendChild(tr);
+});
         } catch (err) {
             console.error('Error loading appointments', err);
             tableBody.innerHTML = `
@@ -181,6 +223,7 @@
         if (txtDateTime) txtDateTime.value = '';
         if (selType) selType.value = '';
         if (selStatus) selStatus.value = '';
+        if (selStaff) selStaff.value = '';
 
         if (modal) modal.show();
     }
@@ -207,10 +250,12 @@
         const rawDateTime = rowEl.getAttribute('data-datetime-raw') || '';
         const typeName = rowEl.getAttribute('data-type-name') || '';
         const status = rowEl.getAttribute('data-status') || '';
+        const staffId = rowEl.getAttribute('data-staff-id') || '';
 
         if (txtDateTime) txtDateTime.value = rawDateTime;
         if (selType) selType.value = typeName;
         if (selStatus) selStatus.value = status;
+        if (selStaff) selStaff.value = staffId;
 
         if (modal) modal.show();
     }
@@ -231,6 +276,11 @@
         const dateTimeVal = txtDateTime ? txtDateTime.value : '';
         const typeVal = selType ? selType.value : '';
         const statusVal = selStatus ? selStatus.value : '';
+        const staffVal = selStaff ? selStaff.value : '';
+let staffNameVal = '';
+if (selStaff && selStaff.value) {
+    staffNameVal = selStaff.options[selStaff.selectedIndex].text || '';
+}
 
         if (!dateTimeVal || !typeVal || !statusVal) {
             if (modalMsg) modalMsg.textContent = 'Please fill in all mandatory appointment fields.';
@@ -238,11 +288,13 @@
         }
 
         const payload = {
-            appointmentId: currentAppointmentId,      // <-- NEW
+            appointmentId: currentAppointmentId,
             patientId: patientId,
             pjAppTypeName: typeVal,
             appointmentDateTime: dateTimeVal,
-            status: statusVal
+            status: statusVal,
+            staffId: staffVal,
+            staffName: staffNameVal
         };
 
         try {
@@ -349,11 +401,13 @@
         txtDateTime = document.getElementById('AppointmentDateTime');
         selType = document.getElementById('AppointmentType');
         selStatus = document.getElementById('AppointmentStatus');
+        selStaff = document.getElementById('AppointmentStaff');
         modalMsg = document.getElementById('appointmentModalMessage');
         modalTitle = modalEl ? modalEl.querySelector('.modal-title') : null;
 
         attachRowHandlers();
         loadAppointmentTypes();
+        loadAppointmentStaff();
         loadAppointments();
 
         if (btnAdd) {

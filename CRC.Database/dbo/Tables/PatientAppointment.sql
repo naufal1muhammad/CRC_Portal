@@ -9,7 +9,9 @@
 
     [PjAppType_Name]        VARCHAR(100) NOT NULL,
     [PatientAppointment_Date]   DATETIME    NOT NULL,
-    [PatientAppointment_Status] VARCHAR(100) NOT NULL
+    [PatientAppointment_Status] VARCHAR(100) NOT NULL,
+    [Staff_ID]   VARCHAR(100) NULL,
+    [Staff_Name] VARCHAR(100) NULL
 );
 GO
 

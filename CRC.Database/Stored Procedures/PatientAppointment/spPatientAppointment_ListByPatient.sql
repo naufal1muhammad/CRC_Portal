@@ -14,7 +14,9 @@ BEGIN
         [Patient_Phone],
         [PjAppType_Name],
         [PatientAppointment_Date],
-        [PatientAppointment_Status]
+        [PatientAppointment_Status],
+        [Staff_ID],
+        [Staff_Name]
     FROM [dbo].[PatientAppointment]
     WHERE [Patient_ID] = @Patient_ID
     ORDER BY [PatientAppointment_Date] DESC, [PatientAppointment_ID] DESC;
