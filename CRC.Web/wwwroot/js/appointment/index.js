@@ -1,0 +1,220 @@
+﻿// @ts-nocheck
+(function() {
+    let dt = null;
+    let msgEl;
+
+    function initSelect2() {
+        if (window.jQuery && $.fn.select2) {
+            $('.select2').select2({
+                width: '100%',
+                placeholder: '-- All --',
+                allowClear: true
+            });
+        }
+    }
+
+    function setSelectOptions(selectEl, items, placeholderText) {
+        if (!selectEl) return;
+
+        // Clear existing
+        while (selectEl.firstChild) {
+            selectEl.removeChild(selectEl.firstChild);
+        }
+
+        // Placeholder
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = placeholderText || '-- All --';
+        selectEl.appendChild(placeholder);
+
+        (items || []).forEach(i => {
+            const value = i.name || '';
+            if (!value) return;
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = value;
+            selectEl.appendChild(opt);
+        });
+    }
+
+    async function loadLookups() {
+        msgEl = document.getElementById('appointmentsMessage');
+        if (msgEl) {
+            msgEl.textContent = '';
+            msgEl.classList.remove('text-success');
+            msgEl.classList.add('text-danger');
+        }
+
+        try {
+            const response = await fetch('/Appointment/GetLookups', {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+
+            if (!response.ok) {
+                if (msgEl) msgEl.textContent = 'Error loading filters.';
+                return;
+            }
+
+            const result = await response.json();
+
+            if (!result.success) {
+                if (msgEl) msgEl.textContent = result.message || 'Error loading filters.';
+                return;
+            }
+
+            const patients = result.patients || [];
+            const staff = result.staff || [];
+            const statuses = result.statuses || [];
+            const types = result.types || [];
+            const branches = result.branches || [];
+
+            setSelectOptions(document.getElementById('filterPatientName'), patients, '-- All Patients --');
+            setSelectOptions(document.getElementById('filterStaffName'), staff, '-- All Staff --');
+            setSelectOptions(document.getElementById('filterStatus'), statuses, '-- All Statuses --');
+            setSelectOptions(document.getElementById('filterAppointmentType'), types, '-- All Types --');
+            setSelectOptions(document.getElementById('filterBranch'), branches, '-- All Branches --');
+
+            initSelect2();
+
+            if (msgEl) {
+                msgEl.textContent = '';
+                msgEl.classList.remove('text-danger');
+            }
+        } catch (err) {
+            console.error('Error loading appointment lookups', err);
+            if (msgEl) msgEl.textContent = 'Error loading filters.';
+        }
+    }
+
+    function buildSearchPayload() {
+        const patientName = (document.getElementById('filterPatientName')?.value || '').trim();
+        const staffName = (document.getElementById('filterStaffName')?.value || '').trim();
+        const status = (document.getElementById('filterStatus')?.value || '').trim();
+        const fromDate = document.getElementById('filterFromDate')?.value || '';
+        const toDate = document.getElementById('filterToDate')?.value || '';
+        const typeName = (document.getElementById('filterAppointmentType')?.value || '').trim();
+        const branchName = (document.getElementById('filterBranch')?.value || '').trim();
+
+        return {
+            patientName: patientName || null,
+            staffName: staffName || null,
+            status: status || null,
+            fromDate: fromDate || null,
+            toDate: toDate || null,
+            pjAppTypeName: typeName || null,
+            branchName: branchName || null
+        };
+    }
+
+    function initOrUpdateDataTable(rows) {
+        const $table = $('#appointmentsTable');
+
+        if (dt) {
+            dt.clear();
+            dt.rows.add(rows);
+            dt.draw();
+            return;
+        }
+
+        dt = $table.DataTable({
+            data: rows,
+            columns: [
+                { data: 'patientId', title: 'Patient ID' },
+                { data: 'patientName', title: 'Patient Name' },
+                { data: 'patientPhone', title: 'Phone' },
+                { data: 'patientEmail', title: 'Email' },
+                { data: 'appointmentType', title: 'Appointment Type' },
+                {
+                    data: 'status',
+                    title: 'Attendance Status',
+                    render: function(data, type, row) {
+                        if (type !== 'display') return data || '';
+                        if (!data) return '';
+
+                        const val = (data || '').toString().toLowerCase();
+                        let badgeClass = 'badge rounded-pill bg-secondary';
+
+                        if (val === 'attended') {
+                            badgeClass = 'badge rounded-pill bg-success';
+                        } else if (val === 'not attended') {
+                            badgeClass = 'badge rounded-pill bg-danger';
+                        }
+
+                        return `<span class="${badgeClass}">${data}</span>`;
+                    }
+                },
+                { data: 'staffName', title: 'Assigned Staff' },
+                { data: 'branchName', title: 'Branch' },
+                { data: 'appointmentDateTime', title: 'Date & Time' }
+            ],
+            ordering: true,
+            pageLength: 10,
+            lengthChange: true,
+            // Keep layout clean, use default search box + paging
+            language: {
+                emptyTable: 'No appointments found.'
+            }
+        });
+    }
+
+    async function searchAppointments() {
+        msgEl = document.getElementById('appointmentsMessage');
+        if (msgEl) {
+            msgEl.textContent = '';
+            msgEl.classList.remove('text-success');
+            msgEl.classList.add('text-danger');
+        }
+
+        const payload = buildSearchPayload();
+
+        try {
+            const response = await fetch('/Appointment/Search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                if (msgEl) msgEl.textContent = 'Server error while searching appointments.';
+                return;
+            }
+
+            const result = await response.json();
+
+            if (!result.success) {
+                if (msgEl) msgEl.textContent = result.message || 'Failed to search appointments.';
+                return;
+            }
+
+            const rows = result.data || [];
+
+            if (msgEl) {
+                msgEl.classList.remove('text-danger');
+                msgEl.classList.add('text-muted');
+                msgEl.textContent = rows.length === 0
+                    ? 'No appointments matched your filters.'
+                    : `Found ${rows.length} appointment(s).`;
+            }
+
+            initOrUpdateDataTable(rows);
+        } catch (err) {
+            console.error('Error searching appointments', err);
+            if (msgEl) msgEl.textContent = 'An unexpected error occurred while searching appointments.';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        msgEl = document.getElementById('appointmentsMessage');
+
+        loadLookups();
+
+        const btnSearch = document.getElementById('btnSearchAppointments');
+        if (btnSearch) {
+            btnSearch.addEventListener('click', searchAppointments);
+        }
+    });
+})();

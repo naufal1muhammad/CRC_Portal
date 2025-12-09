@@ -162,5 +162,10 @@
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_Update.sql" />
     <Build Include="Stored Procedures\PatientJourney\spPatientJourney_Update.sql" />
     <Build Include="Stored Procedures\PatientBasic\spPatient_DeleteCascade.sql" />
+    <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_Search.sql" />
+    <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_LookupPatientNames.sql" />
+    <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_LookupStaffNames.sql" />
+    <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_LookupStatuses.sql" />
+    <Build Include="Stored Procedures\PatientBasic\spPatientBasic_LookupBranches.sql" />
   </ItemGroup>
 </Project>

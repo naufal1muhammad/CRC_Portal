@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using System.Data;
 
-namespace CRC.Web.Controllers
+namespace CRC.Web.Controllers.Patient
 {
     public class PatientController : Controller
     {
