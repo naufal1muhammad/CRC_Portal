@@ -1,0 +1,105 @@
+﻿@{
+    ViewData["Title"] = "Documents";
+    Layout = "_Layout";
+}
+
+<div class="container-fluid py-3">
+    <div class="card mb-3">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="mb-0">Documents</h2>
+
+                <!-- Mode toggle: Patient / Staff -->
+                <div class="d-flex align-items-center">
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input"
+                               type="radio"
+                               name="docMode"
+                               id="docModePatient"
+                               value="Patient"
+                               checked />
+                        <label class="form-check-label" for="docModePatient">
+                            Patient
+                        </label>
+                    </div>
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input"
+                               type="radio"
+                               name="docMode"
+                               id="docModeStaff"
+                               value="Staff" />
+                        <label class="form-check-label" for="docModeStaff">
+                            Staff
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filters row -->
+            <div class="row g-2 align-items-end mb-2">
+                <div class="col-md-4">
+                    <label for="docIndividualName" class="form-label mb-1">
+                        Individual Name
+                    </label>
+                    <select id="docIndividualName"
+                            class="form-select form-select-sm">
+                        <option value="">-- All --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label for="docDocumentType" class="form-label mb-1">
+                        Document Type
+                    </label>
+                    <select id="docDocumentType"
+                            class="form-select form-select-sm">
+                        <option value="">-- All --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4 text-md-end mt-3 mt-md-0">
+                    <button id="btnDocSearch"
+                            type="button"
+                            class="btn btn-sm btn-primary me-2">
+                        <i class="fas fa-search me-1"></i> Search
+                    </button>
+
+                    <button id="btnDocClear"
+                            type="button"
+                            class="btn btn-sm btn-outline-secondary">
+                        Clear Filters
+                    </button>
+                </div>
+            </div>
+
+            <div id="documentsMessage" class="small text-danger mb-0"></div>
+        </div>
+
+        <div class="card-body">
+            <div class="table-responsive">
+                <table id="documentsTable" class="table table-sm table-striped mb-0">
+                    <thead class="table-secondary">
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Document Type</th>
+                            <th>File Name</th>
+                            <th>Uploaded On</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">
+                                Use the filters above and click <strong>Search</strong> to view documents.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/documents/index.js"></script>
+}

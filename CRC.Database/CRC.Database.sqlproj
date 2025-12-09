@@ -121,7 +121,6 @@
     <Build Include="Stored Procedures\StaffDocumentSettings\spStaffDocumentSettings_GetByStaffType.sql" />
     <Build Include="Stored Procedures\StaffDocumentSettings\spStaffDocumentSettings_DeleteByStaffType.sql" />
     <Build Include="Stored Procedures\StaffDocumentSettings\spStaffDocumentSettings_Insert.sql" />
-    <Build Include="Stored Procedures\StaffDocument\spStaffDocument_Search.sql" />
     <Build Include="dbo\Tables\LU_RACE.sql" />
     <Build Include="dbo\Tables\LU_SOURCE.sql" />
     <Build Include="dbo\Tables\LU_RELIGION.sql" />
@@ -167,5 +166,8 @@
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_LookupStaffNames.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_LookupStatuses.sql" />
     <Build Include="Stored Procedures\PatientBasic\spPatientBasic_LookupBranches.sql" />
+    <Build Include="Stored Procedures\PatientDocument\spPatientDocument_PatientNames.sql" />
+    <Build Include="Stored Procedures\StaffDocument\spStaffDocument_StaffNames.sql" />
+    <Build Include="Stored Procedures\PatientDocument\spDocuments_Search.sql" />
   </ItemGroup>
 </Project>

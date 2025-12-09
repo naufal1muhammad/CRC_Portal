@@ -207,6 +207,49 @@
         }
     }
 
+    function clearAppointmentFilters() {
+    // Text / date filters
+    const fromDate = document.getElementById('filterFromDate');
+    const toDate = document.getElementById('filterToDate');
+
+    if (fromDate) fromDate.value = '';
+    if (toDate) toDate.value = '';
+
+    // Select filters
+    const selectIds = [
+        'filterPatientName',
+        'filterStaffName',
+        'filterStatus',
+        'filterAppointmentType',
+        'filterBranch'
+    ];
+
+    selectIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        el.value = '';
+
+        // If using Select2, also reset its UI
+        if (window.jQuery && $.fn.select2 && $(el).hasClass('select2')) {
+            $(el).val('').trigger('change');
+        }
+    });
+
+    // Clear message
+    msgEl = document.getElementById('appointmentsMessage');
+    if (msgEl) {
+        msgEl.textContent = '';
+        msgEl.classList.remove('text-danger', 'text-success', 'text-muted');
+    }
+
+    // Clear the DataTable rows (so page becomes "empty" again)
+    if (dt) {
+        dt.clear();
+        dt.draw();
+    }
+}
+
     document.addEventListener('DOMContentLoaded', function() {
         msgEl = document.getElementById('appointmentsMessage');
 
@@ -216,5 +259,10 @@
         if (btnSearch) {
             btnSearch.addEventListener('click', searchAppointments);
         }
+
+        const btnClear = document.getElementById('btnClearAppointments');
+    if (btnClear) {
+        btnClear.addEventListener('click', clearAppointmentFilters);
+    }
     });
 })();
