@@ -1,4 +1,4 @@
-html {
+﻿html {
   font-size: 14px;
 }
 
@@ -20,13 +20,16 @@ html {
     background-color: #e1c6ee;
 }
 
-.dashboard-card {
-    height: 300px;
+/* Generic small-ish chart */
+.dashboard-chart-sm {
+    max-width: 100%;
+    height: 230px !important;
 }
 
-.chart-container {
-    position: relative;
-    height: 180px;
+/* Slightly taller charts */
+.dashboard-chart-md {
+    max-width: 100%;
+    height: 280px !important;
 }
 
 /* Sidebar styling */
@@ -59,7 +62,7 @@ html {
         padding-bottom: 0.6rem;
     }
 
-        /* Icons � keep a neat aligned width */
+        /* Icons – keep a neat aligned width */
         .sidebar-main .list-group-item i {
             width: 18px;
         }

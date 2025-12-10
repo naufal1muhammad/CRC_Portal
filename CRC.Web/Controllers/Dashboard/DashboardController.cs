@@ -1,123 +1,266 @@
-﻿using Microsoft.Data.SqlClient;
-using CRC.Web.Data;
-using System.Data;
-using Microsoft.AspNetCore.Authorization;
+﻿using CRC.Web.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
+using System.Data;
 
 namespace CRC.Web.Controllers.Dashboard
 {
-    [Authorize]
     public class DashboardController : Controller
     {
         private readonly DatabaseHelper _db;
+        private readonly IWebHostEnvironment _env;
 
-        public DashboardController(DatabaseHelper db)
+        public DashboardController(DatabaseHelper db, IWebHostEnvironment env)
         {
             _db = db;
+            _env = env;
         }
 
         // GET: /Dashboard
+        [HttpGet]
         public IActionResult Index()
         {
-            // View is static; JS will call GetSummary to load data
             return View();
         }
 
-        // GET: /Dashboard/GetSummary
+        // ---------------------------
+        //  Card 1: Active branches
+        // ---------------------------
         [HttpGet]
-        public async Task<IActionResult> GetSummary()
+        public async Task<IActionResult> GetActiveBranchCount()
         {
-            var dt = await _db.ExecuteDataTableAsync("spDashboard_GetSummary");
-
-            if (dt.Rows.Count == 0)
+            try
             {
-                return Ok(new
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spDashboard_Branch_CountActive",
+                    Array.Empty<SqlParameter>());
+
+                int count = 0;
+                if (dt.Rows.Count > 0 && dt.Columns.Contains("ActiveBranchCount"))
                 {
-                    activeBranchesCount = 0,
-                    t2 = 0,
-                    t3 = 0,
-                    t4 = 0,
-                    t5 = 0
-                });
+                    count = Convert.ToInt32(dt.Rows[0]["ActiveBranchCount"]);
+                }
+
+                return Ok(new { success = true, count });
             }
-
-            var row = dt.Rows[0];
-
-            int activeBranches = Convert.ToInt32(row["ActiveBranchesCount"]);
-            int t2 = Convert.ToInt32(row["T2Count"]);
-            int t3 = Convert.ToInt32(row["T3Count"]);
-            int t4 = Convert.ToInt32(row["T4Count"]);
-            int t5 = Convert.ToInt32(row["T5Count"]);
-
-            return Ok(new
+            catch (Exception)
             {
-                activeBranchesCount = activeBranches,
-                t2,
-                t3,
-                t4,
-                t5
-            });
+                return Ok(new { success = false, message = "Error loading active branch count." });
+            }
         }
 
+        // ---------------------------------------------------
+        //  Branch list for card 2 & 3 dropdowns
+        //  (reuse spBranch_ListActive)
+        // ---------------------------------------------------
         [HttpGet]
-        public async Task<IActionResult> GetPatientStates()
+        public async Task<IActionResult> GetDashboardBranches()
         {
-            var dt = await _db.ExecuteDataTableAsync("spDashboard_PatientStates");
-            var list = new List<string>();
-
-            foreach (DataRow row in dt.Rows)
+            try
             {
-                var state = row["Branch_State"]?.ToString();
-                if (!string.IsNullOrWhiteSpace(state))
-                {
-                    list.Add(state);
-                }
-            }
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spBranch_ListActive",
+                    Array.Empty<SqlParameter>());
 
-            return Ok(list);
+                var branches = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        branchId = r["Branch_ID"]?.ToString(),
+                        branchName = r["Branch_Name"]?.ToString()
+                    })
+                    .Where(b =>
+                        !string.IsNullOrWhiteSpace(b.branchId) &&
+                        !string.IsNullOrWhiteSpace(b.branchName))
+                    .Distinct()
+                    .OrderBy(b => b.branchName)
+                    .ToList();
+
+                // IMPORTANT: return as "data" because JS expects result.data
+                return Ok(new { success = true, data = branches });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error loading branches." });
+            }
         }
 
+        // ---------------------------------------------------
+        //  Card 2: Active patients by branch / all branches
+        // ---------------------------------------------------
         [HttpGet]
-        public async Task<IActionResult> GetPatientStageCountsByState(string state)
+        public async Task<IActionResult> GetActivePatientsCount(string? branchName)
         {
-            var parameters = new[]
+            try
             {
-        new SqlParameter("@Branch_State", (object?)state ?? DBNull.Value)
-    };
-
-            var dt = await _db.ExecuteDataTableAsync("spDashboard_PatientStageCountsByState", parameters);
-
-            // Build a dictionary for T2–T5, default 0
-            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["T2"] = 0,
-                ["T3"] = 0,
-                ["T4"] = 0,
-                ["T5"] = 0
-            };
-
-            foreach (DataRow row in dt.Rows)
-            {
-                var stage = row["Patient_Stage"]?.ToString() ?? "";
-                var value = row["PatientCount"] == DBNull.Value ? 0 : Convert.ToInt32(row["PatientCount"]);
-
-                if (counts.ContainsKey(stage))
+                string? b = branchName?.Trim();
+                var param = new SqlParameter("@Branch_Name", SqlDbType.VarChar, 100)
                 {
-                    counts[stage] = value;
+                    Value = string.IsNullOrWhiteSpace(b) ? (object)DBNull.Value : b
+                };
+
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spDashboard_Patient_CountActiveByBranch",
+                    new[] { param });
+
+                int count = 0;
+                if (dt.Rows.Count > 0 && dt.Columns.Contains("ActivePatientCount"))
+                {
+                    count = Convert.ToInt32(dt.Rows[0]["ActivePatientCount"]);
                 }
+
+                return Ok(new { success = true, count });
             }
-
-            return Ok(new
+            catch (Exception)
             {
-                success = true,
-                data = new
+                return Ok(new { success = false, message = "Error loading active patients count." });
+            }
+        }
+
+        // ---------------------------------------------------
+        //  Card 3: Discharged patients by branch / all
+        // ---------------------------------------------------
+        [HttpGet]
+        public async Task<IActionResult> GetDischargedPatientsCount(string? branchName)
+        {
+            try
+            {
+                string? b = branchName?.Trim();
+                var param = new SqlParameter("@Branch_Name", SqlDbType.VarChar, 100)
                 {
-                    t2 = counts["T2"],
-                    t3 = counts["T3"],
-                    t4 = counts["T4"],
-                    t5 = counts["T5"]
+                    Value = string.IsNullOrWhiteSpace(b) ? (object)DBNull.Value : b
+                };
+
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spDashboard_Patient_CountDischargedByBranch",
+                    new[] { param });
+
+                int count = 0;
+                if (dt.Rows.Count > 0 && dt.Columns.Contains("DischargedPatientCount"))
+                {
+                    count = Convert.ToInt32(dt.Rows[0]["DischargedPatientCount"]);
                 }
-            });
+
+                return Ok(new { success = true, count });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error loading discharged patients count." });
+            }
+        }
+
+        // -----------------------------------
+        //  Row 2 – Pie: patients by race
+        // -----------------------------------
+        [HttpGet]
+        public async Task<IActionResult> GetPatientsByRace()
+        {
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spDashboard_Patient_ByRace",
+                    Array.Empty<SqlParameter>());
+
+                var items = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        label = r["Race_Name"]?.ToString() ?? "Unknown",
+                        count = Convert.ToInt32(r["PatientCount"])
+                    })
+                    .ToList();
+
+                return Ok(new { success = true, data = items });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error loading patients by race." });
+            }
+        }
+
+        // -----------------------------------
+        //  Row 2 – Pie: patients by age group
+        // -----------------------------------
+        [HttpGet]
+        public async Task<IActionResult> GetPatientsByAgeGroup()
+        {
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spDashboard_Patient_ByAgeGroup",
+                    Array.Empty<SqlParameter>());
+
+                var items = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        label = r["AgeGroup"]?.ToString() ?? "Unknown",
+                        count = Convert.ToInt32(r["PatientCount"])
+                    })
+                    .ToList();
+
+                return Ok(new { success = true, data = items });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error loading patients by age group." });
+            }
+        }
+
+        // -----------------------------------------
+        //  Row 3 – Bar: patients by discharge type
+        // -----------------------------------------
+        [HttpGet]
+        public async Task<IActionResult> GetPatientsByDischargeType()
+        {
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spDashboard_Patient_ByDischargeType",
+                    Array.Empty<SqlParameter>());
+
+                var items = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        label = r["DischargeType_Name"]?.ToString() ?? "Unknown",
+                        count = Convert.ToInt32(r["PatientCount"])
+                    })
+                    .ToList();
+
+                return Ok(new { success = true, data = items });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error loading patients by discharge type." });
+            }
+        }
+
+        // ---------------------------------------------------------
+        //  Row 4 – Horizontal double bar: admit vs discharge
+        // ---------------------------------------------------------
+        [HttpGet]
+        public async Task<IActionResult> GetAdmitDischargeLast12Months()
+        {
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spDashboard_Patient_AdmitDischargeLast12Months",
+                    Array.Empty<SqlParameter>());
+
+                var items = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        year = Convert.ToInt32(r["Year"]),
+                        month = Convert.ToInt32(r["Month"]),
+                        label = r["MonthLabel"]?.ToString() ?? "",
+                        admittedCount = Convert.ToInt32(r["AdmittedCount"]),
+                        dischargedCount = Convert.ToInt32(r["DischargedCount"])
+                    })
+                    .ToList();
+
+                return Ok(new { success = true, data = items });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error loading admit/discharge trend." });
+            }
         }
     }
 }

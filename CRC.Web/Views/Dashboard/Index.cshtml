@@ -1,50 +1,124 @@
 ﻿@{
     ViewData["Title"] = "Dashboard";
-    var fullName = User.Claims.FirstOrDefault(c => c.Type == "FullName")?.Value ?? User.Identity?.Name;
+    Layout = "_Layout";
 }
 
-<div class="container mt-4">
+<div class="container-fluid py-3">
     <h2 class="mb-3">Dashboard</h2>
-    <p>Welcome, @fullName</p>
 
-    <hr />
+    <div id="dashboardMessage" class="small text-danger mb-3"></div>
 
-    <!-- Row 1: Active Branches + Pie Chart -->
-    <div class="row mb-4 align-items-stretch">
-        <div class="col-md-4 mb-3">
-            <div class="card p-3 dashboard-card">
-                <h5>Active Branches</h5>
-                <p id="activeBranchesCount" class="fs-3">0</p>
+    <!-- =======================
+         ROW 1 - KPI CARDS
+    ======================== -->
+    <div class="row g-3 mb-3">
+
+        <!-- Card 1: Active Branches -->
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column justify-content-between">
+                    <div>
+                        <h6 class="text-muted mb-1">Active Branches</h6>
+                        <div class="display-5 fw-semibold" id="kpiActiveBranches">-</div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="col-md-8 mb-3">
-            <div class="card dashboard-card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Patients by State</h5>
-                    <select id="ddlPatientStateFilter" class="form-select form-select-sm w-auto">
-                        <option value="">All States</option>
-                    </select>
+        <!-- Card 2: Active Patients (by branch) -->
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column justify-content-between">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="text-muted mb-0">Active Patients</h6>
+                        <select id="ddlActivePatientsBranch"
+                                class="form-select form-select-sm"
+                                style="max-width: 180px;">
+                            <option value="">All Branches</option>
+                        </select>
+                    </div>
+                    <div class="display-5 fw-semibold" id="kpiActivePatients">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 3: Discharged Patients (by branch) -->
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column justify-content-between">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="text-muted mb-0">Discharged Patients</h6>
+                        <select id="ddlDischargedPatientsBranch"
+                                class="form-select form-select-sm"
+                                style="max-width: 180px;">
+                            <option value="">All Branches</option>
+                        </select>
+                    </div>
+                    <div class="display-5 fw-semibold" id="kpiDischargedPatients">-</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- =======================
+         ROW 2 - PIE CHARTS
+    ======================== -->
+    <div class="row g-3 mb-3">
+
+        <!-- Patients by Race -->
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0">Patients by Race</h6>
                 </div>
                 <div class="card-body">
-                    <div class="chart-container">
-                        <canvas id="stateStagePieChart"></canvas>
-                    </div>
-                    <div id="stateStagePieChartEmpty" class="text-muted small mt-2 d-none">
-                        No patient data available for the selected state.
-                    </div>
+                    <canvas id="chartPatientsByRace" class="dashboard-chart-sm"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Patients by Age Group -->
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0">Patients by Age Group</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="chartPatientsByAgeGroup" class="dashboard-chart-sm"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- =======================
+         ROW 3 - BAR CHART
+    ======================== -->
+    <div class="row g-3 mb-3">
+        <div class="col-12">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0">Patients by Discharge Type</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="chartPatientsByDischargeType" class="dashboard-chart-md"></canvas>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Row 2: Bar Graph -->
-    <div class="row mb-4">
+    <!-- =======================
+         ROW 4 - HORIZONTAL DOUBLE BAR
+    ======================== -->
+    <div class="row g-3 mb-3">
         <div class="col-12">
-            <div class="card p-3 dashboard-card">
-                <h5>Patients by Stage</h5>
-                <div class="chart-container">
-                    <canvas id="patientsStageChartCanvas"></canvas>
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0">Admissions vs Discharges (Last 12 Months)</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="chartAdmitDischarge" class="dashboard-chart-md"></canvas>
                 </div>
             </div>
         </div>

@@ -1,227 +1,359 @@
 ﻿// @ts-nocheck
-(function () {
-    //PATIENTS BY STAGE BAR GRAPH
-    const branchesEl = document.getElementById('activeBranchesCount');
-    const canvas = document.getElementById('patientsStageChartCanvas');
+(function() {
+    const baseUrl = '/Dashboard';
 
-    if (!branchesEl || !canvas) return;
+    let msgEl;
 
-    async function loadDashboardSummary() {
+    let chartRace = null;
+    let chartAge = null;
+    let chartDischargeType = null;
+    let chartAdmitDischarge = null;
+
+    // ---------- helpers ----------
+
+    function setKpiText(elementId, value) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        el.textContent = (value !== null && value !== undefined) ? value : '-';
+    }
+
+    async function getJson(url) {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+
+        if (!response.ok) {
+            throw new Error('HTTP error ' + response.status);
+        }
+
+        return await response.json();
+    }
+
+    function setBranchesOnSelect(selectEl, branches) {
+    if (!selectEl) return;
+
+    selectEl.innerHTML = '';
+
+    const optAll = document.createElement('option');
+    optAll.value = '';
+    optAll.textContent = 'All Branches';
+    selectEl.appendChild(optAll);
+
+    (branches || []).forEach(b => {
+        const opt = document.createElement('option');
+        // Use branchName as the value because the API filters by Branch_Name
+        opt.value = b.branchName || '';
+        opt.textContent = b.branchName || '';
+        // Optional: still keep ID if you ever need it later
+        opt.dataset.branchId = b.branchId || '';
+        selectEl.appendChild(opt);
+    });
+}
+
+    // ---------- row 1: KPIs ----------
+
+    async function loadActiveBranchCount() {
         try {
-            const response = await fetch('/Dashboard/GetSummary', {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            });
-
-            if (!response.ok) {
-                console.error('Failed to load dashboard summary.');
-                return;
-            }
-
-            const data = await response.json();
-
-            // Update active branches
-            branchesEl.textContent = data.activeBranchesCount ?? 0;
-
-            // Build chart
-            const ctx = canvas.getContext('2d');
-
-            const chartData = {
-                labels: ['T2', 'T3', 'T4', 'T5'],
-                datasets: [{
-                    label: 'Patients',
-                    data: [
-                        data.t2 ?? 0,
-                        data.t3 ?? 0,
-                        data.t4 ?? 0,
-                        data.t5 ?? 0
-                    ],
-                    backgroundColor: '#826ccb',
-                    borderColor: '#5f4aa3',
-                    borderWidth: 1
-                }]
-            };
-
-            const chartConfig = {
-                type: 'bar',
-                data: chartData,
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        title: {
-                            display: false
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            precision: 0
-                        }
-                    }
-                }
-            };
-
-            // Create chart
-            new Chart(ctx, chartConfig);
-
+            const result = await getJson(`${baseUrl}/GetActiveBranchCount`);
+            if (!result.success) throw new Error(result.message || 'Error');
+            setKpiText('kpiActiveBranches', result.count || 0);
         } catch (err) {
-            console.error('Error loading dashboard summary:', err);
+            console.error('Error loading active branch count', err);
+            setKpiText('kpiActiveBranches', '-');
         }
     }
 
-    // Load on page load
-    loadDashboardSummary();
-
-    //PATIENT BY STATE PIE CHART
-    let stateStagePieChart = null;
-
-    const stateSelect = document.getElementById('ddlPatientStateFilter');
-    const emptyMessage = document.getElementById('stateStagePieChartEmpty');
-    const chartCanvas = document.getElementById('stateStagePieChart');
-
-    async function loadPatientStates() {
-        if (!stateSelect) return;
-
+    async function loadBranchesForKpiCards() {
         try {
-            const response = await fetch('/Dashboard/GetPatientStates', {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' }
-            });
+            const result = await getJson(`${baseUrl}/GetDashboardBranches`);
+            if (!result.success) throw new Error(result.message || 'Error');
 
-            if (!response.ok) {
-                console.error('Failed to load patient states.');
-                return;
-            }
+            const branches = result.data || [];
+            const ddlActive = document.getElementById('ddlActivePatientsBranch');
+            const ddlDischarged = document.getElementById('ddlDischargedPatientsBranch');
 
-            const states = await response.json(); // ["Johor","Selangor",...]
-
-            // Clear existing options except "All States"
-            while (stateSelect.options.length > 1) {
-                stateSelect.remove(1);
-            }
-
-            states.forEach(s => {
-                const opt = document.createElement('option');
-                opt.value = s;
-                opt.textContent = s;
-                stateSelect.appendChild(opt);
-            });
+            setBranchesOnSelect(ddlActive, branches);
+            setBranchesOnSelect(ddlDischarged, branches);
         } catch (err) {
-            console.error('Error loading patient states', err);
+            console.error('Error loading branches', err);
         }
     }
 
-    async function loadStateStagePieChart(selectedState) {
-        if (!chartCanvas) return;
+    async function loadActivePatientCount(branchId) {
+    try {
+        const url = branchId
+            ? `${baseUrl}/GetActivePatientsCount?branchName=${encodeURIComponent(branchId)}`
+            : `${baseUrl}/GetActivePatientsCount`;
 
+        const result = await getJson(url);
+        if (!result.success) throw new Error(result.message || 'Error');
+
+        setKpiText('kpiActivePatients', result.count || 0);
+    } catch (err) {
+        console.error('Error loading active patient count', err);
+        setKpiText('kpiActivePatients', '-');
+    }
+}
+
+    async function loadDischargedPatientCount(branchId) {
+    try {
+        const url = branchId
+            ? `${baseUrl}/GetDischargedPatientsCount?branchName=${encodeURIComponent(branchId)}`
+            : `${baseUrl}/GetDischargedPatientsCount`;
+
+        const result = await getJson(url);
+        if (!result.success) throw new Error(result.message || 'Error');
+
+        setKpiText('kpiDischargedPatients', result.count || 0);
+    } catch (err) {
+        console.error('Error loading discharged patient count', err);
+        setKpiText('kpiDischargedPatients', '-');
+    }
+}
+
+    // ---------- row 2: pie charts ----------
+
+    // small colour palette for race – will cycle if there are many races
+    const raceColours = [
+        '#4e79a7', '#f28e2b', '#e15759', '#76b7b2',
+        '#59a14f', '#edc948', '#b07aa1', '#ff9da7',
+        '#9c755f', '#bab0ab'
+    ];
+
+    async function loadChartPatientsByRace() {
         try {
-            const url = '/Dashboard/GetPatientStageCountsByState?state=' + encodeURIComponent(selectedState || '');
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' }
-            });
+            const result = await getJson(`${baseUrl}/GetPatientsByRace`);
+            if (!result.success) throw new Error(result.message || 'Error');
 
-            if (!response.ok) {
-                console.error('Failed to load stage counts for state.');
-                return;
-            }
+            const list = result.data || [];
+            const labels = list.map(x => x.label || '');
+            const values = list.map(x => x.count || 0);
+            const colours = labels.map((_, idx) => raceColours[idx % raceColours.length]);
 
-            const result = await response.json();
-            if (!result.success) {
-                console.error('API returned success = false');
-                return;
-            }
+            const ctx = document.getElementById('chartPatientsByRace');
+            if (!ctx) return;
 
-            const data = result.data || {};
-            const values = [
-                data.t2 || 0,
-                data.t3 || 0,
-                data.t4 || 0,
-                data.t5 || 0
-            ];
+            if (chartRace) chartRace.destroy();
 
-            const total = values.reduce((sum, v) => sum + v, 0);
-
-            if (emptyMessage) {
-                if (total === 0) {
-                    emptyMessage.classList.remove('d-none');
-                } else {
-                    emptyMessage.classList.add('d-none');
-                }
-            }
-
-            const labels = ['T2 (Screening)', 'T3 (Diagnosis)', 'T4 (Staging)', 'T5 (Treatment)'];
-            const stageColors = ['#4e79a7', '#f28e2c', '#e15759', '#76b7b2'];
-
-            const chartData = {
-                labels: labels,
-                datasets: [{
-                    label: 'Patients',
-                    data: values,
-                    backgroundColor: stageColors,
-                    borderColor: '#ffffff',
-                    borderWidth: 1,
-                }]
-            };
-
-            
-            const config = {
+            chartRace = new Chart(ctx, {
                 type: 'pie',
-                data: chartData,
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: colours
+                    }]
+                },
                 options: {
-                    responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
                             position: 'bottom'
+                        }
+                    }
+                }
+            });
+        } catch (err) {
+            console.error('Error loading Patients by Race chart', err);
+        }
+    }
+
+    async function loadChartPatientsByAgeGroup() {
+        try {
+            const result = await getJson(`${baseUrl}/GetPatientsByAgeGroup`);
+            if (!result.success) throw new Error(result.message || 'Error');
+
+            const list = result.data || [];
+            const labels = list.map(x => x.label || '');
+            const values = list.map(x => x.count || 0);
+
+            // fixed palette (max 5 main age buckets)
+            const ageColours = [
+                '#4e79a7',
+                '#f28e2b',
+                '#e15759',
+                '#76b7b2',
+                '#59a14f'
+            ];
+
+            const ctx = document.getElementById('chartPatientsByAgeGroup');
+            if (!ctx) return;
+
+            if (chartAge) chartAge.destroy();
+
+            chartAge = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: labels.map((_, i) => ageColours[i % ageColours.length])
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        } catch (err) {
+            console.error('Error loading Patients by Age Group chart', err);
+        }
+    }
+
+    // ---------- row 3: discharge type bar chart (colour #826ccb) ----------
+
+    async function loadChartPatientsByDischargeType() {
+        try {
+            const result = await getJson(`${baseUrl}/GetPatientsByDischargeType`);
+            if (!result.success) throw new Error(result.message || 'Error');
+
+            const list = result.data || [];
+            const labels = list.map(x => x.label || '');
+            const values = list.map(x => x.count || 0);
+
+            const ctx = document.getElementById('chartPatientsByDischargeType');
+            if (!ctx) return;
+
+            if (chartDischargeType) chartDischargeType.destroy();
+
+            chartDischargeType = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Patients',
+                        data: values,
+                        backgroundColor: '#826ccb'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            ticks: { autoSkip: false }
                         },
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        } catch (err) {
+            console.error('Error loading Patients by Discharge Type chart', err);
+        }
+    }
+
+    // ---------- row 4: horizontal diverging bar (Admissions vs Discharges) ----------
+
+    async function loadChartAdmitDischarge() {
+        try {
+            const result = await getJson(`${baseUrl}/GetAdmitDischargeLast12Months`);
+            if (!result.success) throw new Error(result.message || 'Error');
+
+            const list = result.data || [];
+            const labels = list.map(x => x.label || '');
+            const admitted = list.map(x => -(x.admittedCount || 0));    // negative => left side
+            const discharged = list.map(x => x.dischargedCount || 0);   // positive => right side
+
+            const ctx = document.getElementById('chartAdmitDischarge');
+            if (!ctx) return;
+
+            if (chartAdmitDischarge) chartAdmitDischarge.destroy();
+
+            chartAdmitDischarge = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Admitted',
+                            data: admitted,
+                            backgroundColor: '#0000ff'
+                        },
+                        {
+                            label: 'Discharged',
+                            data: discharged,
+                            backgroundColor: '#f0a207'
+                        }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            stacked: true,
+                            ticks: {
+                                callback: function(value) {
+                                    // show absolute numbers on axis
+                                    return Math.abs(value);
+                                }
+                            }
+                        },
+                        y: {
+                            stacked: true
+                        }
+                    },
+                    plugins: {
                         tooltip: {
                             callbacks: {
-                                label: function (context) {
-                                    const label = context.label || '';
-                                    const value = context.parsed || 0;
-                                    return `${label}: ${value}`;
+                                label: function(ctx) {
+                                    const label = ctx.dataset.label || '';
+                                    const val = ctx.parsed.x || 0;
+                                    return `${label}: ${Math.abs(val)}`;
                                 }
                             }
                         }
                     }
                 }
-            };
-
-            if (stateStagePieChart) {
-                // Update existing chart
-                stateStagePieChart.data = chartData;
-                stateStagePieChart.update();
-            } else {
-                // Create new chart
-                stateStagePieChart = new Chart(chartCanvas.getContext('2d'), config);
-            }
+            });
         } catch (err) {
-            console.error('Error loading state stage pie chart', err);
+            console.error('Error loading Admissions vs Discharges chart', err);
         }
     }
 
-    function attachEvents() {
-        if (!stateSelect) return;
+    // ---------- init ----------
 
-        stateSelect.addEventListener('change', function () {
-            const selected = stateSelect.value;
-            loadStateStagePieChart(selected);
-        });
-    }
+    document.addEventListener('DOMContentLoaded', async function() {
+        msgEl = document.getElementById('dashboardMessage');
+        if (msgEl) {
+            msgEl.textContent = '';
+            msgEl.classList.remove('text-danger', 'text-success');
+        }
 
-    document.addEventListener('DOMContentLoaded', function () {
-        loadPatientStates().then(() => {
-            // After states are loaded, show chart for "All States" by default
-            loadStateStagePieChart('');
-        });
+        // 1) KPI stuff
+        await loadBranchesForKpiCards();
+        await loadActiveBranchCount();
+        await loadActivePatientCount(null);
+        await loadDischargedPatientCount(null);
 
-        attachEvents();
+        const ddlActive = document.getElementById('ddlActivePatientsBranch');
+        if (ddlActive) {
+            ddlActive.addEventListener('change', function() {
+                const branchId = ddlActive.value || null;
+                loadActivePatientCount(branchId);
+            });
+        }
+
+        const ddlDischarged = document.getElementById('ddlDischargedPatientsBranch');
+        if (ddlDischarged) {
+            ddlDischarged.addEventListener('change', function() {
+                const branchId = ddlDischarged.value || null;
+                loadDischargedPatientCount(branchId);
+            });
+        }
+
+        // 2) Charts
+        loadChartPatientsByRace();
+        loadChartPatientsByAgeGroup();
+        loadChartPatientsByDischargeType();
+        loadChartAdmitDischarge();
     });
 })();

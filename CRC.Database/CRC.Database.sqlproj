@@ -91,7 +91,6 @@
     <Build Include="dbo\Tables\StaffDocument.sql" />
     <Build Include="Stored Procedures\Users\spUsers_Register.sql" />
     <Build Include="Stored Procedures\Users\spUsers_ValidateLogin.sql" />
-    <Build Include="Stored Procedures\Dashboard\spDashboard_GetSummary.sql" />
     <Build Include="Stored Procedures\Branch\spBranch_ListActive.sql" />
     <Build Include="Stored Procedures\Staff\spStaff_List.sql" />
     <Build Include="Stored Procedures\Staff\spStaff_GetById.sql" />
@@ -109,8 +108,6 @@
     <Build Include="Stored Procedures\Branch\spBranch_Delete.sql" />
     <Build Include="dbo\Tables\LU_STATES.sql" />
     <Build Include="Stored Procedures\LU_STATES\spLU_STATES_List.sql" />
-    <Build Include="Stored Procedures\Dashboard\spDashboard_PatientStates.sql" />
-    <Build Include="Stored Procedures\Dashboard\spDashboard_PatientStageCountsByState.sql" />
     <Build Include="dbo\Tables\LU_ORGANIZATION.sql" />
     <Build Include="Stored Procedures\LU_ORGANIZATION\spLU_ORGANIZATION_List.sql" />
     <Build Include="dbo\Tables\LU_STAFFTYPE.sql" />
@@ -169,5 +166,12 @@
     <Build Include="Stored Procedures\PatientDocument\spPatientDocument_PatientNames.sql" />
     <Build Include="Stored Procedures\StaffDocument\spStaffDocument_StaffNames.sql" />
     <Build Include="Stored Procedures\PatientDocument\spDocuments_Search.sql" />
+    <Build Include="Stored Procedures\Dashboard\spDashboard_Branch_CountActive.sql" />
+    <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_CountActiveByBranch.sql" />
+    <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_CountDischargedByBranch.sql" />
+    <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByRace.sql" />
+    <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByAgeGroup.sql" />
+    <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByDischargeType.sql" />
+    <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_AdmitDischargeLast12Months.sql" />
   </ItemGroup>
 </Project>
