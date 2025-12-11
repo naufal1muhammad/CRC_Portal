@@ -22,13 +22,16 @@
     @Occupation_Name               VARCHAR(100),
 
     @DischargeType_Name            VARCHAR(100) = NULL,
-    @Patient_DischargeDate         DATETIME = NULL,
+    @Patient_DischargeDate         DATETIME     = NULL,
     @Patient_DischargeRemarks      VARCHAR(MAX) = NULL
 )
 AS
 BEGIN
     SET NOCOUNT ON;
 
+    ---------------------------------
+    -- 1) Update main PatientBasic
+    ---------------------------------
     UPDATE [dbo].[PatientBasic]
     SET
         [Patient_Name]                  = @Patient_Name,
@@ -53,5 +56,34 @@ BEGIN
         [Patient_DischargeDate]         = @Patient_DischargeDate,
         [Patient_DischargeRemarks]      = @Patient_DischargeRemarks
     WHERE [Patient_ID] = @Patient_ID;
+
+    ---------------------------------
+    -- 2) Cascade updates to children
+    ---------------------------------
+
+    -- PatientJourney: Patient_ID, Patient_Name, Patient_Email, Patient_Phone
+    UPDATE pj
+    SET
+        pj.[Patient_Name]  = @Patient_Name,
+        pj.[Patient_Email] = @Patient_Email,
+        pj.[Patient_Phone] = @Patient_Phone
+    FROM [dbo].[PatientJourney] pj
+    WHERE pj.[Patient_ID] = @Patient_ID;
+
+    -- PatientAppointment: Patient_ID, Patient_Name, Patient_Email, Patient_Phone
+    UPDATE pa
+    SET
+        pa.[Patient_Name]  = @Patient_Name,
+        pa.[Patient_Email] = @Patient_Email,
+        pa.[Patient_Phone] = @Patient_Phone
+    FROM [dbo].[PatientAppointment] pa
+    WHERE pa.[Patient_ID] = @Patient_ID;
+
+    -- PatientDocument: Patient_ID, Patient_Name
+    UPDATE pd
+    SET
+        pd.[Patient_Name] = @Patient_Name
+    FROM [dbo].[PatientDocument] pd
+    WHERE pd.[Patient_ID] = @Patient_ID;
 END;
 GO
