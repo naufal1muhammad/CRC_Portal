@@ -8979,8 +8979,13 @@ wwwroot\lib\xlsx\package\xlsx.mjs
 wwwroot\lib\xlsx\package\xlsxworker.js
 wwwroot\uploads\patient\06a757be952a4a79aef1556e11f649f7_SEDATION CONSENT FORM.pdf
 wwwroot\uploads\patient\0976ae57ccd8420cbfac12de8f795079_iFOBT RESULTS.pdf
+wwwroot\uploads\patient\0c1303be30b34edab2978bbf15bb7eed_ADVISE FORM.pdf
+wwwroot\uploads\patient\4ced577dd5d541b0b4869f40d2aa71db_HISTOPATHOLOGICAL EXAMINATION FORM.pdf
 wwwroot\uploads\patient\57c981fd20db4ec786cac57d08ead053_COLONOSCOPY FINDING FORM.pdf
+wwwroot\uploads\patient\77761c4f3bd14a89a81cf68448185428_PATIENT BILL.pdf
 wwwroot\uploads\patient\837346d3443f4607b41f59b7baeafe34_PERSONAL IDENTIFICATION.pdf
+wwwroot\uploads\patient\9bae5a7e19904fb0a54698c8f9398d11_HISTORY AND EXAMINATION FORM.pdf
+wwwroot\uploads\patient\c89b1b3bf41e4253b54698d77232abdd_DISCHARGE SUMMARY.pdf
 wwwroot\uploads\patient\d6838736250743299c3de6c212f0fa56_PDPA FORM.pdf
 wwwroot\uploads\patient\e2ed96413ad14b73a931f000c0804a00_COLONOSCOPY CONSENT FORM.pdf
 wwwroot\uploads\staff\31dd98ab765c4b05b515f5b489156b0c_BASIC DEGREE CERTIFICATE.pdf
