@@ -8987,6 +8987,7 @@ wwwroot\uploads\patient\0e79f0ca30ca43d89a5de145e6d25f4c_REFERRAL LETTER.pdf
 wwwroot\uploads\patient\0eaeb35135a14c879d236c8be4c01952_PDPA FORM.pdf
 wwwroot\uploads\patient\0f23327e1bf343f5979d425d44b40260_SEDATION CONSENT FORM.pdf
 wwwroot\uploads\patient\0fc5954a9dff48aba98c7fc2982f613e_HISTORY AND EXAMINATION FORM.pdf
+wwwroot\uploads\patient\10549da1e2f14563a28aa9ba791a7651_iFOBT RESULTS.pdf
 wwwroot\uploads\patient\11c592fe0cb044aa801212982f9881b6_PATIENT BILL.pdf
 wwwroot\uploads\patient\14d0d2a9652a4111ab1bc76f0ab667a1_iFOBT RESULTS.pdf
 wwwroot\uploads\patient\174b988276604d59b491fb0fa959fe0a_COLONOSCOPY FINDING FORM.pdf
@@ -9044,6 +9045,7 @@ wwwroot\uploads\patient\90ed5049c9f64c88b2d00398d24abdf6_SEDATION CONSENT FORM.p
 wwwroot\uploads\patient\915f6d4bf3744a209b437d1aee1509dc_DISCHARGE SUMMARY.pdf
 wwwroot\uploads\patient\91a655005e2b437aa7303bb25ba06e17_ADVISE FORM.pdf
 wwwroot\uploads\patient\93d5d961c2d049f3bdc6aba94175bf8a_PERSONAL IDENTIFICATION.pdf
+wwwroot\uploads\patient\94d6980993b54c8dac69b27e10f1a791_HISTOPATHOLOGICAL EXAMINATION FORM.pdf
 wwwroot\uploads\patient\95d98a79979a4054a83397772818fa89_COLONOSCOPY CONSENT FORM.pdf
 wwwroot\uploads\patient\99c3d72fa03c4764924292422d00cf0e_DISCHARGE SUMMARY.pdf
 wwwroot\uploads\patient\9ab56f4a47a94fd0821ab729dd510680_COLONOSCOPY FINDING FORM.pdf
