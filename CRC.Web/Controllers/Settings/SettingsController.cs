@@ -1,10 +1,12 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using CRC.Web.Data;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using System.Data;
-using CRC.Web.Data;
 
 namespace CRC.Web.Controllers.Settings
 {
+    [Authorize(Policy = "SuperUserOnly")]
     public class SettingsController : Controller
     {
         private readonly DatabaseHelper _db;

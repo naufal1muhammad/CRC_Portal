@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using System.Security.Claims;
+﻿using CRC.Web.Data;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using CRC.Web.Data;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
+using System.Security.Claims;
 
 namespace CRC.Web.Controllers
 {
@@ -16,7 +17,12 @@ namespace CRC.Web.Controllers
             _db = db;
         }
 
+        // -------------------------
+        // SUPERUSER ONLY: Register
+        // -------------------------
+
         // GET: /Account/Register
+        [Authorize(Policy = "SuperUserOnly")]
         [HttpGet]
         public IActionResult Register()
         {
@@ -30,10 +36,13 @@ namespace CRC.Web.Controllers
             public string Username { get; set; } = string.Empty;
             public string Email { get; set; } = string.Empty;
             public string Password { get; set; } = string.Empty;
-            public int UserType { get; set; } = 1; // 1 = Administrator
+
+            // 1 = SUPERUSER, 2 = ADMIN, 3 = STAFF
+            public int UserType { get; set; } = 3;
         }
 
         // POST: /Account/RegisterUser (called via JS)
+        [Authorize(Policy = "SuperUserOnly")]
         [HttpPost]
         public async Task<IActionResult> RegisterUser([FromBody] RegisterUserRequest model)
         {
@@ -50,10 +59,10 @@ namespace CRC.Web.Controllers
             {
                 var parameters = new[]
                 {
-                    new SqlParameter("@User_Name", model.Name),
-                    new SqlParameter("@Username", model.Username),
-                    new SqlParameter("@User_Email", model.Email),
-                    new SqlParameter("@Password", model.Password),
+                    new SqlParameter("@User_Name", model.Name.Trim()),
+                    new SqlParameter("@Username", model.Username.Trim()),
+                    new SqlParameter("@User_Email", model.Email.Trim()),
+                    new SqlParameter("@Password", model.Password), // keep as-is if hashing is not implemented yet
                     new SqlParameter("@User_Type", model.UserType)
                 };
 
@@ -63,26 +72,42 @@ namespace CRC.Web.Controllers
             }
             catch (SqlException ex)
             {
-                // This will include "Username already exists." from RAISERROR
+                // includes RAISERROR from sproc
                 return Ok(new { success = false, message = ex.Message });
             }
-            catch (Exception)
+            catch
             {
                 return Ok(new { success = false, message = "An unexpected error occurred." });
             }
         }
 
+        // -------------------------
+        // ANONYMOUS: Login
+        // -------------------------
+
         // GET: /Account/Login
+        [AllowAnonymous]
         [HttpGet]
         public IActionResult Login()
         {
-            // If already authenticated, go straight to Dashboard
-            if (User?.Identity?.IsAuthenticated == true)
-            {
-                return RedirectToAction("Index", "Dashboard");
-            }
+            //if (User?.Identity?.IsAuthenticated == true)
+            //    return RedirectToLanding();
 
             return View();
+        }
+
+        private IActionResult RedirectToLanding(ClaimsPrincipal principal)
+        {
+            if (principal.IsInRole("SUPERUSER"))
+                return RedirectToAction("Index", "Dashboard");
+
+            if (principal.IsInRole("ADMIN"))
+                return RedirectToAction("Index", "Appointment");
+
+            if (principal.IsInRole("STAFF"))
+                return RedirectToAction("AccessDenied", "Account"); // later: Staff landing
+
+            return RedirectToAction("AccessDenied", "Account");
         }
 
         // DTO for login
@@ -93,6 +118,7 @@ namespace CRC.Web.Controllers
         }
 
         // POST: /Account/Login
+        [AllowAnonymous]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Login(LoginRequest model)
@@ -109,9 +135,9 @@ namespace CRC.Web.Controllers
             {
                 var parameters = new[]
                 {
-            new SqlParameter("@Username", model.Username),
-            new SqlParameter("@Password", model.Password)
-        };
+                    new SqlParameter("@Username", model.Username.Trim()),
+                    new SqlParameter("@Password", model.Password)
+                };
 
                 var dt = await _db.ExecuteDataTableAsync("spUsers_ValidateLogin", parameters);
 
@@ -123,37 +149,74 @@ namespace CRC.Web.Controllers
 
                 var row = dt.Rows[0];
 
-                var userId = row["User_ID"].ToString() ?? string.Empty;
-                var userName = row["User_Name"].ToString() ?? string.Empty;
-                var username = row["Username"].ToString() ?? string.Empty;
-                var userEmail = row["User_Email"].ToString() ?? string.Empty;
-                var userType = row["User_Type"].ToString() ?? "1";
+                var userId = row["User_ID"]?.ToString() ?? string.Empty;
+                var userName = row["User_Name"]?.ToString() ?? string.Empty;
+                var username = row["Username"]?.ToString() ?? string.Empty;
+                var userEmail = row["User_Email"]?.ToString() ?? string.Empty;
+                var userType = row["User_Type"]?.ToString() ?? "3"; // default STAFF if missing
 
+                // --- Claims ---
                 var claims = new List<Claim>
-        {
-            new Claim(ClaimTypes.NameIdentifier, userId),
-            new Claim(ClaimTypes.Name, username),
-            new Claim("FullName", userName),
-            new Claim("UserEmail", userEmail),
-            new Claim("UserType", userType)
-        };
+                {
+                    new Claim(ClaimTypes.NameIdentifier, userId),
+                    new Claim(ClaimTypes.Name, username),
+                    new Claim("FullName", userName),
+                    new Claim("UserEmail", userEmail),
+                    new Claim("UserType", userType)
+                };
+
+                // --- Role claims (THIS is what unlocks [Authorize(Roles="...")]) ---
+                // Hierarchy:
+                // SUPERUSER => SUPERUSER + ADMIN + STAFF
+                // ADMIN     => ADMIN + STAFF
+                // STAFF     => STAFF
+                var ut = userType.Trim();
+
+                if (ut == "1") // SUPERUSER
+                {
+                    claims.Add(new Claim(ClaimTypes.Role, "SUPERUSER"));
+                }
+                else if (ut == "2") // ADMIN
+                {
+                    claims.Add(new Claim(ClaimTypes.Role, "ADMIN"));
+                }
+                else // STAFF (3 or anything else)
+                {
+                    claims.Add(new Claim(ClaimTypes.Role, "STAFF"));
+                }
 
                 var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
                 var principal = new ClaimsPrincipal(identity);
 
-                await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+                await HttpContext.SignInAsync(
+                    CookieAuthenticationDefaults.AuthenticationScheme,
+                    principal,
+                    new AuthenticationProperties
+                    {
+                        IsPersistent = false
+                    });
 
-                // after successful login, go to Dashboard
-                return RedirectToAction("Index", "Dashboard");
+                return RedirectToLanding(principal);
             }
-            catch (Exception)
+            catch
             {
                 ViewData["LoginError"] = "An unexpected error occurred.";
                 return View();
             }
         }
 
-        // GET: /Account/Logout
+        // -------------------------
+        // Access Denied page
+        // -------------------------
+        [HttpGet]
+        public IActionResult AccessDenied()
+        {
+            return View();
+        }
+
+        // -------------------------
+        // Logout
+        // -------------------------
         [HttpGet]
         public async Task<IActionResult> Logout()
         {

@@ -12,7 +12,7 @@ using CRC.Web.Data;
 
 namespace CRC.Web.Controllers.Staff
 {
-    [Authorize]
+    [Authorize(Policy = "SuperUserOnly")]
     public class StaffController : Controller
     {
         private readonly DatabaseHelper _db;

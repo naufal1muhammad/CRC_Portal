@@ -1,4 +1,5 @@
 ﻿using CRC.Web.Data;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -6,6 +7,7 @@ using static CRC.Web.Controllers.Documents.DocumentsController;
 
 namespace CRC.Web.Controllers.Documents
 {
+    [Authorize(Policy = "SuperUserOnly")]
     public class DocumentsController : Controller
     {
         private readonly DatabaseHelper _db;

@@ -9,7 +9,7 @@ using CRC.Web.Data;
 
 namespace CRC.Web.Controllers.Branch
 {
-    [Authorize]
+    [Authorize(Policy = "SuperUserOnly")]
     public class BranchController : Controller
     {
         private readonly DatabaseHelper _db;

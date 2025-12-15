@@ -1,10 +1,12 @@
 ﻿using CRC.Web.Data;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using System.Data;
 
 namespace CRC.Web.Controllers.Patient
 {
+    [Authorize(Policy = "SuperUserOnly")]
     public class PatientController : Controller
     {
         private readonly DatabaseHelper _db;
