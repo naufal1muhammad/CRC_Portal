@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
 using System.Security.Claims;
 
@@ -11,6 +12,7 @@ namespace CRC.Web.Controllers
     public class AccountController : Controller
     {
         private readonly DatabaseHelper _db;
+        private static readonly PasswordHasher<string> _hasher = new PasswordHasher<string>();
 
         public AccountController(DatabaseHelper db)
         {
@@ -57,14 +59,17 @@ namespace CRC.Web.Controllers
 
             try
             {
+                var username = model.Username.Trim();
+                var passwordHash = _hasher.HashPassword(username, model.Password);
+
                 var parameters = new[]
                 {
-                    new SqlParameter("@User_Name", model.Name.Trim()),
-                    new SqlParameter("@Username", model.Username.Trim()),
-                    new SqlParameter("@User_Email", model.Email.Trim()),
-                    new SqlParameter("@Password", model.Password), // keep as-is if hashing is not implemented yet
-                    new SqlParameter("@User_Type", model.UserType)
-                };
+    new SqlParameter("@User_Name", model.Name.Trim()),
+    new SqlParameter("@Username", username),
+    new SqlParameter("@User_Email", model.Email.Trim()),
+    new SqlParameter("@PasswordHash", passwordHash),
+    new SqlParameter("@User_Type", model.UserType)
+};
 
                 await _db.ExecuteNonQueryAsync("spUsers_Register", parameters);
 
@@ -90,9 +95,6 @@ namespace CRC.Web.Controllers
         [HttpGet]
         public IActionResult Login()
         {
-            //if (User?.Identity?.IsAuthenticated == true)
-            //    return RedirectToLanding();
-
             return View();
         }
 
@@ -133,13 +135,12 @@ namespace CRC.Web.Controllers
 
             try
             {
-                var parameters = new[]
-                {
-                    new SqlParameter("@Username", model.Username.Trim()),
-                    new SqlParameter("@Password", model.Password)
-                };
+                var usernameInput = model.Username.Trim();
 
-                var dt = await _db.ExecuteDataTableAsync("spUsers_ValidateLogin", parameters);
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spUsers_ValidateLogin",
+                    new[] { new SqlParameter("@Username", usernameInput) }
+                );
 
                 if (dt.Rows.Count == 0)
                 {
@@ -153,23 +154,34 @@ namespace CRC.Web.Controllers
                 var userName = row["User_Name"]?.ToString() ?? string.Empty;
                 var username = row["Username"]?.ToString() ?? string.Empty;
                 var userEmail = row["User_Email"]?.ToString() ?? string.Empty;
-                var userType = row["User_Type"]?.ToString() ?? "3"; // default STAFF if missing
+                var userType = row["User_Type"]?.ToString() ?? "3";
 
-                // --- Claims ---
-                var claims = new List<Claim>
+                var storedHash = row["PasswordHash"]?.ToString() ?? "";
+                if (string.IsNullOrWhiteSpace(storedHash))
                 {
-                    new Claim(ClaimTypes.NameIdentifier, userId),
-                    new Claim(ClaimTypes.Name, username),
-                    new Claim("FullName", userName),
-                    new Claim("UserEmail", userEmail),
-                    new Claim("UserType", userType)
-                };
+                    ViewData["LoginError"] = "Invalid username or password.";
+                    return View();
+                }
 
-                // --- Role claims (THIS is what unlocks [Authorize(Roles="...")]) ---
-                // Hierarchy:
-                // SUPERUSER => SUPERUSER + ADMIN + STAFF
-                // ADMIN     => ADMIN + STAFF
-                // STAFF     => STAFF
+                var verify = _hasher.VerifyHashedPassword(username, storedHash, model.Password);
+                if (verify == PasswordVerificationResult.Failed)
+                {
+                    ViewData["LoginError"] = "Invalid username or password.";
+                    return View();
+                }
+
+                // -----------------------------
+                // Claims + Sign-in (same as yours)
+                // -----------------------------
+                var claims = new List<Claim>
+        {
+            new Claim(ClaimTypes.NameIdentifier, userId),
+            new Claim(ClaimTypes.Name, username),
+            new Claim("FullName", userName),
+            new Claim("UserEmail", userEmail),
+            new Claim("UserType", userType)
+        };
+
                 var ut = userType.Trim();
 
                 if (ut == "1") // SUPERUSER
@@ -180,7 +192,7 @@ namespace CRC.Web.Controllers
                 {
                     claims.Add(new Claim(ClaimTypes.Role, "ADMIN"));
                 }
-                else // STAFF (3 or anything else)
+                else
                 {
                     claims.Add(new Claim(ClaimTypes.Role, "STAFF"));
                 }
@@ -191,16 +203,14 @@ namespace CRC.Web.Controllers
                 await HttpContext.SignInAsync(
                     CookieAuthenticationDefaults.AuthenticationScheme,
                     principal,
-                    new AuthenticationProperties
-                    {
-                        IsPersistent = false
-                    });
+                    new AuthenticationProperties { IsPersistent = false }
+                );
 
                 return RedirectToLanding(principal);
             }
-            catch
+            catch (Exception ex)
             {
-                ViewData["LoginError"] = "An unexpected error occurred.";
+                ViewData["LoginError"] = ex.Message;
                 return View();
             }
         }

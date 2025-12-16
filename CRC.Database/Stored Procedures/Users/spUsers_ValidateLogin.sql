@@ -1,17 +1,17 @@
 ﻿CREATE PROCEDURE [dbo].[spUsers_ValidateLogin]
-    @Username VARCHAR(100),
-    @Password VARCHAR(200)
+    @Username VARCHAR(100)
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    SELECT TOP 1 
+    SELECT TOP 1
         [User_ID],
         [User_Name],
         [Username],
         [User_Email],
+        [Password_Hash] AS PasswordHash,
         [User_Type]
     FROM [dbo].[Users]
-    WHERE [Username] = @Username
-      AND [Password] = @Password;
+    WHERE [Username] = @Username;
 END;
+GO

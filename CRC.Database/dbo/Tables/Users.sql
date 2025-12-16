@@ -4,8 +4,8 @@
     [User_Name] VARCHAR(100) NOT NULL,
     [Username] VARCHAR(100) NOT NULL,
     [User_Email] VARCHAR(100) NOT NULL,
-    [Password] VARCHAR(200) NOT NULL,
-    [User_Type] INT NOT NULL -- 1 = Administrator
+    [Password_Hash] VARCHAR(500) NOT NULL,
+    [User_Type] INT NOT NULL -- 1 = SUPERUSER
 );
 GO
 
