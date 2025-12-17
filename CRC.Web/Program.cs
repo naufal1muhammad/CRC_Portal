@@ -21,6 +21,7 @@ builder.Services.AddAuthorization(options =>
     // UserType claim values:
     // 1 = SUPERUSER, 2 = ADMIN, 3 = STAFF
     options.AddPolicy("SuperUserOnly", policy => policy.RequireClaim("UserType", "1"));
+    options.AddPolicy("AdminOrSuper", policy => policy.RequireClaim("UserType", "1", "2"));
     options.AddPolicy("AdminOnly", policy => policy.RequireClaim("UserType", "2"));
     options.AddPolicy("StaffOnly", policy => policy.RequireClaim("UserType", "3"));
 });

@@ -6,7 +6,7 @@ using System.Data;
 
 namespace CRC.Web.Controllers.Patient
 {
-    [Authorize(Policy = "SuperUserOnly")]
+    [Authorize(Policy = "AdminOrSuper")]
     public class PatientController : Controller
     {
         private readonly DatabaseHelper _db;

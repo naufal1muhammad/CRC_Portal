@@ -6,7 +6,7 @@ using System.Data;
 
 namespace CRC.Web.Controllers.Appointment
 {
-    [Authorize(Policy = "AdminOnly")]
+    [Authorize(Policy = "AdminOrSuper")]
     public class AppointmentController : Controller
     {
         private readonly DatabaseHelper _db;
