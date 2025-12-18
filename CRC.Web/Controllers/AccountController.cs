@@ -104,10 +104,10 @@ namespace CRC.Web.Controllers
                 return RedirectToAction("Index", "Dashboard");
 
             if (principal.IsInRole("ADMIN"))
-                return RedirectToAction("Index", "Appointment");
+                return RedirectToAction("Index", "AdminDashboard");
 
             if (principal.IsInRole("STAFF"))
-                return RedirectToAction("AccessDenied", "Account"); // later: Staff landing
+                return RedirectToAction("AccessDenied", "Account");
 
             return RedirectToAction("AccessDenied", "Account");
         }

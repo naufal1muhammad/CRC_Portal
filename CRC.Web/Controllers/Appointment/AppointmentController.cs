@@ -197,5 +197,53 @@ namespace CRC.Web.Controllers.Appointment
                 return Ok(new { success = false, message = "Error searching appointments." });
             }
         }
+
+        public class UpdateAppointmentStatusRequest
+        {
+            public int PatientAppointmentId { get; set; }
+            public string Status { get; set; } = string.Empty;
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> UpdateAppointmentStatus([FromBody] UpdateAppointmentStatusRequest model)
+        {
+            if (model == null || model.PatientAppointmentId <= 0 || string.IsNullOrWhiteSpace(model.Status))
+                return BadRequest(new { success = false, message = "Invalid request." });
+
+            var status = model.Status.Trim();
+
+            // safety: only allow known statuses (match your dropdown values)
+            var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "Scheduled",
+        "Attended",
+        "Not Attended"
+    };
+
+            if (!allowed.Contains(status))
+                return BadRequest(new { success = false, message = "Invalid status value." });
+
+            try
+            {
+                var parameters = new[]
+                {
+            new SqlParameter("@PatientAppointment_ID", model.PatientAppointmentId),
+            new SqlParameter("@PatientAppointment_Status", status)
+        };
+
+                await _db.ExecuteNonQueryAsync("spPatientAppointment_UpdateStatus", parameters);
+
+                return Ok(new { success = true });
+            }
+            catch (SqlException ex)
+            {
+                return Ok(new { success = false, message = ex.Message });
+            }
+            catch
+            {
+                return Ok(new { success = false, message = "Error updating appointment status." });
+            }
+        }
+
     }
 }

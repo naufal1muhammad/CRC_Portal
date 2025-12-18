@@ -173,5 +173,6 @@
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByAgeGroup.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByDischargeType.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_AdmitDischargeLast12Months.sql" />
+    <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_UpdateStatus.sql" />
   </ItemGroup>
 </Project>

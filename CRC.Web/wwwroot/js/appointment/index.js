@@ -107,6 +107,37 @@
         };
     }
 
+    function escapeHtml(str) {
+  return (str ?? '').toString().replace(/[&<>"']/g, s => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[s]));
+}
+
+function getNextStatus(current) {
+  const v = (current || '').toString().trim().toLowerCase();
+  if (v === 'scheduled') return 'Attended';
+  if (v === 'attended') return 'Not Attended';
+  if (v === 'not attended') return 'Scheduled';
+  return 'Attended';
+}
+
+async function updateAttendanceStatus(appointmentId, newStatus) {
+  const response = await fetch('/Appointment/UpdateAppointmentStatus', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({ patientAppointmentId: appointmentId, status: newStatus })
+  });
+
+  if (!response.ok) throw new Error('Server error updating status.');
+
+  const result = await response.json();
+  if (!result.success) throw new Error(result.message || 'Failed to update status.');
+}
+
+
     function initOrUpdateDataTable(rows) {
         const $table = $('#appointmentsTable');
 
@@ -121,29 +152,45 @@
             data: rows,
             columns: [
                 { data: 'patientId', title: 'Patient ID' },
-                { data: 'patientName', title: 'Patient Name' },
+                {
+  data: 'patientName',
+  title: 'Patient Name',
+  render: function (data, type, row) {
+    if (type !== 'display') return data || '';
+    const id = row.patientId || '';
+    const name = escapeHtml(data || '');
+    // If you created a proxy endpoint in Step 2, use it here instead
+    // e.g. `/Appointment/OpenPatient?patientId=...`
+    return `<a href="/Patient/Edit/${encodeURIComponent(id)}" class="text-decoration-none">${name}</a>`;
+  }
+},
                 { data: 'patientPhone', title: 'Phone' },
                 { data: 'patientEmail', title: 'Email' },
                 { data: 'appointmentType', title: 'Appointment Type' },
                 {
-                    data: 'status',
-                    title: 'Attendance Status',
-                    render: function(data, type, row) {
-                        if (type !== 'display') return data || '';
-                        if (!data) return '';
+  data: 'status',
+  title: 'Attendance Status',
+  render: function (data, type, row) {
+    if (type !== 'display') return data || '';
 
-                        const val = (data || '').toString().toLowerCase();
-                        let badgeClass = 'badge rounded-pill bg-secondary';
+    const raw = (data || '').toString();
+    const val = raw.trim().toLowerCase();
 
-                        if (val === 'attended') {
-                            badgeClass = 'badge rounded-pill bg-success';
-                        } else if (val === 'not attended') {
-                            badgeClass = 'badge rounded-pill bg-danger';
-                        }
+    let badgeClass = 'badge rounded-pill bg-warning';
+    if (val === 'attended') badgeClass = 'badge rounded-pill bg-success';
+    else if (val === 'not attended') badgeClass = 'badge rounded-pill bg-danger';
+    else badgeClass = 'badge rounded-pill bg-warning';
 
-                        return `<span class="${badgeClass}">${data}</span>`;
-                    }
-                },
+    return `
+      <a href="#"
+         class="${badgeClass} js-status-toggle"
+         title="Click to toggle"
+         data-appt-id="${row.patientAppointmentId || 0}">
+        ${escapeHtml(raw)}
+      </a>
+    `;
+  }
+},
                 { data: 'staffName', title: 'Assigned Staff' },
                 { data: 'branchName', title: 'Branch' },
                 { data: 'appointmentDateTime', title: 'Date & Time' }
@@ -156,6 +203,35 @@
                 emptyTable: 'No appointments found.'
             }
         });
+        $('#appointmentsTable').off('click', '.js-status-toggle');
+$('#appointmentsTable').on('click', '.js-status-toggle', async function (e) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (!dt) return;
+
+  let $tr = $(this).closest('tr');
+  if ($tr.hasClass('child')) $tr = $tr.prev(); // responsive fix
+
+  const rowApi = dt.row($tr);
+  const rowData = rowApi.data();
+  if (!rowData) return;
+
+  const apptId = rowData.patientAppointmentId || rowData.appointmentId || 0;
+  if (!apptId) return;
+
+  const next = getNextStatus(rowData.status);
+
+  try {
+    await updateAttendanceStatus(apptId, next);
+
+    // update UI immediately
+    rowData.status = next;
+    rowApi.data(rowData).invalidate().draw(false);
+  } catch (err) {
+    alert(err.message || 'Failed to update status.');
+  }
+});
     }
 
     async function searchAppointments() {

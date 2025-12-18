@@ -183,6 +183,12 @@
             ${statusText}
         </span>
     `;
+} else {
+    statusHtml = `
+        <span class="badge rounded-pill bg-warning">
+            ${statusText}
+        </span>
+    `;
 }
 
     tr.innerHTML = `
