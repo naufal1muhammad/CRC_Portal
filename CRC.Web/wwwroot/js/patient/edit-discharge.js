@@ -34,7 +34,7 @@ async function loadDischargeTypesIntoTab() {
     selType.innerHTML = '<option value="">Loading...</option>';
 
     try {
-        const response = await fetch('/Settings/GetDischargeTypes', {
+        const response = await fetch('/Patient/GetDischargeTypes', {
             method: 'GET',
             headers: { 'Accept': 'application/json' }
         });

@@ -298,6 +298,32 @@ namespace CRC.Web.Controllers.Patient
             public string DischargeRemarks { get; set; } = string.Empty;
         }
 
+        [HttpGet]
+        public async Task<IActionResult> GetDischargeTypes()
+        {
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spLU_DischargeType_List",
+                    Array.Empty<SqlParameter>()
+                );
+
+                var list = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        dischargeTypeId = r["DischargeType_ID"]?.ToString(),
+                        dischargeTypeName = r["DischargeType_Name"]?.ToString()
+                    })
+                    .ToList();
+
+                return Ok(new { success = true, data = list });
+            }
+            catch
+            {
+                return Ok(new { success = false, message = "Error loading discharge types." });
+            }
+        }
+
         [HttpPost]
         public async Task<IActionResult> SaveBasic([FromBody] SaveBasicRequest model)
         {
