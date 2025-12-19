@@ -10,6 +10,9 @@
             <div class="mb-3">
                 <label for="Name" class="form-label">Name</label>
                 <input id="Name" class="form-control" type="text" />
+                <div class="form-text">
+                    For STAFF users, this should match the staff record (we’ll help enforce this in JS).
+                </div>
             </div>
 
             <div class="mb-3">
@@ -32,8 +35,18 @@
                 <select id="UserType" class="form-select">
                     <option value="1">SUPERUSER</option>
                     <option value="2">ADMIN</option>
-                    <option value="3">STAFF</option>
+                    <option value="3" selected>STAFF</option>
                 </select>
+            </div>
+
+            <div id="staffLinkGroup" class="mb-3 d-none">
+                <label for="StaffId" class="form-label">Link to Staff</label>
+                <select id="StaffId" class="form-select">
+                    <option value="">-- Select Staff --</option>
+                </select>
+                <div class="form-text">
+                    Required only when User Type is STAFF. This will populate dbo.Users.Staff_ID.
+                </div>
             </div>
 
             <button id="btnRegister" class="btn btn-primary" type="button">Register</button>

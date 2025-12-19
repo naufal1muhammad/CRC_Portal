@@ -1,0 +1,119 @@
+﻿@{
+    ViewData["Title"] = "Staff Dashboard";
+}
+
+@section Stylesheets {
+    <style>
+        #staffWeekCalendar .fc-event,
+        #staffWeekCalendar .fc-event * {
+            cursor: pointer !important;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+    </style>
+}
+
+<div class="mb-3">
+    <h2 class="mb-1">Dashboard</h2>
+</div>
+
+<!-- Message area -->
+<div id="staffDashboardMessage" class="small mb-3"></div>
+
+<div class="row g-3">
+
+    <!-- Row 1: Today's Appointments -->
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <div>
+                    <h5 class="mb-0">Today’s Appointments</h5>
+                </div>
+                <div class="text-muted small">
+                    <i class="fas fa-calendar-day me-1"></i>
+                    @DateTime.Today.ToString("dd/MM/yyyy")
+                </div>
+            </div>
+
+            <div class="card-body">
+                <div id="todayAppointmentsMsg" class="small mb-2 text-muted"></div>
+
+                <div class="table-responsive">
+                    <table id="todayAppointmentsTable" class="table table-sm table-striped table-hover align-middle w-100">
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 2: Week View Calendar -->
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <div>
+                    <h5 class="mb-0">Weekly Calendar</h5>
+                </div>
+            </div>
+
+            <div class="card-body">
+                <div id="weekCalendarMsg" class="small mb-2 text-muted"></div>
+
+                <!-- Week calendar container (JS will render the week-view calendar here) -->
+                <div id="staffWeekCalendar" class="border rounded p-2 bg-white" style="min-height: 520px;">
+                    <!-- JS will inject the week calendar UI -->
+                </div>
+
+                <div id="calendarLegend" class="d-flex flex-wrap gap-2 mt-2"></div>
+
+                <small class="text-muted d-block mt-2">
+                    Click an event to view details.
+                </small>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="modal fade" id="staffApptModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Appointment Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="text-muted small">Patient</div>
+                    <div id="mdPatient" class="fw-semibold"></div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="text-muted small">Appointment Type</div>
+                    <div id="mdType" class="fw-semibold"></div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="text-muted small">Branch</div>
+                    <div id="mdBranch" class="fw-semibold"></div>
+                </div>
+
+                <div class="mb-0">
+                    <div class="text-muted small">Date &amp; Time</div>
+                    <div id="mdWhen" class="fw-semibold"></div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <a id="mdOpenPatient" class="btn btn-primary" href="#">Open Patient</a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/staffDashboard/index.js"></script>
+}

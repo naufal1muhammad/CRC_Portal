@@ -82,6 +82,7 @@
     <Folder Include="Stored Procedures\PatientAppointment" />
     <Folder Include="Stored Procedures\PatientJourney" />
     <Folder Include="Stored Procedures\PatientDocumentSettings" />
+    <Folder Include="Stored Procedures\StaffPages" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="dbo\Tables\Users.sql" />
@@ -174,5 +175,7 @@
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByDischargeType.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_AdmitDischargeLast12Months.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_UpdateStatus.sql" />
+    <Build Include="Stored Procedures\StaffPages\spStaffDashboard_TodayAppointments.sql" />
+    <Build Include="Stored Procedures\StaffPages\spStaffDashboard_AppointmentsByRange.sql" />
   </ItemGroup>
 </Project>

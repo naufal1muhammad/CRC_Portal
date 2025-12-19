@@ -41,6 +41,7 @@ namespace CRC.Web.Controllers
 
             // 1 = SUPERUSER, 2 = ADMIN, 3 = STAFF
             public int UserType { get; set; } = 3;
+            public string? StaffId { get; set; }
         }
 
         // POST: /Account/RegisterUser (called via JS)
@@ -62,13 +63,23 @@ namespace CRC.Web.Controllers
                 var username = model.Username.Trim();
                 var passwordHash = _hasher.HashPassword(username, model.Password);
 
+                // StaffId required only for STAFF
+                string? staffId = null;
+                if (model.UserType == 3)
+                {
+                    staffId = (model.StaffId ?? "").Trim();
+                    if (string.IsNullOrWhiteSpace(staffId))
+                        return BadRequest(new { success = false, message = "Staff is required for STAFF users." });
+                }
+
                 var parameters = new[]
                 {
     new SqlParameter("@User_Name", model.Name.Trim()),
     new SqlParameter("@Username", username),
     new SqlParameter("@User_Email", model.Email.Trim()),
     new SqlParameter("@PasswordHash", passwordHash),
-    new SqlParameter("@User_Type", model.UserType)
+    new SqlParameter("@User_Type", model.UserType),
+    new SqlParameter("@Staff_ID", (object?)staffId ?? DBNull.Value)
 };
 
                 await _db.ExecuteNonQueryAsync("spUsers_Register", parameters);
@@ -107,7 +118,7 @@ namespace CRC.Web.Controllers
                 return RedirectToAction("Index", "AdminDashboard");
 
             if (principal.IsInRole("STAFF"))
-                return RedirectToAction("AccessDenied", "Account");
+                return RedirectToAction("Index", "StaffDashboard");
 
             return RedirectToAction("AccessDenied", "Account");
         }
@@ -155,6 +166,9 @@ namespace CRC.Web.Controllers
                 var username = row["Username"]?.ToString() ?? string.Empty;
                 var userEmail = row["User_Email"]?.ToString() ?? string.Empty;
                 var userType = row["User_Type"]?.ToString() ?? "3";
+                var staffId = row.Table.Columns.Contains("StaffId")
+    ? (row["StaffId"]?.ToString() ?? "")
+    : "";
 
                 var storedHash = row["PasswordHash"]?.ToString() ?? "";
                 if (string.IsNullOrWhiteSpace(storedHash))
@@ -181,6 +195,11 @@ namespace CRC.Web.Controllers
             new Claim("UserEmail", userEmail),
             new Claim("UserType", userType)
         };
+
+                if (userType.Trim() == "3" && !string.IsNullOrWhiteSpace(staffId))
+                {
+                    claims.Add(new Claim("StaffId", staffId));
+                }
 
                 var ut = userType.Trim();
 

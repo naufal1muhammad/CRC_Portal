@@ -10,7 +10,8 @@ BEGIN
         [Username],
         [User_Email],
         [Password_Hash] AS PasswordHash,
-        [User_Type]
+        [User_Type],
+        [Staff_ID]      AS StaffId
     FROM [dbo].[Users]
     WHERE [Username] = @Username;
 END;
