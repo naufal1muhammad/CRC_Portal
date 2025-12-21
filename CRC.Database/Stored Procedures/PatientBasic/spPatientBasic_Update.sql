@@ -64,9 +64,7 @@ BEGIN
     -- PatientJourney: Patient_ID, Patient_Name, Patient_Email, Patient_Phone
     UPDATE pj
     SET
-        pj.[Patient_Name]  = @Patient_Name,
-        pj.[Patient_Email] = @Patient_Email,
-        pj.[Patient_Phone] = @Patient_Phone
+        pj.[Patient_Name]  = @Patient_Name
     FROM [dbo].[PatientJourney] pj
     WHERE pj.[Patient_ID] = @Patient_ID;
 

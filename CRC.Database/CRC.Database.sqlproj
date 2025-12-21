@@ -83,6 +83,7 @@
     <Folder Include="Stored Procedures\PatientJourney" />
     <Folder Include="Stored Procedures\PatientDocumentSettings" />
     <Folder Include="Stored Procedures\StaffPages" />
+    <Folder Include="Stored Procedures\PatientAssessment" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="dbo\Tables\Users.sql" />
@@ -147,9 +148,6 @@
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_ListByPatient.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_Insert.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_Delete.sql" />
-    <Build Include="Stored Procedures\PatientJourney\spPatientJourney_ListByPatient.sql" />
-    <Build Include="Stored Procedures\PatientJourney\spPatientJourney_Insert.sql" />
-    <Build Include="Stored Procedures\PatientJourney\spPatientJourney_Delete.sql" />
     <Build Include="Stored Procedures\PatientDocument\spPatientDocument_List.sql" />
     <Build Include="Stored Procedures\PatientDocument\spPatientDocument_Insert.sql" />
     <Build Include="Stored Procedures\PatientDocument\spPatientDocument_Delete.sql" />
@@ -157,7 +155,6 @@
     <Build Include="Stored Procedures\PatientDocumentSettings\spPatientDocumentSettings_SaveForDischargeType.sql" />
     <Build Include="Stored Procedures\PatientDocumentSettings\spPatient_Discharge_CheckMissingDocuments.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_Update.sql" />
-    <Build Include="Stored Procedures\PatientJourney\spPatientJourney_Update.sql" />
     <Build Include="Stored Procedures\PatientBasic\spPatient_DeleteCascade.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_Search.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_LookupPatientNames.sql" />
@@ -177,5 +174,13 @@
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_UpdateStatus.sql" />
     <Build Include="Stored Procedures\StaffPages\spStaffDashboard_TodayAppointments.sql" />
     <Build Include="Stored Procedures\StaffPages\spStaffDashboard_AppointmentsByRange.sql" />
+    <Build Include="dbo\Tables\PatientJourneyAudit.sql" />
+    <Build Include="Stored Procedures\PatientJourney\spPatientJourney_TimelineByPatient.sql" />
+    <Build Include="Stored Procedures\PatientAssessment\spPatientAssessment_GetByJourneyId.sql" />
+    <Build Include="Stored Procedures\PatientAssessment\spPatientAssessment_CreateWithJourney.sql" />
+    <Build Include="Stored Procedures\PatientAssessment\spPatientAssessment_UpdateWithJourney.sql" />
+    <Build Include="dbo\Tables\PatientAssessment.sql" />
+    <Build Include="Stored Procedures\PatientJourney\spPatientJourney_GetById.sql" />
+    <Build Include="Stored Procedures\PatientJourney\spPatientJourney_AuditsByPatient.sql" />
   </ItemGroup>
 </Project>

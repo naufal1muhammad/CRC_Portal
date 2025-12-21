@@ -42,10 +42,12 @@ wwwroot\js\patient\edit-appointment.js
 wwwroot\js\patient\edit-basic.js
 wwwroot\js\patient\edit-discharge.js
 wwwroot\js\patient\edit-documents.js
-wwwroot\js\patient\edit-journey.js
 wwwroot\js\settings\index.js
 wwwroot\js\site.js
 wwwroot\js\staffDashboard\index.js
+wwwroot\js\staffPatient\details.js
+wwwroot\js\staffPatient\journey.js
+wwwroot\js\staffPatient\templates\patientAssessment.js
 wwwroot\js\staff\index.js
 wwwroot\lib\admin-lte\css\adminlte.css
 wwwroot\lib\admin-lte\css\adminlte.css.map
@@ -9123,3 +9125,4 @@ wwwroot\uploads\staff\cbabdac92ac8428faf08e94267ca5b9c_PERSONAL IDENTIFICATION.p
 wwwroot\uploads\staff\e96d839fdcac402dad551e59a8fee99f_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\ea97aa116d0b4d89897f98cdaed6026b_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\fc09a8b391494530a7f571e35d9a629d_BASIC DEGREE CERTIFICATE.pdf
+wwwroot\js\patient\edit-journey.js

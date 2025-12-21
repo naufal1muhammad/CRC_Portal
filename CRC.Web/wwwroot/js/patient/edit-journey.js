@@ -1,426 +1,395 @@
 ﻿// @ts-nocheck
 (function() {
-    let tableBody;
-    let msg;
-    let btnAdd;
-    let modalEl;
-    let modal;
-    let txtDate;
-    let selType;
-    let selStaff;
-    let txtRemarks;
-    let modalMsg;
-    let modalTitle;
+    let journeyLoadedOnce = false;
 
-    // 🔹 Track whether we're adding or editing
-    let currentJourneyId = null;
+    // Reuse StaffPatient READ endpoints (Admin/Super/Staff)
+    const ENDPOINTS = {
+        getTimeline: "/StaffPatient/GetTimeline",
+        getTemplate: "/StaffPatient/GetJourneyTemplate",
+        getAssessment: "/StaffPatient/GetPatientAssessment",
+    };
+
+    // ---------------- basic helpers ----------------
+    function el(id) {
+        return document.getElementById(id);
+    }
 
     function getPatientId() {
-        const root = document.querySelector('[data-patient-id]');
-        return root ? (root.getAttribute('data-patient-id') || '') : '';
+        const root = document.querySelector("[data-patient-id]");
+        return root ? (root.getAttribute("data-patient-id") || "").trim() : "";
     }
 
-    async function loadJourneyTypes() {
-        if (!selType) return;
-
-        selType.innerHTML = '<option value="">Loading journey types...</option>';
-
-        try {
-            // Reuse the same endpoint as Appointment (LU_PJ_APP_TYPE)
-            const response = await fetch('/Patient/GetAppointmentLookups', {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' }
-            });
-
-            if (!response.ok) {
-                selType.innerHTML = '<option value="">Error loading journey types</option>';
-                return;
-            }
-
-            const result = await response.json();
-            if (!result.success) {
-                selType.innerHTML = '<option value="">Error loading journey types</option>';
-                return;
-            }
-
-            const types = result.types || [];
-            selType.innerHTML = '<option value="">-- Select Journey Type --</option>';
-
-            types.forEach(t => {
-                const opt = document.createElement('option');
-                opt.value = t.name || '';
-                opt.textContent = t.name || '';
-                selType.appendChild(opt);
-            });
-        } catch (err) {
-            console.error('Error loading journey types', err);
-            selType.innerHTML = '<option value="">Error loading journey types</option>';
-        }
+    function setMsg(text, cssClass) {
+        const host = el("spJourneyMsg");
+        if (!host) return;
+        host.className = (cssClass || "text-muted") + " small mb-3";
+        host.textContent = text || "";
     }
 
-    async function loadJourneyStaff() {
-        if (!selStaff) return;
-
-        selStaff.innerHTML = '<option value="">Loading staff...</option>';
-
-        try {
-            const response = await fetch('/Patient/GetJourneyStaffList', {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' }
-            });
-
-            if (!response.ok) {
-                selStaff.innerHTML = '<option value="">Error loading staff</option>';
-                return;
-            }
-
-            const result = await response.json();
-            if (!result.success) {
-                selStaff.innerHTML = '<option value="">Error loading staff</option>';
-                return;
-            }
-
-            const list = result.data || [];
-            selStaff.innerHTML = '<option value="">-- Select Staff --</option>';
-
-            list.forEach(s => {
-                const opt = document.createElement('option');
-                opt.value = s.staffId || '';
-                opt.textContent = s.staffName || '';
-                selStaff.appendChild(opt);
-            });
-        } catch (err) {
-            console.error('Error loading staff list', err);
-            selStaff.innerHTML = '<option value="">Error loading staff</option>';
-        }
+    async function getJson(url) {
+        const res = await fetch(url, { headers: { Accept: "application/json" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return await res.json();
     }
 
-    async function loadJourneys() {
-        if (!tableBody) return;
-
-        const patientId = getPatientId();
-        if (!patientId) {
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="5" class="text-center text-muted">
-                        Save Basic Details first before adding journeys.
-                    </td>
-                </tr>
-            `;
-            if (btnAdd) btnAdd.disabled = true;
-            return;
-        }
-
-        if (btnAdd) btnAdd.disabled = false;
-
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="5" class="text-center text-muted">Loading...</td>
-            </tr>
-        `;
-
-        try {
-            const response = await fetch('/Patient/GetJourneys?patientId=' + encodeURIComponent(patientId), {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' }
-            });
-
-            if (!response.ok) {
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="5" class="text-center text-danger">Error loading journeys.</td>
-                    </tr>
-                `;
-                return;
-            }
-
-            const result = await response.json();
-            if (!result.success) {
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="5" class="text-center text-danger">
-                            ${result.message || 'Error loading journeys.'}
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-
-            const data = result.data || [];
-
-            if (data.length === 0) {
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="5" class="text-center text-muted">No journeys found.</td>
-                    </tr>
-                `;
-                return;
-            }
-
-            tableBody.innerHTML = '';
-
-            data.forEach(j => {
-                const tr = document.createElement('tr');
-                tr.setAttribute('data-id', j.journeyId || 0);
-                // 🔹 store extra data for edit
-                tr.setAttribute('data-date-raw', j.journeyDateRaw || '');
-                tr.setAttribute('data-type-name', j.typeName || '');
-                tr.setAttribute('data-staff-id', j.staffId || '');
-                tr.setAttribute('data-remarks', j.remarks || '');
-
-                tr.innerHTML = `
-                    <td>${j.journeyDate || ''}</td>
-                    <td>${j.typeName || ''}</td>
-                    <td>${j.staffName || ''}</td>
-                    <td>${j.remarks || ''}</td>
-                    <td>
-                        <button type="button"
-                                class="btn btn-sm btn-secondary btn-journey-edit"
-                                data-id="${j.journeyId || 0}"
-                                title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button type="button"
-                                class="btn btn-sm btn-danger btn-journey-delete ms-1"
-                                data-id="${j.journeyId || 0}"
-                                title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </td>
-                `;
-
-                tableBody.appendChild(tr);
-            });
-        } catch (err) {
-            console.error('Error loading journeys', err);
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="5" class="text-center text-danger">Error loading journeys.</td>
-                </tr>
-            `;
-        }
+    function escapeHtml(str) {
+        return (str ?? "")
+            .toString()
+            .replace(/[&<>"']/g, (s) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[s]));
     }
 
-    async function openAddJourneyModal() {
-        const patientId = getPatientId();
-        if (!patientId) {
-            alert('Please save Basic Details first before adding journeys.');
-            return;
+    function pick(obj, keys, fallback = "") {
+        for (const k of keys) {
+            if (obj && obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== "") return obj[k];
         }
-
-        currentJourneyId = null; // NEW – add mode
-
-        if (modalMsg) {
-            modalMsg.textContent = '';
-            modalMsg.classList.remove('text-success');
-            modalMsg.classList.add('text-danger');
-        }
-
-        if (modalTitle) {
-            modalTitle.textContent = 'Add Journey';
-        }
-
-        // ensure dropdowns are populated (safe to call again)
-        await Promise.all([loadJourneyTypes(), loadJourneyStaff()]);
-
-        if (txtDate) txtDate.value = '';
-        if (selType) selType.value = '';
-        if (selStaff) selStaff.value = '';
-        if (txtRemarks) txtRemarks.value = '';
-
-        if (modal) modal.show();
+        return fallback;
     }
 
-    async function openEditJourneyModal(journeyId, rowEl) {
-        const patientId = getPatientId();
-        if (!patientId) {
-            alert('Please save Basic Details first.');
-            return;
-        }
-
-        currentJourneyId = journeyId; // NEW – edit mode
-
-        if (modalMsg) {
-            modalMsg.textContent = '';
-            modalMsg.classList.remove('text-success');
-            modalMsg.classList.add('text-danger');
-        }
-
-        if (modalTitle) {
-            modalTitle.textContent = 'Edit Journey';
-        }
-
-        const rawDate = rowEl.getAttribute('data-date-raw') || '';
-        const typeName = rowEl.getAttribute('data-type-name') || '';
-        const staffId = rowEl.getAttribute('data-staff-id') || '';
-        const remarks = rowEl.getAttribute('data-remarks') || '';
-
-        // make sure dropdowns are ready
-        await Promise.all([loadJourneyTypes(), loadJourneyStaff()]);
-
-        if (txtDate) txtDate.value = rawDate;
-        if (selType) selType.value = typeName;
-        if (selStaff) selStaff.value = staffId || '';
-        if (txtRemarks) txtRemarks.value = remarks || '';
-
-        if (modal) modal.show();
+    function normalizeTypeKey(type) {
+        return (type || "").toString().trim().toUpperCase();
     }
 
-    async function saveJourney() {
-        const patientId = getPatientId();
-        if (!patientId) {
-            if (modalMsg) modalMsg.textContent = 'Please save Basic Details first.';
-            return;
-        }
-
-        if (modalMsg) {
-            modalMsg.textContent = '';
-            modalMsg.classList.remove('text-success');
-            modalMsg.classList.add('text-danger');
-        }
-
-        const dateVal = txtDate ? txtDate.value : '';
-        const typeVal = selType ? selType.value : '';
-        const staffVal = selStaff ? selStaff.value : '';
-        const remarksVal = txtRemarks ? txtRemarks.value : '';
-
-        if (!dateVal || !typeVal || !staffVal) {
-            if (modalMsg) modalMsg.textContent = 'Please fill in all mandatory journey fields.';
-            return;
-        }
-
-        const payload = {
-            journeyId: currentJourneyId,      // 🔹 tells backend insert vs update
-            patientId: patientId,
-            pjAppTypeName: typeVal,
-            journeyDate: dateVal,
-            staffId: staffVal,
-            remarks: remarksVal
-        };
-
-        try {
-            const response = await fetch('/Patient/SaveJourney', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                if (modalMsg) modalMsg.textContent = 'Server error while saving journey.';
-                return;
-            }
-
-            const result = await response.json();
-
-            if (!result.success) {
-                if (modalMsg) modalMsg.textContent = result.message || 'Failed to save journey.';
-                return;
-            }
-
-            if (modalMsg) {
-                modalMsg.classList.remove('text-danger');
-                modalMsg.classList.add('text-success');
-                modalMsg.textContent = 'Journey saved.';
-            }
-
-            if (modal) modal.hide();
-
-            await loadJourneys();
-        } catch (err) {
-            console.error('Error saving journey', err);
-            if (modalMsg) modalMsg.textContent = 'An unexpected error occurred while saving journey.';
-        }
-    }
-
-    async function deleteJourney(journeyId) {
-        if (!journeyId || journeyId <= 0) return;
-        if (!confirm('Are you sure you want to delete this journey?')) return;
-
-        try {
-            const response = await fetch('/Patient/DeleteJourney', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({ journeyId: journeyId })
-            });
-
-            if (!response.ok) {
-                alert('Server error while deleting journey.');
-                return;
-            }
-
-            const result = await response.json();
-
-            if (!result.success) {
-                alert(result.message || 'Failed to delete journey.');
-                return;
-            }
-
-            await loadJourneys();
-        } catch (err) {
-            console.error('Error deleting journey', err);
-            alert('An unexpected error occurred while deleting journey.');
-        }
-    }
-
-    function attachRowHandlers() {
-        document.addEventListener('click', function(e) {
-            // 🔹 Edit
-            const editBtn = e.target.closest('.btn-journey-edit');
-            if (editBtn) {
-                const idStr = editBtn.getAttribute('data-id');
-                const id = idStr ? parseInt(idStr, 10) : 0;
-                if (id > 0) {
-                    const row = editBtn.closest('tr');
-                    if (row) {
-                        openEditJourneyModal(id, row);
-                    }
-                }
-                return;
-            }
-
-            // 🔹 Delete
-            const delBtn = e.target.closest('.btn-journey-delete');
-            if (delBtn) {
-                const idStr = delBtn.getAttribute('data-id');
-                const id = idStr ? parseInt(idStr, 10) : 0;
-                if (id > 0) {
-                    deleteJourney(id);
-                }
-            }
+    function fmtMY(dt) {
+        if (!dt) return "";
+        const d = new Date(dt);
+        if (Number.isNaN(d.getTime())) return String(dt); // fallback if backend sent non-ISO
+        return d.toLocaleString("en-MY", {
+            timeZone: "Asia/Kuala_Lumpur",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
         });
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
-        tableBody = document.querySelector('#journeyTable tbody');
-        msg = document.getElementById('journeyMessage');
-        btnAdd = document.getElementById('btnAddJourney');
-        modalEl = document.getElementById('journeyModal');
-        modal = modalEl ? new bootstrap.Modal(modalEl) : null;
-        txtDate = document.getElementById('JourneyDate');
-        selType = document.getElementById('JourneyType');
-        selStaff = document.getElementById('JourneyStaff');
-        txtRemarks = document.getElementById('JourneyRemarks');
-        modalMsg = document.getElementById('journeyModalMessage');
-        modalTitle = modalEl ? modalEl.querySelector('.modal-title') : null;
+    function toDateTimeLocalInput(dt) {
+        if (!dt) return "";
+        const s = dt.toString();
+        // If already "YYYY-MM-DDTHH:mm"
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) return s;
 
-        attachRowHandlers();
-        loadJourneyTypes();
-        loadJourneyStaff();
-        loadJourneys();
+        const d = new Date(s);
+        if (isNaN(d.getTime())) return "";
 
-        if (btnAdd) {
-            btnAdd.addEventListener('click', openAddJourneyModal);
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    // ---------------- template loader (reuse staff template modules) ----------------
+    const loadedScripts = new Set();
+    function loadScriptOnce(src) {
+        return new Promise((resolve, reject) => {
+            if (loadedScripts.has(src)) return resolve();
+
+            const s = document.createElement("script");
+            s.src = src;
+            s.async = true;
+            s.onload = () => {
+                loadedScripts.add(src);
+                resolve();
+            };
+            s.onerror = () => reject(new Error("Failed to load script: " + src));
+            document.head.appendChild(s);
+        });
+    }
+
+    let activeTemplateKey = null;
+    let activeTemplateApi = null;
+
+    function resolveTemplateApi(typeKeyUpper) {
+        const templates = window.StaffPatientTemplates || {};
+        if (templates[typeKeyUpper]) return templates[typeKeyUpper];
+        if (typeKeyUpper === "PATIENT ASSESSMENT" && templates.PatientAssessment) return templates.PatientAssessment;
+        return null;
+    }
+
+    function makeTemplateReadOnly(root) {
+        if (!root) return;
+
+        // Inputs/textareas: readonly; selects/checkboxes/radios: disabled
+        root.querySelectorAll("input, textarea, select").forEach((ctrl) => {
+            const tag = (ctrl.tagName || "").toLowerCase();
+            if (tag === "select") {
+                ctrl.disabled = true;
+                return;
+            }
+
+            const type = (ctrl.getAttribute("type") || "").toLowerCase();
+            if (type === "checkbox" || type === "radio" || type === "file") {
+                ctrl.disabled = true;
+                return;
+            }
+
+            // For date/datetime-local, disable to avoid picker edits
+            if (type === "date" || type === "datetime-local") {
+                ctrl.disabled = true;
+                return;
+            }
+
+            ctrl.readOnly = true;
+        });
+
+        // Any buttons inside template should not be clickable
+        root.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    }
+
+    async function activateTemplate(typeRaw, hostEl, assessmentDataOrNull) {
+        if (!hostEl) throw new Error("Template host not found.");
+
+        const typeKey = normalizeTypeKey(typeRaw);
+        activeTemplateKey = null;
+        activeTemplateApi = null;
+
+        // Load template JS if needed (skip if already registered)
+        if (typeKey === "PATIENT ASSESSMENT" && !resolveTemplateApi(typeKey)) {
+            await loadScriptOnce("/js/staffPatient/templates/patientAssessment.js");
         }
 
-        const btnSave = document.getElementById('btnSaveJourney');
-        if (btnSave) {
-            btnSave.addEventListener('click', saveJourney);
+        const api = resolveTemplateApi(typeKey);
+        if (!api) throw new Error("Template module not registered for: " + typeKey);
+        if (typeof api.init !== "function") throw new Error("Template module missing init() for: " + typeKey);
+
+        const templateRoot = api.rootSelector ? (hostEl.querySelector(api.rootSelector) || hostEl) : hostEl;
+        api.init(templateRoot);
+
+        activeTemplateKey = typeKey;
+        activeTemplateApi = api;
+
+        if (assessmentDataOrNull && typeof api.fill === "function") {
+            api.fill(assessmentDataOrNull);
+        }
+
+        // ✅ read-only (after fill so conditional sections render correctly)
+        makeTemplateReadOnly(templateRoot);
+    }
+
+    async function loadTemplate(typeRaw, assessmentDataOrNull) {
+        const host = el("journeyTemplateHost");
+        if (!host) return;
+
+        const typeKey = normalizeTypeKey(typeRaw);
+        if (!typeKey) {
+            host.innerHTML = `<div class="text-muted">No journey type.</div>`;
+            return;
+        }
+
+        const url = ENDPOINTS.getTemplate + "?type=" + encodeURIComponent(typeRaw);
+        const res = await fetch(url, { headers: { Accept: "text/html" } });
+        if (!res.ok) throw new Error("Failed to load template.");
+        const html = await res.text();
+        host.innerHTML = html;
+
+        await activateTemplate(typeRaw, host, assessmentDataOrNull);
+    }
+
+    // ---------------- timeline rendering ----------------
+    function renderTimeline(rows) {
+        const host = el("journeyTimeline");
+        if (!host) return;
+
+        host.innerHTML = "";
+
+        if (!rows || rows.length === 0) {
+            host.innerHTML = `<div class="text-muted">No journey records yet.</div>`;
+            return;
+        }
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "d-flex flex-column gap-2";
+
+        rows.forEach((item) => {
+            const id = pick(item, ["patientJourneyId", "PatientJourney_ID", "patientJourney_ID"], 0);
+            const type = pick(item, ["journeyType", "PjAppType_Name", "pjAppTypeName"], "");
+            const journeyDateRaw = pick(item, ["journeyDate", "PatientJourney_Date", "patientJourneyDate"], "");
+            const createdAtRaw = pick(item, ["createdAt", "Created_At", "CreatedAt", "createdAtDisplay"], "");
+            const createdByRaw = pick(
+                item,
+                [
+                    "createdByStaffName",
+                    "createdByName",
+                    "CreatedByStaffName",
+                    "CreatedBy_Staff_Name",
+                    "createdBy",
+                    "CreatedBy_Staff_ID",
+                    "createdByStaffId",
+                ],
+                ""
+            );
+
+            const updatedAtRaw = pick(item, ["updatedAt", "Updated_At", "UpdatedAt", "updatedAtDisplay"], "");
+            const updatedByRaw = pick(
+                item,
+                [
+                    "updatedByStaffName",
+                    "updatedByName",
+                    "UpdatedByStaffName",
+                    "UpdatedBy_Staff_Name",
+                    "updatedBy",
+                    "UpdatedBy_Staff_ID",
+                    "updatedByStaffId",
+                ],
+                ""
+            );
+
+            const card = document.createElement("div");
+            card.className = "border rounded p-3 bg-white js-journey-item";
+            card.style.cursor = "pointer";
+            card.dataset.journeyId = String(id);
+
+            const journeyDate = journeyDateRaw ? escapeHtml(fmtMY(journeyDateRaw) || journeyDateRaw) : "-";
+            const createdAt = createdAtRaw ? escapeHtml(fmtMY(createdAtRaw) || createdAtRaw) : "-";
+            const createdBy = createdByRaw ? escapeHtml(createdByRaw) : "-";
+            const updatedAt = updatedAtRaw ? escapeHtml(fmtMY(updatedAtRaw) || updatedAtRaw) : "";
+            const updatedBy = updatedByRaw ? escapeHtml(updatedByRaw) : "-";
+
+            const auditEvents = item.auditEvents || item.AuditEvents || item.audit || [];
+            let auditHtml = "";
+            if (Array.isArray(auditEvents) && auditEvents.length > 0) {
+                const itemsHtml = auditEvents
+                    .map((ev) => {
+                        const actionRaw = pick(ev, ["action", "Audit_Action", "auditAction"], "");
+                        const atRaw = pick(ev, ["at", "Audit_At", "auditAt"], "");
+                        const staffRaw = pick(ev, ["staffName", "Staff_Name", "staff"], "-");
+                        const noteRaw = pick(ev, ["note", "Audit_Note", "auditNote"], "");
+
+                        const a = (actionRaw || "").toString().trim().toUpperCase();
+                        const friendly = a === "CREATED" ? "Created" : a === "UPDATED" || a === "EDITED" ? "Edited" : a || "Action";
+                        const at = atRaw ? escapeHtml(fmtMY(atRaw) || atRaw) : "-";
+                        const staff = escapeHtml(staffRaw || "-");
+                        const note = noteRaw ? ` <span class="text-muted">— ${escapeHtml(noteRaw)}</span>` : "";
+
+                        return `<li class="small"><span class="fw-semibold">${friendly}</span> by ${staff} <span class="text-muted">at</span> ${at}${note}</li>`;
+                    })
+                    .join("");
+
+                auditHtml = `
+                    <details class="mt-2" open>
+                        <summary class="small text-muted">Audit history (${auditEvents.length})</summary>
+                        <ul class="mt-2 mb-0 ps-3">${itemsHtml}</ul>
+                    </details>`;
+            }
+
+            card.innerHTML = `
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="fw-bold">${escapeHtml(type || "Journey")}</div>
+                        <div class="text-muted small">Journey Date: ${journeyDate}</div>
+                    </div>
+                    <div class="text-muted small">Click to view</div>
+                </div>
+                <hr class="my-2"/>
+                <div class="small">
+                    <div><span class="text-muted">Created by</span> ${createdBy} <span class="text-muted">at</span> ${createdAt}</div>
+                    ${updatedAtRaw ? `<div class="mt-1"><span class="text-muted">Edited by</span> ${updatedBy} <span class="text-muted">at</span> ${updatedAt}</div>` : ""}
+                </div>
+                ${auditHtml}
+            `;
+
+            wrapper.appendChild(card);
+        });
+
+        host.appendChild(wrapper);
+    }
+
+    async function loadTimeline() {
+        const patientId = getPatientId();
+        if (!patientId) {
+            setMsg("Save Basic Details first before viewing journeys.", "text-muted");
+            renderTimeline([]);
+            return;
+        }
+
+        setMsg("Loading timeline...", "text-muted");
+        const url = ENDPOINTS.getTimeline + "?patientId=" + encodeURIComponent(patientId);
+        const result = await getJson(url);
+
+        if (!result.success) throw new Error(result.message || "Failed to load timeline.");
+        renderTimeline(result.data || []);
+        setMsg("", "text-muted");
+    }
+
+    // ---------------- modal (view-only) ----------------
+    function modal() {
+        const m = el("journeyModal");
+        if (!m) return null;
+        return bootstrap.Modal.getOrCreateInstance(m);
+    }
+
+    function resetModal() {
+        if (el("pj_patientJourneyId")) el("pj_patientJourneyId").value = "0";
+        if (el("pj_journeyDate")) el("pj_journeyDate").value = "";
+        if (el("pj_journeyType")) el("pj_journeyType").value = "";
+        if (el("pj_formError")) el("pj_formError").textContent = "";
+
+        const host = el("journeyTemplateHost");
+        if (host) host.innerHTML = `<div class="text-muted">Loading journey details...</div>`;
+
+        activeTemplateKey = null;
+        activeTemplateApi = null;
+    }
+
+    async function openViewModal(patientJourneyId) {
+        resetModal();
+        if (el("journeyModalTitle")) el("journeyModalTitle").textContent = "View Patient Journey";
+
+        if (el("pj_patientJourneyId")) el("pj_patientJourneyId").value = String(patientJourneyId || 0);
+
+        const url = ENDPOINTS.getAssessment + "?patientJourneyId=" + encodeURIComponent(patientJourneyId);
+        const result = await getJson(url);
+        if (!result.success) throw new Error(result.message || "Failed to load journey details.");
+
+        const journey = result.journey || result.data?.journey || {};
+        const assessment = result.assessment || result.data?.assessment || {};
+
+        const typeRaw = (journey.journeyType || journey.PjAppType_Name || "PATIENT ASSESSMENT").toString().trim();
+        if (el("pj_journeyType")) el("pj_journeyType").value = typeRaw;
+
+        const journeyDateInput =
+            journey.journeyDateInput ||
+            journey.patientJourneyDateInput ||
+            toDateTimeLocalInput(journey.journeyDate || journey.PatientJourney_Date || journey.patientJourneyDate);
+        if (journeyDateInput && el("pj_journeyDate")) el("pj_journeyDate").value = journeyDateInput;
+
+        await loadTemplate(typeRaw, assessment);
+        modal()?.show();
+    }
+
+    // ---------------- init / events ----------------
+    document.addEventListener("DOMContentLoaded", function() {
+        // Load timeline when Journey tab is shown (first time)
+        const journeyTabBtn = document.getElementById("tab-journey");
+        if (journeyTabBtn) {
+            journeyTabBtn.addEventListener("shown.bs.tab", async function() {
+                if (journeyLoadedOnce) return;
+                journeyLoadedOnce = true;
+
+                try {
+                    await loadTimeline();
+                } catch (err) {
+                    console.error(err);
+                    setMsg(err.message || "Error loading journey timeline.", "text-danger");
+                }
+            });
+        }
+
+        // Click timeline item → view modal
+        const timelineHost = el("journeyTimeline");
+        if (timelineHost) {
+            timelineHost.addEventListener("click", async function(e) {
+                const card = e.target.closest(".js-journey-item");
+                if (!card) return;
+
+                const id = parseInt(card.dataset.journeyId || "0", 10) || 0;
+                if (!id) return;
+
+                try {
+                    await openViewModal(id);
+                } catch (err) {
+                    console.error(err);
+                    setMsg(err.message || "Failed to open journey.", "text-danger");
+                }
+            });
         }
     });
 })();

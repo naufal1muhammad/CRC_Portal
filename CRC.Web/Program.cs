@@ -24,6 +24,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("AdminOrSuper", policy => policy.RequireClaim("UserType", "1", "2"));
     options.AddPolicy("AdminOnly", policy => policy.RequireClaim("UserType", "2"));
     options.AddPolicy("StaffOnly", policy => policy.RequireClaim("UserType", "3"));
+    options.AddPolicy("AdminOrSuperOrStaff", policy => policy.RequireClaim("UserType", "1", "2", "3"));
 });
 
 var app = builder.Build();

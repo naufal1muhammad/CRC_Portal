@@ -1,0 +1,425 @@
+﻿@* Patient Assessment Template (loaded into modal dynamically) *@
+
+<div id="tmplPatientAssessment">
+    <!-- iFOBT -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>iFOBT</strong>
+        </div>
+        <div class="card-body">
+            <label class="form-label">1. iFOBT Positive Date <span class="text-danger">*</span></label>
+            <input id="pa_iFOBTPositiveDate" type="date" class="form-control" />
+        </div>
+    </div>
+
+    <!-- Risks -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Risks</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-4">
+                <label class="form-label">2. Smoking <span class="text-danger">*</span></label>
+                <select id="pa_risksSmoking" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">3. Alcohol Consumption <span class="text-danger">*</span></label>
+                <select id="pa_risksAlcohol" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">4. Inflammatory Bowel Disease <span class="text-danger">*</span></label>
+                <select id="pa_risksIBD" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">5. Diet <span class="text-danger">*</span></label>
+                <select id="pa_risksDiet" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="0">VEGETARIAN</option>
+                    <option value="1">NON-VEGETARIAN</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">6. Sedentary Lifestyle <span class="text-danger">*</span></label>
+                <select id="pa_risksSedentary" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="PARTIALLY ACTIVE">PARTIALLY ACTIVE</option>
+                    <option value="NOT ACTIVE">NOT ACTIVE</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Symptoms -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Symptoms</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-4">
+                <label class="form-label">7. Loss of Weight <span class="text-danger">*</span></label>
+                <select id="pa_sympWeightLoss" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">8. Loss of Appetite <span class="text-danger">*</span></label>
+                <select id="pa_sympAppetiteLoss" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">9. Lethargy <span class="text-danger">*</span></label>
+                <select id="pa_sympLethargic" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">10. Abdominal Pain/Discomfort <span class="text-danger">*</span></label>
+                <select id="pa_sympAbdominalPain" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">11. Constipation <span class="text-danger">*</span></label>
+                <select id="pa_sympConstipation" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">12. Diarrhea <span class="text-danger">*</span></label>
+                <select id="pa_sympDiarrhea" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">13. Rectal Bleeding with Mucous <span class="text-danger">*</span></label>
+                <select id="pa_sympRectalBleedingMucous" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">14. Rectal Bleeding without Mucous <span class="text-danger">*</span></label>
+                <select id="pa_sympRectalBleedingNoMucous" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">15. Tenesmus <span class="text-danger">*</span></label>
+                <select id="pa_sympTenesmus" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Medical History -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Medical History</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-4">
+                <label class="form-label">16. Diabetes Mellitus <span class="text-danger">*</span></label>
+                <select id="pa_mhDiabetes" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">17. Hypertension <span class="text-danger">*</span></label>
+                <select id="pa_mhHypertension" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">18. Dyslipidemia <span class="text-danger">*</span></label>
+                <select id="pa_mhDyslipidemia" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">19. Bleeding Disorders <span class="text-danger">*</span></label>
+                <select id="pa_mhBleeding" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">20. Asthma <span class="text-danger">*</span></label>
+                <select id="pa_mhAsthma" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Allergy History -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Allergy History</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-4">
+                <label class="form-label">21. Medication <span class="text-danger">*</span></label>
+                <select id="pa_allergyMedication" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+            <div class="col-md-8" id="wrap_pa_allergyMedicationDetails">
+                <label class="form-label">22. If YES, please specify</label>
+                <input id="pa_allergyMedicationDetails" class="form-control" type="text" maxlength="100" />
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">23. Food <span class="text-danger">*</span></label>
+                <select id="pa_allergyFood" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+            <div class="col-md-8" id="wrap_pa_allergyFoodDetails">
+                <label class="form-label">24. If YES, please specify</label>
+                <input id="pa_allergyFoodDetails" class="form-control" type="text" maxlength="100" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Medication History -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Medication</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-4">
+                <label class="form-label">25. Anticoagulant/Aspirin <span class="text-danger">*</span></label>
+                <select id="pa_medAnticoagulant" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+            <div class="col-md-8" id="wrap_pa_medAnticoagulantDetails">
+                <label class="form-label">26. If YES, please specify</label>
+                <input id="pa_medAnticoagulantDetails" class="form-control" type="text" maxlength="100" />
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">27. Chronic Narcotics <span class="text-danger">*</span></label>
+                <select id="pa_medNarcotics" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+            <div class="col-md-8" id="wrap_pa_medNarcoticsDetails">
+                <label class="form-label">28. If YES, please specify</label>
+                <input id="pa_medNarcoticsDetails" class="form-control" type="text" maxlength="100" />
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">29. OHA/Insulin <span class="text-danger">*</span></label>
+                <select id="pa_medInsulin" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+            <div class="col-md-8" id="wrap_pa_medInsulinDetails">
+                <label class="form-label">30. If YES, please specify</label>
+                <input id="pa_medInsulinDetails" class="form-control" type="text" maxlength="100" />
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">31. Anti-Hypertensives <span class="text-danger">*</span></label>
+                <select id="pa_medAntiHypertensives" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+            <div class="col-md-8" id="wrap_pa_medAntiHypertensivesDetails">
+                <label class="form-label">32. If YES, please specify</label>
+                <input id="pa_medAntiHypertensivesDetails" class="form-control" type="text" maxlength="100" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Scope -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Scope</strong>
+        </div>
+        <div class="card-body">
+            <label class="form-label">33. Previous Scope Done (optional)</label>
+            <input id="pa_previousScopeDate" type="date" class="form-control" />
+        </div>
+    </div>
+
+    <!-- Family History -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Family History of Colon Cancer</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-6">
+                <label class="form-label">34. First Degree Family <span class="text-danger">*</span></label>
+                <select id="pa_fhFirstDegree" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">35. Second Degree Family <span class="text-danger">*</span></label>
+                <select id="pa_fhSecondDegree" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Physical Examination -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Physical Examination</strong>
+        </div>
+        <div class="card-body">
+            <label class="form-label">36. General Examination PR (optional)</label>
+            <textarea id="pa_physicalExamDetails" class="form-control" rows="2" maxlength="500"></textarea>
+        </div>
+    </div>
+
+    <!-- Investigation -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Investigation</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-4">
+                <label class="form-label">37. FBC <span class="text-danger">*</span></label>
+                <select id="pa_invFBC" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">38. BUSE <span class="text-danger">*</span></label>
+                <select id="pa_invBUSE" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">39. RBS <span class="text-danger">*</span></label>
+                <select id="pa_invRBS" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">40. LFT <span class="text-danger">*</span></label>
+                <select id="pa_invLFT" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">41. Coag <span class="text-danger">*</span></label>
+                <select id="pa_invCoag" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Management Plan -->
+    <div class="card mb-0">
+        <div class="card-header">
+            <strong>Management Plan</strong>
+        </div>
+        <div class="card-body">
+            <div class="form-check">
+                <input id="pa_mgmtBowelPrep" class="form-check-input" type="checkbox" />
+                <label class="form-check-label" for="pa_mgmtBowelPrep">42. Bowel Prep Instruction</label>
+            </div>
+            <div class="form-check">
+                <input id="pa_mgmtProcedure" class="form-check-input" type="checkbox" />
+                <label class="form-check-label" for="pa_mgmtProcedure">43. Procedure Explanation</label>
+            </div>
+            <div class="form-check">
+                <input id="pa_mgmtConsent" class="form-check-input" type="checkbox" />
+                <label class="form-check-label" for="pa_mgmtConsent">44. Consent Taken</label>
+            </div>
+            <div class="form-check">
+                <input id="pa_mgmtAdvise" class="form-check-input" type="checkbox" />
+                <label class="form-check-label" for="pa_mgmtAdvise">45. Advise for Medication</label>
+            </div>
+        </div>
+    </div>
+</div>

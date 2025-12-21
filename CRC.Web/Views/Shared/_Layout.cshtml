@@ -98,7 +98,6 @@
                     string.Equals(currentController, "Patient", StringComparison.OrdinalIgnoreCase);
                 }
 
-                <!-- SUPERUSER-only menus -->
                 @if (isSuper)
                 {
                     <a asp-controller="Dashboard" asp-action="Index"
@@ -198,9 +197,9 @@
 
                 @if (isStaff)
                 {
-                    <a asp-controller="MyTasks" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("MyTasks", "Index")">
-                        <i class="fas fa-list-check me-2"></i> My Tasks
+                    <a asp-controller="StaffDashboard" asp-action="Index"
+                       class="list-group-item list-group-item-action @activeClass("StaffDashboard", "Index")">
+                        <i class="fas fa-home me-2"></i> Dashboard
                     </a>
                 }
 

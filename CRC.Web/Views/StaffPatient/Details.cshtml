@@ -1,13 +1,231 @@
 ﻿@{
-    ViewData["Title"] = "Patient Details (Staff)";
-    var pid = ViewData["PatientId"]?.ToString() ?? "";
+    ViewData["Title"] = "Patient";
+    var patientId = (ViewData["PatientId"]?.ToString() ?? "");
 }
 
-<div class="card shadow-sm">
-    <div class="card-body">
-        <h5 class="mb-2">Patient Details (Staff View)</h5>
-        <p class="text-muted mb-0">
-            Placeholder page. Patient ID: <strong>@pid</strong>
-        </p>
+<div class="container-fluid">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h3 class="mb-0" id="spPatientHeaderName">Patient</h3>
+            <small class="text-muted" id="spPatientHeaderMeta">ID: @patientId</small>
+        </div>
+    </div>
+
+    <input type="hidden" id="patientId" value="@ViewBag.PatientId" />
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-3" id="spTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="tab-basic-tab" data-bs-toggle="tab" data-bs-target="#tab-basic"
+                    type="button" role="tab" aria-controls="tab-basic" aria-selected="true">
+                Basic Details
+            </button>
+        </li>
+
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-journey-tab" data-bs-toggle="tab" data-bs-target="#tab-journey"
+                    type="button" role="tab" aria-controls="tab-journey" aria-selected="false">
+                Patient Journey
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="spTabsContent">
+        <!-- =========================
+             TAB 1: BASIC DETAILS
+        ========================== -->
+        <div class="tab-pane fade show active" id="tab-basic" role="tabpanel" aria-labelledby="tab-basic-tab">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small mb-3" id="spBasicMsg"></div>
+
+                    <!-- Basic Details (readonly) -->
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Patient Name</label>
+                            <input id="sp_name" class="form-control" type="text" readonly />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">NRIC</label>
+                            <input id="sp_nric" class="form-control" type="text" readonly />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Gender</label>
+                            <input id="sp_gender" class="form-control" type="text" readonly />
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Email</label>
+                            <input id="sp_email" class="form-control" type="text" readonly />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Phone</label>
+                            <input id="sp_phone" class="form-control" type="text" readonly />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Branch</label>
+                            <input id="sp_branchName" class="form-control" type="text" readonly />
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Admitted On</label>
+                            <input id="sp_admittedOn" class="form-control" type="date" readonly />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Birth Date</label>
+                            <input id="sp_birthDate" class="form-control" type="date" readonly />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Race</label>
+                            <input id="sp_raceName" class="form-control" type="text" readonly />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Religion</label>
+                            <input id="sp_religionName" class="form-control" type="text" readonly />
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Marital Status</label>
+                            <input id="sp_maritalStatusName" class="form-control" type="text" readonly />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Occupation</label>
+                            <input id="sp_occupationName" class="form-control" type="text" readonly />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Source</label>
+                            <input id="sp_sourceName" class="form-control" type="text" readonly />
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label">Address</label>
+                            <textarea id="sp_address" class="form-control" rows="2" readonly></textarea>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Emergency Contact Name</label>
+                            <input id="sp_emergencyName" class="form-control" type="text" readonly />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Emergency Relationship</label>
+                            <input id="sp_emergencyRelationship" class="form-control" type="text" readonly />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Emergency Number</label>
+                            <input id="sp_emergencyNumber" class="form-control" type="text" readonly />
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Discharge Type</label>
+                            <input id="sp_dischargeTypeName" class="form-control" type="text" readonly />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Discharge Date</label>
+                            <input id="sp_dischargeDate" class="form-control" type="date" readonly />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Discharge Remarks</label>
+                            <input id="sp_dischargeRemarks" class="form-control" type="text" readonly />
+                        </div>
+                    </div>
+
+                    <div class="alert alert-secondary mt-3 mb-0">
+                        <small class="text-muted">
+                            Note: Basic Details are read-only for Staff.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- =========================
+             TAB 2: PATIENT JOURNEY
+        ========================== -->
+        <div class="tab-pane fade" id="tab-journey" role="tabpanel" aria-labelledby="tab-journey-tab">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div>
+                            <h5 class="mb-0">Patient Journey</h5>
+                        </div>
+
+                        <button id="btnAddJourney" class="btn btn-sm btn-primary" type="button">
+                            <i class="fas fa-plus me-1"></i> Add Patient Journey
+                        </button>
+                    </div>
+
+                    <div class="text-muted small mb-3" id="spJourneyMsg"></div>
+
+                    <!-- Timeline container -->
+                    <div id="journeyTimeline" class="position-relative">
+                        <!-- JS will render timeline here -->
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+
+<!-- =========================
+     Modal: Add/Edit Journey
+========================= -->
+<div class="modal fade" id="journeyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="journeyModalTitle">Add Patient Journey</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <input type="hidden" id="pj_patientJourneyId" value="0" />
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Journey Date</label>
+                        <input id="pj_journeyDate" type="datetime-local" class="form-control" />
+                        <div class="form-text">This is the clinical journey date (not the audit timestamp).</div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Journey Type</label>
+                        <select id="pj_journeyType" class="form-select">
+                            <option value="">-- Select --</option>
+                            <option value="PATIENT ASSESSMENT">PATIENT ASSESSMENT</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Note (optional)</label>
+                        <input id="pj_auditNote" class="form-control" type="text" maxlength="500" />
+                        <div class="form-text">Saved into PatientJourneyAudit.Audit_Note</div>
+                    </div>
+                </div>
+
+                <hr class="my-3" />
+
+                <!-- Template HTML will be injected here -->
+                <div id="journeyTemplateHost">
+                    <div class="text-muted">
+                        Select a Journey Type to load the template.
+                    </div>
+                </div>
+
+                <div class="text-danger small mt-2" id="pj_formError"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button id="btnSaveJourney" type="button" class="btn btn-primary">
+                    <i class="fas fa-save me-1"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/staffPatient/details.js" asp-append-version="true"></script>
+    <script src="~/js/staffPatient/journey.js" asp-append-version="true"></script>
+    @* Template JS is loaded dynamically by journey.js based on selected Journey Type *@
+}
