@@ -16,6 +16,15 @@ BEGIN
     DELETE FROM [dbo].[PatientDocument]
     WHERE [Patient_ID] = @Patient_ID;
 
+    DELETE FROM [dbo].[PatientFollowUp]
+    WHERE [Patient_ID] = @Patient_ID;
+
+    DELETE FROM [dbo].[PatientColonoscopy]
+    WHERE [Patient_ID] = @Patient_ID;
+
+    DELETE FROM [dbo].[PatientAssessment]
+    WHERE [Patient_ID] = @Patient_ID;
+
     -- Finally delete from master
     DELETE FROM [dbo].[PatientBasic]
     WHERE [Patient_ID] = @Patient_ID;

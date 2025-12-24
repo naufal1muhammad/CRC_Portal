@@ -61,12 +61,40 @@ BEGIN
     -- 2) Cascade updates to children
     ---------------------------------
 
-    -- PatientJourney: Patient_ID, Patient_Name, Patient_Email, Patient_Phone
+    -- PatientJourney: Patient_ID, Patient_Name
     UPDATE pj
     SET
         pj.[Patient_Name]  = @Patient_Name
     FROM [dbo].[PatientJourney] pj
     WHERE pj.[Patient_ID] = @Patient_ID;
+
+    -- PatientFollowUp: Patient_ID, Patient_Name
+    UPDATE pf
+    SET
+        pf.[Patient_Name]  = @Patient_Name
+    FROM [dbo].[PatientFollowUp] pf
+    WHERE pf.[Patient_ID] = @Patient_ID;
+
+    -- PatientDocument: Patient_ID, Patient_Name
+    UPDATE pd
+    SET
+        pd.[Patient_Name] = @Patient_Name
+    FROM [dbo].[PatientDocument] pd
+    WHERE pd.[Patient_ID] = @Patient_ID;
+
+    -- PatientColonoscopy: Patient_ID, Patient_Name
+    UPDATE pc
+    SET
+        pc.[Patient_Name] = @Patient_Name
+    FROM [dbo].[PatientColonoscopy] pc
+    WHERE pc.[Patient_ID] = @Patient_ID;
+
+    -- PatientAssessment: Patient_ID, Patient_Name
+    UPDATE pas
+    SET
+        pas.[Patient_Name] = @Patient_Name
+    FROM [dbo].[PatientAssessment] pas
+    WHERE pas.[Patient_ID] = @Patient_ID;
 
     -- PatientAppointment: Patient_ID, Patient_Name, Patient_Email, Patient_Phone
     UPDATE pa
@@ -77,11 +105,5 @@ BEGIN
     FROM [dbo].[PatientAppointment] pa
     WHERE pa.[Patient_ID] = @Patient_ID;
 
-    -- PatientDocument: Patient_ID, Patient_Name
-    UPDATE pd
-    SET
-        pd.[Patient_Name] = @Patient_Name
-    FROM [dbo].[PatientDocument] pd
-    WHERE pd.[Patient_ID] = @Patient_ID;
 END;
 GO
