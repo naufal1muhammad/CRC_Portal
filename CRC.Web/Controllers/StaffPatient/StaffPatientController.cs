@@ -41,6 +41,12 @@ namespace CRC.Web.Controllers.StaffPatient
             if (jt.Equals("PATIENT ASSESSMENT", StringComparison.OrdinalIgnoreCase))
                 return PartialView("~/Views/StaffPatient/Templates/_PatientAssessment.cshtml");
 
+            if (jt.Equals("PATIENT COLONOSCOPY", StringComparison.OrdinalIgnoreCase))
+                return PartialView("~/Views/StaffPatient/Templates/_PatientColonoscopy.cshtml");
+
+            if (jt.Equals("PATIENT FOLLOW UP", StringComparison.OrdinalIgnoreCase))
+                return PartialView("~/Views/StaffPatient/Templates/_PatientFollowUp.cshtml");
+
             return BadRequest("Unsupported journey type.");
         }
 
@@ -481,6 +487,359 @@ namespace CRC.Web.Controllers.StaffPatient
             catch
             {
                 return Ok(new { success = false, message = "Error saving assessment." });
+            }
+        }
+
+        // ------------------------------
+        // PATIENT COLONOSCOPY
+        // ------------------------------
+
+        [Authorize(Policy = "AdminOrSuperOrStaff")]
+        [HttpGet]
+        public async Task<IActionResult> GetPatientColonoscopy(int patientJourneyId)
+        {
+            if (patientJourneyId <= 0)
+                return Ok(new { success = false, message = "Invalid journey." });
+
+            try
+            {
+                // 1) Journey row
+                var dtJ = await _db.ExecuteDataTableAsync(
+                    "spPatientJourney_GetById",
+                    new[] { new SqlParameter("@PatientJourney_ID", patientJourneyId) }
+                );
+                if (dtJ.Rows.Count == 0)
+                    return Ok(new { success = false, message = "Journey not found." });
+
+                var j = dtJ.Rows[0];
+
+                string ToLocalInput(object v)
+                {
+                    if (v == null || v == DBNull.Value) return "";
+                    var d = Convert.ToDateTime(v);
+                    return d.ToString("yyyy-MM-ddTHH:mm");
+                }
+
+                var journey = new
+                {
+                    patientJourneyId = patientJourneyId,
+                    journeyType = j["PjAppType_Name"]?.ToString() ?? "",
+                    journeyDateInput = ToLocalInput(j["PatientJourney_Date"])
+                };
+
+                // 2) Colonoscopy row
+                var dtA = await _db.ExecuteDataTableAsync(
+                    "spPatientColonoscopy_GetByJourneyId",
+                    new[] { new SqlParameter("@PatientJourney_ID", patientJourneyId) }
+                );
+
+                object? assessment = null;
+                if (dtA.Rows.Count > 0)
+                {
+                    var a = dtA.Rows[0];
+                    assessment = dtA.Columns.Cast<DataColumn>()
+                        .ToDictionary(c => c.ColumnName, c => a[c] == DBNull.Value ? null : a[c]);
+                }
+
+                return Ok(new { success = true, journey, assessment });
+            }
+            catch
+            {
+                return Ok(new { success = false, message = "Error loading colonoscopy." });
+            }
+        }
+
+        public class SavePatientColonoscopyRequest
+        {
+            public int PatientJourneyId { get; set; } // 0 = create
+            public string PatientId { get; set; } = "";
+            public DateTime PatientJourneyDate { get; set; }
+            public string? AuditNote { get; set; }
+
+            public bool ColonoscopyStatus { get; set; }
+            public string? ColonoscopyStatus_Details { get; set; }
+            public int BowelPreparation { get; set; }
+
+            public bool Findings_Anus { get; set; }
+            public string? Findings_AnusDetails { get; set; }
+            public bool Findings_Rectum { get; set; }
+            public string? Findings_RectumDetails { get; set; }
+            public bool Findings_SigmoidColon { get; set; }
+            public string? Findings_SigmoidColonDetails { get; set; }
+            public bool Findings_DescendingColon { get; set; }
+            public string? Findings_DescendingColonDetails { get; set; }
+            public bool Findings_SplenicFlexure { get; set; }
+            public string? Findings_SplenicFlexureDetails { get; set; }
+            public bool Findings_TransverseColon { get; set; }
+            public string? Findings_TransverseColonDetails { get; set; }
+            public bool Findings_HepaticFlexure { get; set; }
+            public string? Findings_HepaticFlexureDetails { get; set; }
+            public bool Findings_AscendingColon { get; set; }
+            public string? Findings_AscendingColonDetails { get; set; }
+            public bool Findings_Caecum { get; set; }
+            public string? Findings_CaecumDetails { get; set; }
+
+            public bool HPE_Status { get; set; }
+            public string? HPE_Details { get; set; }
+
+            public string Complications { get; set; } = "";
+            public string? Complications_Details { get; set; }
+
+            public string DischargePlan { get; set; } = "";
+        }
+
+        [Authorize(Policy = "StaffOnly")]
+        [HttpPost]
+        public async Task<IActionResult> SavePatientColonoscopy([FromBody] SavePatientColonoscopyRequest model)
+        {
+            if (model == null || string.IsNullOrWhiteSpace(model.PatientId))
+                return BadRequest(new { success = false, message = "Invalid request." });
+
+            var staffId = GetStaffId();
+            if (string.IsNullOrWhiteSpace(staffId))
+                return Ok(new { success = false, message = "Your account is not linked to a Staff_ID." });
+
+            try
+            {
+                if (model.PatientJourneyId <= 0)
+                {
+                    // CREATE
+                    var prms = new List<SqlParameter>
+                    {
+                        new SqlParameter("@Patient_ID", model.PatientId.Trim()),
+                        new SqlParameter("@PatientJourney_Date", model.PatientJourneyDate),
+                        new SqlParameter("@Staff_ID", staffId),
+                        new SqlParameter("@Audit_Note", (object?)model.AuditNote ?? DBNull.Value),
+
+                        new SqlParameter("@ColonoscopyStatus", model.ColonoscopyStatus),
+                        new SqlParameter("@ColonoscopyStatus_Details", (object?)model.ColonoscopyStatus_Details ?? DBNull.Value),
+                        new SqlParameter("@BowelPreparation", model.BowelPreparation),
+
+                        new SqlParameter("@Findings_Anus", model.Findings_Anus),
+                        new SqlParameter("@Findings_AnusDetails", (object?)model.Findings_AnusDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_Rectum", model.Findings_Rectum),
+                        new SqlParameter("@Findings_RectumDetails", (object?)model.Findings_RectumDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_SigmoidColon", model.Findings_SigmoidColon),
+                        new SqlParameter("@Findings_SigmoidColonDetails", (object?)model.Findings_SigmoidColonDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_DescendingColon", model.Findings_DescendingColon),
+                        new SqlParameter("@Findings_DescendingColonDetails", (object?)model.Findings_DescendingColonDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_SplenicFlexure", model.Findings_SplenicFlexure),
+                        new SqlParameter("@Findings_SplenicFlexureDetails", (object?)model.Findings_SplenicFlexureDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_TransverseColon", model.Findings_TransverseColon),
+                        new SqlParameter("@Findings_TransverseColonDetails", (object?)model.Findings_TransverseColonDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_HepaticFlexure", model.Findings_HepaticFlexure),
+                        new SqlParameter("@Findings_HepaticFlexureDetails", (object?)model.Findings_HepaticFlexureDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_AscendingColon", model.Findings_AscendingColon),
+                        new SqlParameter("@Findings_AscendingColonDetails", (object?)model.Findings_AscendingColonDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_Caecum", model.Findings_Caecum),
+                        new SqlParameter("@Findings_CaecumDetails", (object?)model.Findings_CaecumDetails ?? DBNull.Value),
+
+                        new SqlParameter("@HPE_Status", model.HPE_Status),
+                        new SqlParameter("@HPE_Details", (object?)model.HPE_Details ?? DBNull.Value),
+
+                        new SqlParameter("@Complications", model.Complications ?? ""),
+                        new SqlParameter("@Complications_Details", (object?)model.Complications_Details ?? DBNull.Value),
+
+                        new SqlParameter("@DischargePlan", model.DischargePlan ?? "")
+                    };
+
+                    var dt = await _db.ExecuteDataTableAsync("spPatientColonoscopy_CreateWithJourney", prms.ToArray());
+
+                    var newJourneyId = dt.Rows.Count > 0
+                        ? Convert.ToInt32(dt.Rows[0]["PatientJourney_ID"])
+                        : 0;
+
+                    return Ok(new { success = true, patientJourneyId = newJourneyId });
+                }
+                else
+                {
+                    // UPDATE
+                    var prms = new List<SqlParameter>
+                    {
+                        new SqlParameter("@PatientJourney_ID", model.PatientJourneyId),
+                        new SqlParameter("@PatientJourney_Date", model.PatientJourneyDate),
+                        new SqlParameter("@Staff_ID", staffId),
+                        new SqlParameter("@Audit_Note", (object?)model.AuditNote ?? DBNull.Value),
+
+                        new SqlParameter("@ColonoscopyStatus", model.ColonoscopyStatus),
+                        new SqlParameter("@ColonoscopyStatus_Details", (object?)model.ColonoscopyStatus_Details ?? DBNull.Value),
+                        new SqlParameter("@BowelPreparation", model.BowelPreparation),
+
+                        new SqlParameter("@Findings_Anus", model.Findings_Anus),
+                        new SqlParameter("@Findings_AnusDetails", (object?)model.Findings_AnusDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_Rectum", model.Findings_Rectum),
+                        new SqlParameter("@Findings_RectumDetails", (object?)model.Findings_RectumDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_SigmoidColon", model.Findings_SigmoidColon),
+                        new SqlParameter("@Findings_SigmoidColonDetails", (object?)model.Findings_SigmoidColonDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_DescendingColon", model.Findings_DescendingColon),
+                        new SqlParameter("@Findings_DescendingColonDetails", (object?)model.Findings_DescendingColonDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_SplenicFlexure", model.Findings_SplenicFlexure),
+                        new SqlParameter("@Findings_SplenicFlexureDetails", (object?)model.Findings_SplenicFlexureDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_TransverseColon", model.Findings_TransverseColon),
+                        new SqlParameter("@Findings_TransverseColonDetails", (object?)model.Findings_TransverseColonDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_HepaticFlexure", model.Findings_HepaticFlexure),
+                        new SqlParameter("@Findings_HepaticFlexureDetails", (object?)model.Findings_HepaticFlexureDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_AscendingColon", model.Findings_AscendingColon),
+                        new SqlParameter("@Findings_AscendingColonDetails", (object?)model.Findings_AscendingColonDetails ?? DBNull.Value),
+                        new SqlParameter("@Findings_Caecum", model.Findings_Caecum),
+                        new SqlParameter("@Findings_CaecumDetails", (object?)model.Findings_CaecumDetails ?? DBNull.Value),
+
+                        new SqlParameter("@HPE_Status", model.HPE_Status),
+                        new SqlParameter("@HPE_Details", (object?)model.HPE_Details ?? DBNull.Value),
+
+                        new SqlParameter("@Complications", model.Complications ?? ""),
+                        new SqlParameter("@Complications_Details", (object?)model.Complications_Details ?? DBNull.Value),
+
+                        new SqlParameter("@DischargePlan", model.DischargePlan ?? "")
+                    };
+
+                    await _db.ExecuteNonQueryAsync("spPatientColonoscopy_UpdateWithJourney", prms.ToArray());
+                    return Ok(new { success = true, patientJourneyId = model.PatientJourneyId });
+                }
+            }
+            catch (SqlException ex)
+            {
+                return Ok(new { success = false, message = ex.Message });
+            }
+            catch
+            {
+                return Ok(new { success = false, message = "Error saving colonoscopy." });
+            }
+        }
+
+        // ------------------------------
+        // PATIENT FOLLOW UP
+        // ------------------------------
+
+        [Authorize(Policy = "AdminOrSuperOrStaff")]
+        [HttpGet]
+        public async Task<IActionResult> GetPatientFollowUp(int patientJourneyId)
+        {
+            if (patientJourneyId <= 0)
+                return Ok(new { success = false, message = "Invalid journey." });
+
+            try
+            {
+                // 1) Journey row
+                var dtJ = await _db.ExecuteDataTableAsync(
+                    "spPatientJourney_GetById",
+                    new[] { new SqlParameter("@PatientJourney_ID", patientJourneyId) }
+                );
+                if (dtJ.Rows.Count == 0)
+                    return Ok(new { success = false, message = "Journey not found." });
+
+                var j = dtJ.Rows[0];
+
+                string ToLocalInput(object v)
+                {
+                    if (v == null || v == DBNull.Value) return "";
+                    var d = Convert.ToDateTime(v);
+                    return d.ToString("yyyy-MM-ddTHH:mm");
+                }
+
+                var journey = new
+                {
+                    patientJourneyId = patientJourneyId,
+                    journeyType = j["PjAppType_Name"]?.ToString() ?? "",
+                    journeyDateInput = ToLocalInput(j["PatientJourney_Date"])
+                };
+
+                // 2) Follow up row
+                var dtA = await _db.ExecuteDataTableAsync(
+                    "spPatientFollowUp_GetByJourneyId",
+                    new[] { new SqlParameter("@PatientJourney_ID", patientJourneyId) }
+                );
+
+                object? assessment = null;
+                if (dtA.Rows.Count > 0)
+                {
+                    var a = dtA.Rows[0];
+                    assessment = dtA.Columns.Cast<DataColumn>()
+                        .ToDictionary(c => c.ColumnName, c => a[c] == DBNull.Value ? null : a[c]);
+                }
+
+                return Ok(new { success = true, journey, assessment });
+            }
+            catch
+            {
+                return Ok(new { success = false, message = "Error loading follow up." });
+            }
+        }
+
+        public class SavePatientFollowUpRequest
+        {
+            public int PatientJourneyId { get; set; } // 0 = create
+            public string PatientId { get; set; } = "";
+            public DateTime PatientJourneyDate { get; set; }
+            public string? AuditNote { get; set; }
+
+            public string HPE_Results { get; set; } = "";
+            public string DischargePlan { get; set; } = "";
+            public bool DischargeSummary_Status { get; set; }
+        }
+
+        [Authorize(Policy = "StaffOnly")]
+        [HttpPost]
+        public async Task<IActionResult> SavePatientFollowUp([FromBody] SavePatientFollowUpRequest model)
+        {
+            if (model == null || string.IsNullOrWhiteSpace(model.PatientId))
+                return BadRequest(new { success = false, message = "Invalid request." });
+
+            var staffId = GetStaffId();
+            if (string.IsNullOrWhiteSpace(staffId))
+                return Ok(new { success = false, message = "Your account is not linked to a Staff_ID." });
+
+            try
+            {
+                if (model.PatientJourneyId <= 0)
+                {
+                    // CREATE
+                    var prms = new List<SqlParameter>
+                    {
+                        new SqlParameter("@Patient_ID", model.PatientId.Trim()),
+                        new SqlParameter("@PatientJourney_Date", model.PatientJourneyDate),
+                        new SqlParameter("@Staff_ID", staffId),
+                        new SqlParameter("@Audit_Note", (object?)model.AuditNote ?? DBNull.Value),
+
+                        new SqlParameter("@HPE_Results", model.HPE_Results ?? ""),
+                        new SqlParameter("@DischargePlan", model.DischargePlan ?? ""),
+                        new SqlParameter("@DischargeSummary_Status", model.DischargeSummary_Status)
+                    };
+
+                    var dt = await _db.ExecuteDataTableAsync("spPatientFollowUp_CreateWithJourney", prms.ToArray());
+
+                    var newJourneyId = dt.Rows.Count > 0
+                        ? Convert.ToInt32(dt.Rows[0]["PatientJourney_ID"])
+                        : 0;
+
+                    return Ok(new { success = true, patientJourneyId = newJourneyId });
+                }
+                else
+                {
+                    // UPDATE
+                    var prms = new List<SqlParameter>
+                    {
+                        new SqlParameter("@PatientJourney_ID", model.PatientJourneyId),
+                        new SqlParameter("@PatientJourney_Date", model.PatientJourneyDate),
+                        new SqlParameter("@Staff_ID", staffId),
+                        new SqlParameter("@Audit_Note", (object?)model.AuditNote ?? DBNull.Value),
+
+                        new SqlParameter("@HPE_Results", model.HPE_Results ?? ""),
+                        new SqlParameter("@DischargePlan", model.DischargePlan ?? ""),
+                        new SqlParameter("@DischargeSummary_Status", model.DischargeSummary_Status)
+                    };
+
+                    await _db.ExecuteNonQueryAsync("spPatientFollowUp_UpdateWithJourney", prms.ToArray());
+                    return Ok(new { success = true, patientJourneyId = model.PatientJourneyId });
+                }
+            }
+            catch (SqlException ex)
+            {
+                return Ok(new { success = false, message = ex.Message });
+            }
+            catch
+            {
+                return Ok(new { success = false, message = "Error saving follow up." });
             }
         }
     }

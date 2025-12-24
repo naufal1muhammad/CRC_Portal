@@ -1,12 +1,30 @@
 ﻿// @ts-nocheck
-(function() {
+(function () {
     let journeyLoadedOnce = false;
 
     // Reuse StaffPatient READ endpoints (Admin/Super/Staff)
     const ENDPOINTS = {
         getTimeline: "/StaffPatient/GetTimeline",
         getTemplate: "/StaffPatient/GetJourneyTemplate",
-        getAssessment: "/StaffPatient/GetPatientAssessment",
+
+        getPatientAssessment: "/StaffPatient/GetPatientAssessment",
+        getPatientColonoscopy: "/StaffPatient/GetPatientColonoscopy",
+        getPatientFollowUp: "/StaffPatient/GetPatientFollowUp",
+    };
+
+    const TEMPLATE_CONFIG = {
+        "PATIENT ASSESSMENT": {
+            script: "/js/staffPatient/templates/patientAssessment.js",
+            get: () => ENDPOINTS.getPatientAssessment,
+        },
+        "PATIENT COLONOSCOPY": {
+            script: "/js/staffPatient/templates/patientColonoscopy.js",
+            get: () => ENDPOINTS.getPatientColonoscopy,
+        },
+        "PATIENT FOLLOW UP": {
+            script: "/js/staffPatient/templates/patientFollowUp.js",
+            get: () => ENDPOINTS.getPatientFollowUp,
+        },
     };
 
     // ---------------- basic helpers ----------------
@@ -142,8 +160,9 @@
         activeTemplateApi = null;
 
         // Load template JS if needed (skip if already registered)
-        if (typeKey === "PATIENT ASSESSMENT" && !resolveTemplateApi(typeKey)) {
-            await loadScriptOnce("/js/staffPatient/templates/patientAssessment.js");
+        const cfg = TEMPLATE_CONFIG[typeKey];
+        if (cfg && cfg.script && !resolveTemplateApi(typeKey)) {
+            await loadScriptOnce(cfg.script);
         }
 
         const api = resolveTemplateApi(typeKey);
@@ -236,6 +255,7 @@
             card.className = "border rounded p-3 bg-white js-journey-item";
             card.style.cursor = "pointer";
             card.dataset.journeyId = String(id);
+            card.dataset.journeyType = String(type || "");
 
             const journeyDate = journeyDateRaw ? escapeHtml(fmtMY(journeyDateRaw) || journeyDateRaw) : "-";
             const createdAt = createdAtRaw ? escapeHtml(fmtMY(createdAtRaw) || createdAtRaw) : "-";
@@ -329,13 +349,16 @@
         activeTemplateApi = null;
     }
 
-    async function openViewModal(patientJourneyId) {
+    async function openViewModal(patientJourneyId, typeHintRaw) {
         resetModal();
         if (el("journeyModalTitle")) el("journeyModalTitle").textContent = "View Patient Journey";
 
         if (el("pj_patientJourneyId")) el("pj_patientJourneyId").value = String(patientJourneyId || 0);
 
-        const url = ENDPOINTS.getAssessment + "?patientJourneyId=" + encodeURIComponent(patientJourneyId);
+        const typeHintKey = normalizeTypeKey(typeHintRaw);
+        const cfgHint = TEMPLATE_CONFIG[typeHintKey];
+        const getEndpoint = (cfgHint && typeof cfgHint.get === "function") ? cfgHint.get() : ENDPOINTS.getPatientAssessment;
+        const url = getEndpoint + "?patientJourneyId=" + encodeURIComponent(patientJourneyId);
         const result = await getJson(url);
         if (!result.success) throw new Error(result.message || "Failed to load journey details.");
 
@@ -356,11 +379,11 @@
     }
 
     // ---------------- init / events ----------------
-    document.addEventListener("DOMContentLoaded", function() {
+    document.addEventListener("DOMContentLoaded", function () {
         // Load timeline when Journey tab is shown (first time)
         const journeyTabBtn = document.getElementById("tab-journey");
         if (journeyTabBtn) {
-            journeyTabBtn.addEventListener("shown.bs.tab", async function() {
+            journeyTabBtn.addEventListener("shown.bs.tab", async function () {
                 if (journeyLoadedOnce) return;
                 journeyLoadedOnce = true;
 
@@ -376,7 +399,7 @@
         // Click timeline item → view modal
         const timelineHost = el("journeyTimeline");
         if (timelineHost) {
-            timelineHost.addEventListener("click", async function(e) {
+            timelineHost.addEventListener("click", async function (e) {
                 const card = e.target.closest(".js-journey-item");
                 if (!card) return;
 
@@ -384,7 +407,7 @@
                 if (!id) return;
 
                 try {
-                    await openViewModal(id);
+                    await openViewModal(id, card.dataset.journeyType || "");
                 } catch (err) {
                     console.error(err);
                     setMsg(err.message || "Failed to open journey.", "text-danger");

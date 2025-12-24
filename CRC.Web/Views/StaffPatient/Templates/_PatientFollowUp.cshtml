@@ -1,0 +1,47 @@
+﻿@* Patient Follow Up Template (loaded into modal dynamically) *@
+
+<div id="tmplPatientFollowUp">
+    <!-- HPE Results Section -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>HPE Results</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-6">
+                <label class="form-label">1. Results <span class="text-danger">*</span></label>
+                <select id="pf_hpeResults" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="BENIGN POLYP">BENIGN POLYP</option>
+                    <option value="PRECANCEROUS POLYP">PRECANCEROUS POLYP</option>
+                    <option value="CANCER">CANCER</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Discharge Section -->
+    <div class="card">
+        <div class="card-header">
+            <strong>Discharge</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-6">
+                <label class="form-label">2. Discharge Plan <span class="text-danger">*</span></label>
+                <select id="pf_dischargePlan" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="SURVEILLANCE">SURVEILLANCE</option>
+                    <option value="REFERRAL LETTER FOR TREATMENT">REFERRAL LETTER FOR TREATMENT</option>
+                </select>
+            </div>
+
+            <div class="col-md-6 d-flex align-items-end">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="pf_dischargeSummaryStatus" />
+                    <label class="form-check-label" for="pf_dischargeSummaryStatus">
+                        3. Discharge Summary Given <span class="text-danger">*</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

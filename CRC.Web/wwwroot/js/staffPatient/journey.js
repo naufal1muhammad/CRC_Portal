@@ -1,5 +1,5 @@
 ﻿// @ts-nocheck
-(function() {
+(function () {
     let journeyLoadedOnce = false;
 
     // ----------------------------
@@ -8,8 +8,33 @@
     const ENDPOINTS = {
         getTimeline: "/StaffPatient/GetTimeline",
         getTemplate: "/StaffPatient/GetJourneyTemplate",
-        getAssessment: "/StaffPatient/GetPatientAssessment",
-        saveAssessmentJourney: "/StaffPatient/SavePatientAssessment",
+
+        getPatientAssessment: "/StaffPatient/GetPatientAssessment",
+        savePatientAssessment: "/StaffPatient/SavePatientAssessment",
+
+        getPatientColonoscopy: "/StaffPatient/GetPatientColonoscopy",
+        savePatientColonoscopy: "/StaffPatient/SavePatientColonoscopy",
+
+        getPatientFollowUp: "/StaffPatient/GetPatientFollowUp",
+        savePatientFollowUp: "/StaffPatient/SavePatientFollowUp",
+    };
+
+    const TEMPLATE_CONFIG = {
+        "PATIENT ASSESSMENT": {
+            script: "/js/staffPatient/templates/patientAssessment.js",
+            get: () => ENDPOINTS.getPatientAssessment,
+            save: () => ENDPOINTS.savePatientAssessment,
+        },
+        "PATIENT COLONOSCOPY": {
+            script: "/js/staffPatient/templates/patientColonoscopy.js",
+            get: () => ENDPOINTS.getPatientColonoscopy,
+            save: () => ENDPOINTS.savePatientColonoscopy,
+        },
+        "PATIENT FOLLOW UP": {
+            script: "/js/staffPatient/templates/patientFollowUp.js",
+            get: () => ENDPOINTS.getPatientFollowUp,
+            save: () => ENDPOINTS.savePatientFollowUp,
+        },
     };
 
     // --------- helpers from details.js ----------
@@ -87,18 +112,18 @@
     }
 
     function fmtMY(dt) {
-  if (!dt) return "";
-  const d = new Date(dt);
-  if (Number.isNaN(d.getTime())) return String(dt); // fallback if backend sent non-ISO
-  return d.toLocaleString("en-MY", {
-    timeZone: "Asia/Kuala_Lumpur",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
+        if (!dt) return "";
+        const d = new Date(dt);
+        if (Number.isNaN(d.getTime())) return String(dt); // fallback if backend sent non-ISO
+        return d.toLocaleString("en-MY", {
+            timeZone: "Asia/Kuala_Lumpur",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit"
+        });
+    }
 
     // ------------- template JS loader -------------
     const loadedScripts = new Set();
@@ -147,8 +172,9 @@
         activeTemplateApi = null;
 
         // Load template JS if needed (skip if already registered)
-        if (typeKey === "PATIENT ASSESSMENT" && !resolveTemplateApi(typeKey)) {
-            await loadScriptOnce("/js/staffPatient/templates/patientAssessment.js");
+        const cfg = TEMPLATE_CONFIG[typeKey];
+        if (cfg && cfg.script && !resolveTemplateApi(typeKey)) {
+            await loadScriptOnce(cfg.script);
         }
 
         const api = resolveTemplateApi(typeKey);
@@ -216,12 +242,14 @@
             card.className = "border rounded p-3 bg-white js-journey-item";
             card.style.cursor = "pointer";
             card.dataset.journeyId = String(id);
+            card.dataset.journeyType = String(type || "");
+            card.dataset.journeyType = String(type || "");
 
             const journeyDate = journeyDateRaw ? escapeHtml(fmtMY(journeyDateRaw) || journeyDateRaw) : "-";
-const createdAt = createdAtRaw ? escapeHtml(fmtMY(createdAtRaw) || createdAtRaw) : "-";
-const createdBy = createdByRaw ? escapeHtml(createdByRaw) : "-";
-const updatedAt = updatedAtRaw ? escapeHtml(fmtMY(updatedAtRaw) || updatedAtRaw) : "";
-const updatedBy = updatedByRaw ? escapeHtml(updatedByRaw) : "-";
+            const createdAt = createdAtRaw ? escapeHtml(fmtMY(createdAtRaw) || createdAtRaw) : "-";
+            const createdBy = createdByRaw ? escapeHtml(createdByRaw) : "-";
+            const updatedAt = updatedAtRaw ? escapeHtml(fmtMY(updatedAtRaw) || updatedAtRaw) : "";
+            const updatedBy = updatedByRaw ? escapeHtml(updatedByRaw) : "-";
 
             const auditEvents = item.auditEvents || item.AuditEvents || item.audit || [];
             let auditHtml = "";
@@ -344,12 +372,15 @@ const updatedBy = updatedByRaw ? escapeHtml(updatedByRaw) : "-";
         modal()?.show();
     }
 
-    async function openEditModal(patientJourneyId) {
+    async function openEditModal(patientJourneyId, typeHintRaw) {
         resetModal();
         el("journeyModalTitle").textContent = "Edit Patient Journey";
         el("pj_patientJourneyId").value = String(patientJourneyId || 0);
 
-        const url = ENDPOINTS.getAssessment + "?patientJourneyId=" + encodeURIComponent(patientJourneyId);
+        const typeHintKey = normalizeTypeKey(typeHintRaw);
+        const cfgHint = TEMPLATE_CONFIG[typeHintKey];
+        const getEndpoint = (cfgHint && typeof cfgHint.get === "function") ? cfgHint.get() : ENDPOINTS.getPatientAssessment;
+        const url = getEndpoint + "?patientJourneyId=" + encodeURIComponent(patientJourneyId);
         const result = await getJson(url);
         if (!result.success) throw new Error(result.message || "Failed to load journey details.");
 
@@ -410,7 +441,13 @@ const updatedBy = updatedByRaw ? escapeHtml(updatedByRaw) : "-";
             api.collect()
         );
 
-        const result = await postJson(ENDPOINTS.saveAssessmentJourney, payload);
+        const cfg = TEMPLATE_CONFIG[typeKey];
+        if (!cfg || typeof cfg.save !== "function") {
+            el("pj_formError").textContent = "Unknown Journey Type. Please reselect.";
+            return;
+        }
+
+        const result = await postJson(cfg.save(), payload);
         if (!result.success) throw new Error(result.message || "Failed saving journey.");
 
         modal()?.hide();
@@ -418,13 +455,13 @@ const updatedBy = updatedByRaw ? escapeHtml(updatedByRaw) : "-";
     }
 
     // ---------------- init / events ----------------
-    document.addEventListener("DOMContentLoaded", function() {
+    document.addEventListener("DOMContentLoaded", function () {
         console.log("staffPatient/journey.js loaded ✅");
 
         // Load timeline when Journey tab is shown (first time)
         const journeyTabBtn = document.getElementById("tab-journey-tab");
         if (journeyTabBtn) {
-            journeyTabBtn.addEventListener("shown.bs.tab", async function() {
+            journeyTabBtn.addEventListener("shown.bs.tab", async function () {
                 if (journeyLoadedOnce) return;
                 journeyLoadedOnce = true;
 
@@ -440,7 +477,7 @@ const updatedBy = updatedByRaw ? escapeHtml(updatedByRaw) : "-";
         // Add button
         const btnAdd = el("btnAddJourney");
         if (btnAdd) {
-            btnAdd.addEventListener("click", async function() {
+            btnAdd.addEventListener("click", async function () {
                 try {
                     await openAddModal();
                 } catch (err) {
@@ -453,7 +490,7 @@ const updatedBy = updatedByRaw ? escapeHtml(updatedByRaw) : "-";
         // Type change → load template (and init it)
         const ddlType = el("pj_journeyType");
         if (ddlType) {
-            ddlType.addEventListener("change", async function() {
+            ddlType.addEventListener("change", async function () {
                 try {
                     await loadTemplate((ddlType.value || "").trim(), null);
                 } catch (err) {
@@ -466,7 +503,7 @@ const updatedBy = updatedByRaw ? escapeHtml(updatedByRaw) : "-";
         // Save
         const btnSave = el("btnSaveJourney");
         if (btnSave) {
-            btnSave.addEventListener("click", async function() {
+            btnSave.addEventListener("click", async function () {
                 try {
                     await saveJourney();
                 } catch (err) {
@@ -479,7 +516,7 @@ const updatedBy = updatedByRaw ? escapeHtml(updatedByRaw) : "-";
         // Click timeline item → edit
         const timelineHost = el("journeyTimeline");
         if (timelineHost) {
-            timelineHost.addEventListener("click", async function(e) {
+            timelineHost.addEventListener("click", async function (e) {
                 const card = e.target.closest(".js-journey-item");
                 if (!card) return;
 
@@ -487,7 +524,7 @@ const updatedBy = updatedByRaw ? escapeHtml(updatedByRaw) : "-";
                 if (!id) return;
 
                 try {
-                    await openEditModal(id);
+                    await openEditModal(id, card.dataset.journeyType || "");
                 } catch (err) {
                     console.error(err);
                     setMsg(err.message || "Failed to open edit modal.", "text-danger");

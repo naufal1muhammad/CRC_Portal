@@ -84,6 +84,8 @@
     <Folder Include="Stored Procedures\PatientDocumentSettings" />
     <Folder Include="Stored Procedures\StaffPages" />
     <Folder Include="Stored Procedures\PatientAssessment" />
+    <Folder Include="Stored Procedures\PatientColonoscopy" />
+    <Folder Include="Stored Procedures\PatientFollowUp" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="dbo\Tables\Users.sql" />
@@ -182,5 +184,13 @@
     <Build Include="dbo\Tables\PatientAssessment.sql" />
     <Build Include="Stored Procedures\PatientJourney\spPatientJourney_GetById.sql" />
     <Build Include="Stored Procedures\PatientJourney\spPatientJourney_AuditsByPatient.sql" />
+    <Build Include="dbo\Tables\PatientColonoscopy.sql" />
+    <Build Include="dbo\Tables\PatientFollowUp.sql" />
+    <Build Include="Stored Procedures\PatientColonoscopy\spPatientColonoscopy_CreateWithJourney.sql" />
+    <Build Include="Stored Procedures\PatientColonoscopy\spPatientColonoscopy_UpdateWithJourney.sql" />
+    <Build Include="Stored Procedures\PatientColonoscopy\spPatientColonoscopy_GetByJourneyId.sql" />
+    <Build Include="Stored Procedures\PatientFollowUp\spPatientFollowUp_GetByJourneyId.sql" />
+    <Build Include="Stored Procedures\PatientFollowUp\spPatientFollowUp_CreateWithJourney.sql" />
+    <Build Include="Stored Procedures\PatientFollowUp\spPatientFollowUp_UpdateWithJourney.sql" />
   </ItemGroup>
 </Project>
