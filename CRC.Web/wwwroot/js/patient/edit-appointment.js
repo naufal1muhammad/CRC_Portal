@@ -63,7 +63,7 @@
     selStaff.innerHTML = '<option value="">Loading staff...</option>';
 
     try {
-        const response = await fetch('/Patient/GetJourneyStaffList', {
+        const response = await fetch('/Patient/GetAppointmentStaffList', {
             method: 'GET',
             headers: { 'Accept': 'application/json' }
         });

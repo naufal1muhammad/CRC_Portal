@@ -98,7 +98,10 @@ namespace CRC.Web.Controllers.StaffPatient
                     emergencyName = row["Patient_EmergencyName"]?.ToString() ?? "",
                     emergencyRelationship = row["Patient_EmergencyRelationship"]?.ToString() ?? "",
                     emergencyNumber = row["Patient_EmergencyNumber"]?.ToString() ?? "",
-                    occupationName = row["Occupation_Name"]?.ToString() ?? ""
+                    occupationName = row["Occupation_Name"]?.ToString() ?? "",
+                    dischargeTypeName = row["DischargeType_Name"]?.ToString() ?? "",
+                    dischargeDate = ToDateInputString(row["Patient_DischargeDate"]),
+                    dischargeRemarks = row["Patient_DischargeRemarks"]?.ToString() ?? ""
                 };
 
                 return Ok(new { success = true, patient });

@@ -232,10 +232,8 @@ namespace CRC.Web.Controllers.Patient
                     email = row["Patient_Email"]?.ToString(),
                     phone = row["Patient_Phone"]?.ToString(),
                     nric = row["Patient_NRIC"]?.ToString(),
-
                     admittedOn = ToDateInputString(row["Patient_AdmittedOn"]),
                     birthDate = ToDateInputString(row["Patient_BirthDate"]),
-
                     raceName = row["Race_Name"]?.ToString(),
                     branchName = row["Branch_Name"]?.ToString(),
                     sourceName = row["Source_Name"]?.ToString(),
@@ -578,6 +576,32 @@ namespace CRC.Web.Controllers.Patient
             catch (Exception)
             {
                 return Ok(new { success = false, message = "Error loading appointment types." });
+            }
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetAppointmentStaffList()
+        {
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spStaff_List",
+                    Array.Empty<SqlParameter>()
+                );
+
+                var list = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        staffId = r["Staff_ID"]?.ToString(),
+                        staffName = r["Staff_Name"]?.ToString()
+                    })
+                    .ToList();
+
+                return Ok(new { success = true, data = list });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error loading staff list." });
             }
         }
 
