@@ -2,9 +2,11 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using System.Text.Json.Serialization;
+using System.Globalization;
 using System.Security.Claims;
 
 namespace CRC.Web.Controllers
@@ -42,6 +44,36 @@ namespace CRC.Web.Controllers
             // 1 = SUPERUSER, 2 = ADMIN, 3 = STAFF
             public int UserType { get; set; } = 3;
             public string? StaffId { get; set; }
+        }
+
+        public class UserListItemDto
+        {
+            [JsonPropertyName("userId")]
+            public int UserId { get; set; }
+
+            [JsonPropertyName("name")]
+            public string Name { get; set; } = "";
+
+            [JsonPropertyName("username")]
+            public string Username { get; set; } = "";
+
+            [JsonPropertyName("email")]
+            public string Email { get; set; } = "";
+
+            [JsonPropertyName("userType")]
+            public int UserType { get; set; }
+
+            [JsonPropertyName("userTypeName")]
+            public string UserTypeName { get; set; } = "";
+
+            [JsonPropertyName("staffId")]
+            public string StaffId { get; set; } = "";
+
+            [JsonPropertyName("createdAt")]
+            public string CreatedAt { get; set; } = "";
+
+            [JsonPropertyName("lastLogin")]
+            public string LastLogin { get; set; } = "";
         }
 
         // POST: /Account/RegisterUser (called via JS)
@@ -184,6 +216,14 @@ namespace CRC.Web.Controllers
                     return View();
                 }
 
+                if (int.TryParse(userId, out var uid))
+                {
+                    await _db.ExecuteNonQueryAsync(
+                        "spUsers_UpdateLastLogin",
+                        new[] { new SqlParameter("@User_ID", uid) }
+                    );
+                }
+
                 // -----------------------------
                 // Claims + Sign-in (same as yours)
                 // -----------------------------
@@ -232,6 +272,49 @@ namespace CRC.Web.Controllers
                 ViewData["LoginError"] = ex.Message;
                 return View();
             }
+        }
+
+        [Authorize(Policy = "SuperUserOnly")]
+        [HttpGet]
+        public async Task<IActionResult> GetUsers()
+        {
+            var dt = await _db.ExecuteDataTableAsync("spUsers_GetAll", Array.Empty<SqlParameter>());
+
+            string ToIso(object v)
+            {
+                if (v == null || v == DBNull.Value) return "";
+                return Convert.ToDateTime(v).ToString("o");
+            }
+
+            string UserTypeName(object v)
+            {
+                if (v == null || v == DBNull.Value) return "";
+                var t = Convert.ToInt32(v);
+                return t switch
+                {
+                    1 => "SUPERUSER",
+                    2 => "ADMIN",
+                    3 => "STAFF",
+                    _ => t.ToString()
+                };
+            }
+
+            var users = dt.Rows.Cast<System.Data.DataRow>()
+                .Select(r => new UserListItemDto
+                {
+                    UserId = Convert.ToInt32(r["User_ID"]),
+                    Name = r["User_Name"]?.ToString() ?? "",
+                    Username = r["Username"]?.ToString() ?? "",
+                    Email = r["User_Email"]?.ToString() ?? "",
+                    UserType = Convert.ToInt32(r["User_Type"]),
+                    UserTypeName = UserTypeName(r["User_Type"]),
+                    StaffId = r["Staff_ID"] == DBNull.Value ? "" : (r["Staff_ID"]?.ToString() ?? ""),
+                    CreatedAt = ToIso(r["Created_At"]),
+                    LastLogin = ToIso(r["Last_Login"])
+                })
+                .ToList();
+
+            return Ok(new { success = true, users });
         }
 
         // -------------------------

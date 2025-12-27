@@ -14,10 +14,7 @@
             paging: true,
             lengthChange: true,
             pageLength: 10,
-            order: [], // no initial sort, allow clicking headers
-            // You can tweak these if you want:
-            // searching: true,
-            // info: true
+            order: [],
         });
     }
 

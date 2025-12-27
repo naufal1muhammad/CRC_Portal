@@ -36,9 +36,9 @@ BEGIN
         END
     END
 
-    INSERT INTO [dbo].[Users]
-        ([User_Name], [Username], [User_Email], [Password_Hash], [User_Type], [Staff_ID])
-    VALUES
-        (@User_Name, @Username, @User_Email, @PasswordHash, @User_Type, @StaffIdFinal);
+   INSERT INTO [dbo].[Users]
+    ([User_Name], [Username], [User_Email], [Password_Hash], [User_Type], [Staff_ID], [Created_At], [Last_Login])
+VALUES
+    (@User_Name, @Username, @User_Email, @PasswordHash, @User_Type, @StaffIdFinal, GETUTCDATE(), GETUTCDATE());
 END;
 GO

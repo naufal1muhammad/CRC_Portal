@@ -5,9 +5,13 @@
     [Username] VARCHAR(100) NOT NULL,
     [User_Email] VARCHAR(100) NOT NULL,
     [Password_Hash] VARCHAR(500) NOT NULL,
-    [User_Type] INT NOT NULL, -- 1 = SUPERUSER
-    [Staff_ID] VARCHAR(100) NULL
+    [User_Type] INT NOT NULL,
+    [Staff_ID] VARCHAR(100) NULL,
+
+    [Created_At] DATETIME NOT NULL CONSTRAINT [DF_Users_Created_At] DEFAULT (GETUTCDATE()),
+    [Last_Login] DATETIME NOT NULL CONSTRAINT [DF_Users_Last_Login] DEFAULT (GETUTCDATE())
 );
 GO
 
 CREATE UNIQUE INDEX [IX_Users_Username] ON [dbo].[Users]([Username]);
+GO

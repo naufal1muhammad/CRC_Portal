@@ -1,5 +1,6 @@
 wwwroot\css\site.css
 wwwroot\images\cancer-icon.png
+wwwroot\images\lindung-icon.png
 wwwroot\images\lindung-logo.png
 wwwroot\js\account\register.js
 wwwroot\js\adminDashboard\index.js
