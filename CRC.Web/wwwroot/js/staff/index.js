@@ -527,7 +527,7 @@
         const payload = {
             isNew: isNew,
             staffId: txtId.value.trim(),
-            name: txtName.value.trim(),
+            name: txtName.value.trim().toUpperCase(),
             nric: txtNRIC.value.trim(),
             phone: txtPhone.value.trim(),
             email: txtEmail.value.trim(),

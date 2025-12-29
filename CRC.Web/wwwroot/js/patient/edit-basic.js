@@ -251,7 +251,7 @@
 
         return {
             patientId: hidId ? hidId.value.trim() : '',
-            name: txtName ? txtName.value.trim() : '',
+            name: txtName ? txtName.value.trim().toUpperCase() : '',
             email: txtEmail ? txtEmail.value.trim() : '',
             phone: txtPhone ? txtPhone.value.trim() : '',
             nric: txtNRIC ? txtNRIC.value.trim() : '',
@@ -264,7 +264,7 @@
             religionName: getSelectedText(selReligion),
             maritalStatusName: getSelectedText(selMarital),
             address: txtAddress ? txtAddress.value.trim() : '',
-            emergencyName: txtEmerName ? txtEmerName.value.trim() : '',
+            emergencyName: txtEmerName ? txtEmerName.value.trim().toUpperCase() : '',
             emergencyRelationship: txtEmerRel ? txtEmerRel.value.trim() : '',
             emergencyNumber: txtEmerNum ? txtEmerNum.value.trim() : '',
             occupationName: getSelectedText(selOccupation)

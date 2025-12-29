@@ -249,8 +249,8 @@
         const payload = {
             isNew: isNew,
             branchId: txtId.value.trim(),
-            name: txtName.value.trim(),
-            location: txtLocation.value.trim(),
+            name: txtName.value.trim().toUpperCase(),
+            location: txtLocation.value.trim().toUpperCase(),
             state: selState.value.trim(),
             organizationId: organizationId,
             organizationName: organizationName,
