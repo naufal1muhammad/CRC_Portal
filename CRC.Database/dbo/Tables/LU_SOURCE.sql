@@ -1,0 +1,6 @@
+﻿CREATE TABLE [dbo].[LU_SOURCE]
+(
+    [Source_ID]   VARCHAR(100) NOT NULL PRIMARY KEY,
+    [Source_Name] VARCHAR(100) NOT NULL
+);
+GO

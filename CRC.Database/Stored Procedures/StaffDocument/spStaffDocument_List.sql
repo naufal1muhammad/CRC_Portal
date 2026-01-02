@@ -8,6 +8,8 @@ BEGIN
         [StaffDocument_ID],
         [Staff_ID],
         [Staff_Name],
+        [StaffDocumentType_ID],
+        [StaffDocumentType_Name],
         [FileName],
         [FilePath],
         [ContentType],

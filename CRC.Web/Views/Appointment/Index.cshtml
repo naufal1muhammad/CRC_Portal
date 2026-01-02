@@ -1,0 +1,114 @@
+﻿@{
+    ViewData["Title"] = "Appointments";
+    Layout = "_Layout";
+}
+
+<div class="container-fluid py-3">
+    <div class="card mb-3">
+        <div class="card-header">
+            <h2 class="mb-3">Appointments</h2>
+
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4 col-lg-3">
+                    <label for="filterPatientName" class="form-label form-label-sm mb-1">Patient Name</label>
+                    <select id="filterPatientName"
+                            class="form-select form-select-sm select2">
+                        <option value="">-- All Patients --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4 col-lg-3">
+                    <label for="filterStaffName" class="form-label form-label-sm mb-1">Staff Name</label>
+                    <select id="filterStaffName"
+                            class="form-select form-select-sm select2">
+                        <option value="">-- All Staff --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4 col-lg-2">
+                    <label for="filterStatus" class="form-label form-label-sm mb-1">Attendance Status</label>
+                    <select id="filterStatus"
+                            class="form-select form-select-sm">
+                        <option value="">-- All Statuses --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4 col-lg-2">
+                    <label for="filterFromDate" class="form-label form-label-sm mb-1">From Date</label>
+                    <input id="filterFromDate"
+                           type="date"
+                           class="form-control form-control-sm" />
+                </div>
+
+                <div class="col-md-4 col-lg-2">
+                    <label for="filterToDate" class="form-label form-label-sm mb-1">To Date</label>
+                    <input id="filterToDate"
+                           type="date"
+                           class="form-control form-control-sm" />
+                </div>
+
+                <div class="col-md-4 col-lg-3">
+                    <label for="filterAppointmentType" class="form-label form-label-sm mb-1">Appointment Type</label>
+                    <select id="filterAppointmentType"
+                            class="form-select form-select-sm select2">
+                        <option value="">-- All Types --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4 col-lg-3">
+                    <label for="filterBranch" class="form-label form-label-sm mb-1">Branch</label>
+                    <select id="filterBranch"
+                            class="form-select form-select-sm select2">
+                        <option value="">-- All Branches --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4 col-lg-2 mt-2 mt-md-0 d-flex gap-2">
+                    <button id="btnSearchAppointments"
+                            type="button"
+                            class="btn btn-sm btn-primary flex-fill">
+                        <i class="fas fa-search me-1"></i> Search
+                    </button>
+                    <button id="btnClearAppointments"
+                            type="button"
+                            class="btn btn-sm btn-outline-secondary flex-fill">
+                        Clear Filters
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-body">
+            <div id="appointmentsMessage" class="small text-danger mb-2"></div>
+
+            <div class="table-responsive">
+                <table id="appointmentsTable" class="table table-sm table-striped mb-0">
+                    <thead class="table-secondary">
+                        <tr>
+                            <th>Patient ID</th>
+                            <th>Patient Name</th>
+                            <th>Phone</th>
+                            <th>Email</th>
+                            <th>Appointment Type</th>
+                            <th>Attendance Status</th>
+                            <th>Assigned Staff</th>
+                            <th>Branch</th>
+                            <th>Date &amp; Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="9" class="text-center text-muted">
+                                Use the filters above and click <strong>Search</strong> to view appointments.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/appointment/index.js"></script>
+}

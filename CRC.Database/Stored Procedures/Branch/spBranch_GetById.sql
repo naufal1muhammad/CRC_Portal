@@ -9,7 +9,9 @@ BEGIN
         [Branch_Name],
         [Branch_Location],
         [Branch_State],
-        [Branch_Status]
+        [Branch_Status],
+        [Organization_ID],
+        [Organization_Name]
     FROM [dbo].[Branch]
     WHERE [Branch_ID] = @Branch_ID;
 END;

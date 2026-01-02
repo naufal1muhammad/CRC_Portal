@@ -1,0 +1,235 @@
+﻿@* Patient Colonoscopy Template (loaded into modal dynamically) *@
+
+<div id="tmplPatientColonoscopy">
+    <!-- Colonoscopy Section -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Colonoscopy</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-4">
+                <label class="form-label">1. Status <span class="text-danger">*</span></label>
+                <select id="pc_colonoscopyStatus" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">COMPLETE</option>
+                    <option value="false">INCOMPLETE</option>
+                </select>
+            </div>
+
+            <div class="col-md-8" id="wrap_pc_colonoscopyStatusDetails" style="display:none;">
+                <label class="form-label">2. If INCOMPLETE, please specify <span class="text-danger">*</span></label>
+                <input id="pc_colonoscopyStatusDetails" class="form-control" type="text" maxlength="500" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Bowel Preparation Section -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Bowel Preparation</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-6">
+                <label class="form-label">3. Bowel Preparedness <span class="text-danger">*</span></label>
+                <select id="pc_bowelPreparation" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="0">0 - INADEQUATE</option>
+                    <option value="1">1 - POOR</option>
+                    <option value="2">2 - GOOD</option>
+                    <option value="3">3 - EXCELLENT</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Findings Section -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Findings</strong>
+        </div>
+        <div class="card-body">
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">4. Anus <span class="text-danger">*</span></label>
+                    <select id="pc_findingsAnus" class="form-select">
+                        <option value="">-- Select --</option>
+                        <option value="true">NORMAL</option>
+                        <option value="false">ABNORMAL</option>
+                    </select>
+                </div>
+                <div class="col-md-8" id="wrap_pc_findingsAnusDetails" style="display:none;">
+                    <label class="form-label">5. If ABNORMAL, please specify <span class="text-danger">*</span></label>
+                    <input id="pc_findingsAnusDetails" class="form-control" type="text" maxlength="500" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">6. Rectum <span class="text-danger">*</span></label>
+                    <select id="pc_findingsRectum" class="form-select">
+                        <option value="">-- Select --</option>
+                        <option value="true">NORMAL</option>
+                        <option value="false">ABNORMAL</option>
+                    </select>
+                </div>
+                <div class="col-md-8" id="wrap_pc_findingsRectumDetails" style="display:none;">
+                    <label class="form-label">7. If ABNORMAL, please specify <span class="text-danger">*</span></label>
+                    <input id="pc_findingsRectumDetails" class="form-control" type="text" maxlength="500" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">8. Sigmoid Colon <span class="text-danger">*</span></label>
+                    <select id="pc_findingsSigmoidColon" class="form-select">
+                        <option value="">-- Select --</option>
+                        <option value="true">NORMAL</option>
+                        <option value="false">ABNORMAL</option>
+                    </select>
+                </div>
+                <div class="col-md-8" id="wrap_pc_findingsSigmoidColonDetails" style="display:none;">
+                    <label class="form-label">9. If ABNORMAL, please specify <span class="text-danger">*</span></label>
+                    <input id="pc_findingsSigmoidColonDetails" class="form-control" type="text" maxlength="500" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">10. Descending Colon <span class="text-danger">*</span></label>
+                    <select id="pc_findingsDescendingColon" class="form-select">
+                        <option value="">-- Select --</option>
+                        <option value="true">NORMAL</option>
+                        <option value="false">ABNORMAL</option>
+                    </select>
+                </div>
+                <div class="col-md-8" id="wrap_pc_findingsDescendingColonDetails" style="display:none;">
+                    <label class="form-label">11. If ABNORMAL, please specify <span class="text-danger">*</span></label>
+                    <input id="pc_findingsDescendingColonDetails" class="form-control" type="text" maxlength="500" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">12. Splenic Flexure <span class="text-danger">*</span></label>
+                    <select id="pc_findingsSplenicFlexure" class="form-select">
+                        <option value="">-- Select --</option>
+                        <option value="true">NORMAL</option>
+                        <option value="false">ABNORMAL</option>
+                    </select>
+                </div>
+                <div class="col-md-8" id="wrap_pc_findingsSplenicFlexureDetails" style="display:none;">
+                    <label class="form-label">13. If ABNORMAL, please specify <span class="text-danger">*</span></label>
+                    <input id="pc_findingsSplenicFlexureDetails" class="form-control" type="text" maxlength="500" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">14. Transverse Colon <span class="text-danger">*</span></label>
+                    <select id="pc_findingsTransverseColon" class="form-select">
+                        <option value="">-- Select --</option>
+                        <option value="true">NORMAL</option>
+                        <option value="false">ABNORMAL</option>
+                    </select>
+                </div>
+                <div class="col-md-8" id="wrap_pc_findingsTransverseColonDetails" style="display:none;">
+                    <label class="form-label">15. If ABNORMAL, please specify <span class="text-danger">*</span></label>
+                    <input id="pc_findingsTransverseColonDetails" class="form-control" type="text" maxlength="500" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">16. Hepatic Flexure <span class="text-danger">*</span></label>
+                    <select id="pc_findingsHepaticFlexure" class="form-select">
+                        <option value="">-- Select --</option>
+                        <option value="true">NORMAL</option>
+                        <option value="false">ABNORMAL</option>
+                    </select>
+                </div>
+                <div class="col-md-8" id="wrap_pc_findingsHepaticFlexureDetails" style="display:none;">
+                    <label class="form-label">17. If ABNORMAL, please specify <span class="text-danger">*</span></label>
+                    <input id="pc_findingsHepaticFlexureDetails" class="form-control" type="text" maxlength="500" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">18. Ascending Colon <span class="text-danger">*</span></label>
+                    <select id="pc_findingsAscendingColon" class="form-select">
+                        <option value="">-- Select --</option>
+                        <option value="true">NORMAL</option>
+                        <option value="false">ABNORMAL</option>
+                    </select>
+                </div>
+                <div class="col-md-8" id="wrap_pc_findingsAscendingColonDetails" style="display:none;">
+                    <label class="form-label">19. If ABNORMAL, please specify <span class="text-danger">*</span></label>
+                    <input id="pc_findingsAscendingColonDetails" class="form-control" type="text" maxlength="500" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">20. Caecum <span class="text-danger">*</span></label>
+                    <select id="pc_findingsCaecum" class="form-select">
+                        <option value="">-- Select --</option>
+                        <option value="true">NORMAL</option>
+                        <option value="false">ABNORMAL</option>
+                    </select>
+                </div>
+                <div class="col-md-8" id="wrap_pc_findingsCaecumDetails" style="display:none;">
+                    <label class="form-label">21. If ABNORMAL, please specify <span class="text-danger">*</span></label>
+                    <input id="pc_findingsCaecumDetails" class="form-control" type="text" maxlength="500" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- HPE / Polypectomy Section -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>HPE / Polypectomy</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-4">
+                <label class="form-label">22. HPE Taken <span class="text-danger">*</span></label>
+                <select id="pc_hpeStatus" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="true">YES</option>
+                    <option value="false">NO</option>
+                </select>
+            </div>
+
+            <div class="col-md-8" id="wrap_pc_hpeDetails" style="display:none;">
+                <label class="form-label">23. If YES, please specify <span class="text-danger">*</span></label>
+                <input id="pc_hpeDetails" class="form-control" type="text" maxlength="500" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Complications Section -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <strong>Complications</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-4">
+                <label class="form-label">24. Procedure Complications <span class="text-danger">*</span></label>
+                <select id="pc_complications" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="YES">YES</option>
+                    <option value="NO">NO</option>
+                    <option value="BLEEDING">BLEEDING</option>
+                    <option value="PERFORATION">PERFORATION</option>
+                </select>
+            </div>
+
+            <div class="col-md-8">
+                <label class="form-label">25. Complications Details</label>
+                <input id="pc_complicationsDetails" class="form-control" type="text" maxlength="500" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Discharge Section -->
+    <div class="card">
+        <div class="card-header">
+            <strong>Discharge</strong>
+        </div>
+        <div class="card-body row g-3">
+            <div class="col-md-6">
+                <label class="form-label">26. Discharge Plan <span class="text-danger">*</span></label>
+                <select id="pc_dischargePlan" class="form-select">
+                    <option value="">-- Select --</option>
+                    <option value="NORMAL">NORMAL</option>
+                    <option value="ABNORMAL">ABNORMAL</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>

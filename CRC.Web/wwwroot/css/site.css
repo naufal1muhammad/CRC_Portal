@@ -1,4 +1,4 @@
-html {
+﻿html {
   font-size: 14px;
 }
 
@@ -13,20 +13,23 @@ html {
 }
 
 .primary-color {
+    background-color: #f1edff;
+}
+
+.secondary-color {
     background-color: #826ccb;
 }
 
-.secondary-color{
-    background-color: #e1c6ee;
+/* Generic small-ish chart */
+.dashboard-chart-sm {
+    max-width: 100%;
+    height: 230px !important;
 }
 
-.dashboard-card {
-    height: 300px;
-}
-
-.chart-container {
-    position: relative;
-    height: 180px;
+/* Slightly taller charts */
+.dashboard-chart-md {
+    max-width: 100%;
+    height: 280px !important;
 }
 
 /* Sidebar styling */
@@ -37,7 +40,7 @@ html {
 
     /* Brand at the top */
     .sidebar-main .navbar-brand {
-        color: white;
+        color: #2b2355; /* was white */
         font-weight: 900;
         letter-spacing: 0.03em;
         font-size: 1.25rem;
@@ -52,34 +55,34 @@ html {
     .sidebar-main .list-group-item {
         background-color: transparent;
         border: 0;
-        color: white;
+        color: #2b2355; /* was white */
         font-weight: 600;
         font-size: 0.95rem;
         padding-top: 0.6rem;
         padding-bottom: 0.6rem;
     }
 
-        /* Icons � keep a neat aligned width */
+        /* Icons – keep a neat aligned width */
         .sidebar-main .list-group-item i {
             width: 18px;
         }
 
         /* Active item */
         .sidebar-main .list-group-item.active {
-            background-color: rgba(255, 255, 255, 0.85);
-            color: #000;
+            background-color: rgba(43, 35, 85, 0.14); /* tinted active on light bg */
+            color: #1f1a3a;
             border: 0;
         }
 
         /* Hover state (but not disabled/active) */
         .sidebar-main .list-group-item:hover:not(.disabled):not(.active) {
-            background-color: rgba(255, 255, 255, 0.45);
-            color: #000;
+            background-color: rgba(43, 35, 85, 0.08); /* tinted hover on light bg */
+            color: #1f1a3a;
         }
 
     /* Section header (e.g. "Branch") */
     .sidebar-main .text-muted.text-uppercase.small {
-        color: #3f2a1f;
+        color: #6b61a8; /* was #3f2a1f (brownish) */
         font-weight: 700;
         letter-spacing: 0.08em;
     }
@@ -91,9 +94,25 @@ html {
     }
 
         .sidebar-main .list-group-item.text-danger:hover {
-            background-color: rgba(255, 255, 255, 0.45);
+            background-color: rgba(43, 35, 85, 0.08); /* match hover tint */
         }
 
+
+#saveSuccessModal .fa-check-circle {
+    animation: pop-in 0.4s ease-out;
+}
+
+@keyframes pop-in {
+    0% {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
 
 html {
   position: relative;

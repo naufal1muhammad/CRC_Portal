@@ -1,0 +1,6 @@
+﻿CREATE TABLE [dbo].[LU_RELIGION]
+(
+    [Religion_ID]   VARCHAR(100) NOT NULL PRIMARY KEY,
+    [Religion_Name] VARCHAR(100) NOT NULL
+);
+GO

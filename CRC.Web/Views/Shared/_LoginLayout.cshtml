@@ -12,7 +12,7 @@
     <!-- ===============================================-->
     <!--    Favicons-->
     <!-- ===============================================-->
-    <link rel="icon" type="image/png" sizes="32x32" href="~/images/cancer-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="~/images/lindung-icon.png" />
     <meta name="theme-color" content="#ffffff">
     <script src="~/lib/falcon/public/assets/js/config.js"></script>
     <script src="~/lib/falcon/public/vendors/simplebar/simplebar.min.js"></script>
@@ -65,14 +65,12 @@
 
     @await RenderSectionAsync("Stylesheets", required: false)
 </head>
-<body class="primary-color">
+<body class="secondary-color">
     <div class="container d-flex align-items-center justify-content-center" style="min-height: 100vh;">
         <div class="w-100" style="max-width: 420px;">
             <div class="card shadow-sm border-0">
-                <div class="card-body p-4">
-                    <img class="d-block mx-auto mb-4" src="~/images/cancer-icon.png" alt="CRC Logo" width="150" />
-                    <h4 class="card-title text-center mb-1">CRC Web Portal</h4>
-                    <p class="text-center text-muted mb-4">Welcome</p>
+                <div class="card-body p-4 primary-color">
+                    <img class="d-block mx-auto mb-4" src="~/images/lindung-logo.png" alt="CRC Logo" height="70" width="250" />
 
                     @RenderBody()
                 </div>

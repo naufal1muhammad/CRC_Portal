@@ -1,0 +1,6 @@
+﻿CREATE TABLE [dbo].[LU_MARITALSTATUS]
+(
+    [MaritalStatus_ID]   VARCHAR(100) NOT NULL PRIMARY KEY,
+    [MaritalStatus_Name] VARCHAR(100) NOT NULL
+);
+GO

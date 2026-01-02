@@ -1,0 +1,7 @@
+﻿CREATE TABLE [dbo].[LU_ORGANIZATION]
+(
+    [Organization_ID]   VARCHAR(100) NOT NULL,
+    [Organization_Name] VARCHAR(100) NOT NULL,
+    CONSTRAINT [PK_LU_ORGANIZATION] PRIMARY KEY ([Organization_ID])
+);
+GO

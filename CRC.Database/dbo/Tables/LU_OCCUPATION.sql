@@ -1,0 +1,6 @@
+﻿CREATE TABLE [dbo].[LU_OCCUPATION]
+(
+    [Occupation_ID]   VARCHAR(100) NOT NULL PRIMARY KEY,
+    [Occupation_Name] VARCHAR(100) NOT NULL
+);
+GO
