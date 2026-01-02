@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using System.Globalization;
 using System.Security.Claims;
@@ -316,6 +317,177 @@ namespace CRC.Web.Controllers
 
             return Ok(new { success = true, users });
         }
+
+        // DTO for Change Password page
+        public class ChangePasswordViewModel
+        {
+            // Read-only user profile fields (loaded from dbo.Users)
+            public string UserName { get; set; } = "";
+            public string UserType { get; set; } = "";
+            public int UserTypeId { get; set; }
+            public string StaffId { get; set; } = "";
+            public string Email { get; set; } = "";
+
+            // Inputs
+            [Required(ErrorMessage = "Current password is required.")]
+            [DataType(DataType.Password)]
+            public string CurrentPassword { get; set; } = "";
+
+            [Required(ErrorMessage = "New password is required.")]
+            [MinLength(8, ErrorMessage = "New password must be at least 8 characters.")]
+            [DataType(DataType.Password)]
+            public string NewPassword { get; set; } = "";
+
+            [Required(ErrorMessage = "Confirm password is required.")]
+            [Compare(nameof(NewPassword), ErrorMessage = "New password and confirm password do not match.")]
+            [DataType(DataType.Password)]
+            public string ConfirmPassword { get; set; } = "";
+        }
+
+        // -------------------------
+        // Change Password (all authenticated users)
+        // -------------------------
+
+        private static string UserTypeDisplay(int userType)
+        {
+            return userType switch
+            {
+                1 => "SUPERUSER",
+                2 => "ADMIN",
+                3 => "STAFF",
+                _ => userType.ToString()
+            };
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> ChangePassword()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out var userId))
+            {
+                TempData["ErrorMessage"] = "Unable to identify user.";
+                return RedirectToAction(nameof(Logout));
+            }
+
+            var dt = await _db.ExecuteDataTableAsync(
+                "spUsers_GetById",
+                new[] { new SqlParameter("@User_ID", userId) }
+            );
+
+            if (dt.Rows.Count == 0)
+            {
+                TempData["ErrorMessage"] = "User not found.";
+                return RedirectToAction(nameof(Logout));
+            }
+
+            var row = dt.Rows[0];
+            var userType = Convert.ToInt32(row["User_Type"]);
+
+            var vm = new ChangePasswordViewModel
+            {
+                UserName = row["User_Name"]?.ToString() ?? "",
+                UserTypeId = userType,
+                UserType = UserTypeDisplay(userType),
+                StaffId = row["StaffId"] == DBNull.Value ? "" : (row["StaffId"]?.ToString() ?? ""),
+                Email = row["User_Email"]?.ToString() ?? ""
+            };
+
+            return View(vm);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ChangePassword(ChangePasswordViewModel model)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out var userId))
+            {
+                TempData["ErrorMessage"] = "Unable to identify user.";
+                return RedirectToAction(nameof(Logout));
+            }
+
+            // Always reload user fields from DB (do not trust form values)
+            var dt = await _db.ExecuteDataTableAsync(
+                "spUsers_GetById",
+                new[] { new SqlParameter("@User_ID", userId) }
+            );
+
+            if (dt.Rows.Count == 0)
+            {
+                TempData["ErrorMessage"] = "User not found.";
+                return RedirectToAction(nameof(Logout));
+            }
+
+            var row = dt.Rows[0];
+            var username = row["Username"]?.ToString() ?? "";
+            var storedHash = row["PasswordHash"]?.ToString() ?? "";
+            var userType = Convert.ToInt32(row["User_Type"]);
+
+            // Overwrite read-only fields (so UI always shows truth from dbo.Users)
+            model.UserName = row["User_Name"]?.ToString() ?? "";
+            model.UserTypeId = userType;
+            model.UserType = UserTypeDisplay(userType);
+            model.StaffId = row["StaffId"] == DBNull.Value ? "" : (row["StaffId"]?.ToString() ?? "");
+            model.Email = row["User_Email"]?.ToString() ?? "";
+
+            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(storedHash))
+            {
+                TempData["ErrorMessage"] = "User record is invalid.";
+                return View(model);
+            }
+
+            // Validate current password (against dbo.Users.Password_Hash)
+            var verify = _hasher.VerifyHashedPassword(username, storedHash, model.CurrentPassword ?? "");
+            if (verify == PasswordVerificationResult.Failed)
+            {
+                ModelState.AddModelError(nameof(model.CurrentPassword), "Current password is incorrect.");
+            }
+
+            // Basic extra rule: new password must be different
+            if (!string.IsNullOrWhiteSpace(model.NewPassword) &&
+                !string.IsNullOrWhiteSpace(model.CurrentPassword) &&
+                model.NewPassword == model.CurrentPassword)
+            {
+                ModelState.AddModelError(nameof(model.NewPassword), "New password must be different from current password.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                // Clear sensitive inputs on invalid submit
+                model.CurrentPassword = "";
+                model.NewPassword = "";
+                model.ConfirmPassword = "";
+                return View(model);
+            }
+
+            var newHash = _hasher.HashPassword(username, model.NewPassword);
+
+            try
+            {
+                await _db.ExecuteNonQueryAsync(
+                    "spUsers_UpdatePassword",
+                    new[]
+                    {
+                        new SqlParameter("@User_ID", userId),
+                        new SqlParameter("@PasswordHash", newHash)
+                    }
+                );
+
+                TempData["SuccessMessage"] = "Password updated successfully.";
+                return RedirectToAction(nameof(ChangePassword));
+            }
+            catch (SqlException ex)
+            {
+                TempData["ErrorMessage"] = ex.Message;
+                return View(model);
+            }
+            catch
+            {
+                TempData["ErrorMessage"] = "An unexpected error occurred.";
+                return View(model);
+            }
+        }
+
 
         // -------------------------
         // Access Denied page

@@ -194,5 +194,7 @@
     <Build Include="Stored Procedures\PatientFollowUp\spPatientFollowUp_UpdateWithJourney.sql" />
     <Build Include="Stored Procedures\Users\spUsers_GetAll.sql" />
     <Build Include="Stored Procedures\Users\spUsers_UpdateLastLogin.sql" />
+    <Build Include="Stored Procedures\Users\spUsers_UpdatePassword.sql" />
+    <Build Include="Stored Procedures\Users\spUsers_GetById.sql" />
   </ItemGroup>
 </Project>
