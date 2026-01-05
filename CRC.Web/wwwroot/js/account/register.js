@@ -66,7 +66,6 @@
         const mi = map.minute || '';
         const ap = (map.dayPeriod || '').toUpperCase();
 
-        // Example: 02/01/2026 03:45 PM
         return `${dd}/${mm}/${yyyy} ${hh}:${mi}${ap ? ' ' + ap : ''}`.trim();
     }
 

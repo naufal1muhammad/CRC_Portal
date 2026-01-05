@@ -285,8 +285,6 @@ namespace CRC.Web.Controllers
             {
                 if (v == null || v == DBNull.Value) return "";
 
-                // dbo.Users timestamps are stored as UTC, but SQL -> .NET usually arrives as DateTimeKind.Unspecified.
-                // We mark it as UTC so the round-trip ISO string includes the "Z" designator.
                 var dt = Convert.ToDateTime(v);
                 if (dt.Kind == DateTimeKind.Unspecified)
                     dt = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
