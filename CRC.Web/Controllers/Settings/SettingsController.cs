@@ -219,12 +219,11 @@ namespace CRC.Web.Controllers.Settings
         }
 
         [HttpPost]
-        public async Task<IActionResult> SaveDischargeDocumentSettings(
-    [FromBody] SaveDischargeDocumentSettingsRequest model)
+        public async Task<IActionResult> SaveDischargeDocumentSettings([FromBody] SaveDischargeDocumentSettingsRequest model)
         {
             if (model == null || string.IsNullOrWhiteSpace(model.DischargeTypeId))
             {
-                return Ok(new { success = false, message = "Discharge type is required." });
+                return BadRequest(new { success = false, message = "Discharge type is required." });
             }
 
             var idsCsv = (model.DocumentTypeIds != null && model.DocumentTypeIds.Count > 0)
@@ -235,10 +234,10 @@ namespace CRC.Web.Controllers.Settings
             {
                 var parameters = new[]
                 {
-            new SqlParameter("@DischargeType_ID", model.DischargeTypeId),
-            new SqlParameter("@PatientDocumentType_IDs",
-                string.IsNullOrWhiteSpace(idsCsv) ? (object)DBNull.Value : idsCsv)
-        };
+                    new SqlParameter("@DischargeType_ID", model.DischargeTypeId),
+                    new SqlParameter("@PatientDocumentType_IDs",
+                        string.IsNullOrWhiteSpace(idsCsv) ? (object)DBNull.Value : idsCsv)
+                };
 
                 await _db.ExecuteNonQueryAsync(
                     "spPatientDocumentSettings_SaveForDischargeType",

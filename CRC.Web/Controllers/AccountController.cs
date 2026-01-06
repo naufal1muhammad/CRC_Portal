@@ -284,7 +284,12 @@ namespace CRC.Web.Controllers
             string ToIso(object v)
             {
                 if (v == null || v == DBNull.Value) return "";
-                return Convert.ToDateTime(v).ToString("o");
+
+                var dt = Convert.ToDateTime(v);
+                if (dt.Kind == DateTimeKind.Unspecified)
+                    dt = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+
+                return dt.ToString("o");
             }
 
             string UserTypeName(object v)

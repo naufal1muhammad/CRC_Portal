@@ -12,7 +12,6 @@
         getUsers: '/Account/GetUsers'
     };
 
-    // ✅ DO NOT name this "$" (it will shadow jQuery)
     function el(id) { return document.getElementById(id); }
 
     function setMessage(text, ok) {
@@ -32,18 +31,42 @@
     // -----------------------------
     // Helpers
     // -----------------------------
+    // Display timestamps in Malaysian local time (Asia/Kuala_Lumpur) with AM/PM.
+    // NOTE: Backend sends UTC ISO (with trailing "Z"). If we ever receive an ISO without timezone,
+    // we treat it as UTC to avoid accidentally interpreting it as the browser's local time.
     function formatDateTime(iso) {
         if (!iso) return '';
-        const d = new Date(iso);
+
+        let s = (iso + '').trim();
+        // If there's no timezone designator, assume UTC.
+        if (/^\d{4}-\d{2}-\d{2}T/.test(s) && !(/[zZ]$/.test(s) || /[+\-]\d{2}:\d{2}$/.test(s))) {
+            s += 'Z';
+        }
+
+        const d = new Date(s);
         if (isNaN(d.getTime())) return '';
 
-        const dd = String(d.getDate()).padStart(2, '0');
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const yyyy = d.getFullYear();
-        const hh = String(d.getHours()).padStart(2, '0');
-        const mi = String(d.getMinutes()).padStart(2, '0');
+        const parts = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Asia/Kuala_Lumpur',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        }).formatToParts(d);
 
-        return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+        const map = {};
+        parts.forEach(p => { map[p.type] = p.value; });
+
+        const dd = map.day || '';
+        const mm = map.month || '';
+        const yyyy = map.year || '';
+        const hh = map.hour || '';
+        const mi = map.minute || '';
+        const ap = (map.dayPeriod || '').toUpperCase();
+
+        return `${dd}/${mm}/${yyyy} ${hh}:${mi}${ap ? ' ' + ap : ''}`.trim();
     }
 
     async function readJsonSafe(response) {
@@ -59,7 +82,7 @@
     // Users DataTable
     // -----------------------------
     function initUsersDataTable() {
-        const jq = window.jQuery; // ✅ use real jQuery
+        const jq = window.jQuery;
 
         // If DataTables isn't loaded, stop (table will still show rows)
         if (!jq || !jq.fn || !jq.fn.dataTable) {
@@ -182,7 +205,6 @@
     async function loadUsers() {
         if (!usersTableBody) return;
 
-        // ✅ IMPORTANT: destroy DataTables BEFORE touching tbody
         const jq = window.jQuery;
         if (jq && jq.fn && jq.fn.dataTable && jq.fn.dataTable.isDataTable('#usersTable')) {
             jq('#usersTable').DataTable().destroy();
@@ -265,7 +287,6 @@
                 usersTableBody.appendChild(tr);
             });
 
-            // ✅ re-init AFTER rows are in DOM
             initUsersDataTable();
         } catch (err) {
             console.error('Error loading users', err);
