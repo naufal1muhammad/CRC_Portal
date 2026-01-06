@@ -10,7 +10,6 @@ namespace CRC.Web.Controllers.Settings
     public class SettingsController : Controller
     {
         private readonly DatabaseHelper _db;
-        private const string DischargeTypeRequiredMessage = "Discharge type is required.";
 
         public SettingsController(DatabaseHelper db)
         {
@@ -224,7 +223,7 @@ namespace CRC.Web.Controllers.Settings
         {
             if (model == null || string.IsNullOrWhiteSpace(model.DischargeTypeId))
             {
-                return BadRequest(new { success = false, message = DischargeTypeRequiredMessage });
+                return BadRequest(new { success = false, message = "Discharge type is required." });
             }
 
             var idsCsv = (model.DocumentTypeIds != null && model.DocumentTypeIds.Count > 0)
