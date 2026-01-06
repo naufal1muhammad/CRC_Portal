@@ -219,8 +219,7 @@ namespace CRC.Web.Controllers.Settings
         }
 
         [HttpPost]
-        public async Task<IActionResult> SaveDischargeDocumentSettings(
-    [FromBody] SaveDischargeDocumentSettingsRequest model)
+        public async Task<IActionResult> SaveDischargeDocumentSettings([FromBody] SaveDischargeDocumentSettingsRequest model)
         {
             if (model == null || string.IsNullOrWhiteSpace(model.DischargeTypeId))
             {
