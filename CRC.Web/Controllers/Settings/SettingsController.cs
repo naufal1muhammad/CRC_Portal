@@ -10,6 +10,7 @@ namespace CRC.Web.Controllers.Settings
     public class SettingsController : Controller
     {
         private readonly DatabaseHelper _db;
+        private const string DischargeTypeRequiredMessage = "Discharge type is required.";
 
         public SettingsController(DatabaseHelper db)
         {
@@ -223,7 +224,7 @@ namespace CRC.Web.Controllers.Settings
         {
             if (model == null || string.IsNullOrWhiteSpace(model.DischargeTypeId))
             {
-                return Ok(new { success = false, message = "Discharge type is required." });
+                return BadRequest(new { success = false, message = DischargeTypeRequiredMessage });
             }
 
             var idsCsv = (model.DocumentTypeIds != null && model.DocumentTypeIds.Count > 0)
@@ -234,10 +235,10 @@ namespace CRC.Web.Controllers.Settings
             {
                 var parameters = new[]
                 {
-            new SqlParameter("@DischargeType_ID", model.DischargeTypeId),
-            new SqlParameter("@PatientDocumentType_IDs",
-                string.IsNullOrWhiteSpace(idsCsv) ? (object)DBNull.Value : idsCsv)
-        };
+                    new SqlParameter("@DischargeType_ID", model.DischargeTypeId),
+                    new SqlParameter("@PatientDocumentType_IDs",
+                        string.IsNullOrWhiteSpace(idsCsv) ? (object)DBNull.Value : idsCsv)
+                };
 
                 await _db.ExecuteNonQueryAsync(
                     "spPatientDocumentSettings_SaveForDischargeType",
