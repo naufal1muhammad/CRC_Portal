@@ -65,7 +65,7 @@
     <Folder Include="Stored Procedures\PatientDocument" />
     <Folder Include="Stored Procedures\Staff" />
     <Folder Include="Stored Procedures\StaffDocument" />
-    <Folder Include="Stored Procedures\LU_STATES" />
+    <Folder Include="Stored Procedures\LU_LOCATION" />
     <Folder Include="Stored Procedures\LU_ORGANIZATION" />
     <Folder Include="Stored Procedures\LU_STAFFTYPE" />
     <Folder Include="Stored Procedures\LU_STAFFDOCUMENTTYPE" />
@@ -110,8 +110,10 @@
     <Build Include="Stored Procedures\Branch\spBranch_Insert.sql" />
     <Build Include="Stored Procedures\Branch\spBranch_Update.sql" />
     <Build Include="Stored Procedures\Branch\spBranch_Delete.sql" />
-    <Build Include="dbo\Tables\LU_STATES.sql" />
-    <Build Include="Stored Procedures\LU_STATES\spLU_STATES_List.sql" />
+    <Build Include="dbo\Tables\LU_LOCATION.sql" />
+    <Build Include="Stored Procedures\LU_LOCATION\spLU_LOCATION_ListStates.sql" />
+    <Build Include="Stored Procedures\LU_LOCATION\spLU_LOCATION_ListDistrictsByState.sql" />
+    <Build Include="Stored Procedures\LU_LOCATION\spLU_LOCATION_ListPostcodesByDistrict.sql" />
     <Build Include="dbo\Tables\LU_ORGANIZATION.sql" />
     <Build Include="Stored Procedures\LU_ORGANIZATION\spLU_ORGANIZATION_List.sql" />
     <Build Include="dbo\Tables\LU_STAFFTYPE.sql" />
