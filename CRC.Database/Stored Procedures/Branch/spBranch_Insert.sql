@@ -23,13 +23,14 @@ BEGIN
 
     DECLARE @State_ID INT;
 
-    SELECT @State_ID = [State_ID]
-    FROM [dbo].[LU_STATES]
-    WHERE [State_Name] = @Branch_State;
+    SELECT @State_ID = [LocationId]
+    FROM [dbo].[LU_LOCATION]
+    WHERE [LocationType] = 1
+      AND [Name] = @Branch_State;
 
     IF @State_ID IS NULL
     BEGIN
-        RAISERROR('Invalid Branch_State. No matching State_ID found in LU_STATES.', 16, 1);
+        RAISERROR('Invalid Branch_State. No matching state found in LU_LOCATION.', 16, 1);
         RETURN;
     END
 

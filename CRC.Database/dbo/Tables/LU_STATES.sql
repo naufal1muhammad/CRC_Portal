@@ -1,6 +1,0 @@
-﻿CREATE TABLE [dbo].[LU_STATES]
-(
-    [State_ID]   VARCHAR(100)      NOT NULL,
-    [State_Name] VARCHAR(100)      NOT NULL,
-    CONSTRAINT [PK_LU_STATES] PRIMARY KEY ([State_ID])
-);
