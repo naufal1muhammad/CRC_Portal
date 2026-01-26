@@ -21,12 +21,12 @@ ON [dbo].[LU_LOCATION]([Name])
 WHERE [LocationType] = 1;
 GO
 
-CREATE UNIQUE INDEX [UX_LU_LOCATION_DistrictName_PerState]
+CREATE UNIQUE INDEX [UX_LU_LOCATION_CityName_PerState]
 ON [dbo].[LU_LOCATION]([ParentId], [Name])
 WHERE [LocationType] = 2;
 GO
 
-CREATE UNIQUE INDEX [UX_LU_LOCATION_Postcode_PerDistrict]
+CREATE UNIQUE INDEX [UX_LU_LOCATION_Postcode_PerCity]
 ON [dbo].[LU_LOCATION]([ParentId], [Name])
 WHERE [LocationType] = 3;
 GO

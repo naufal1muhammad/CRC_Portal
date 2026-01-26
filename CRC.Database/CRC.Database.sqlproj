@@ -112,8 +112,8 @@
     <Build Include="Stored Procedures\Branch\spBranch_Delete.sql" />
     <Build Include="dbo\Tables\LU_LOCATION.sql" />
     <Build Include="Stored Procedures\LU_LOCATION\spLU_LOCATION_ListStates.sql" />
-    <Build Include="Stored Procedures\LU_LOCATION\spLU_LOCATION_ListDistrictsByState.sql" />
-    <Build Include="Stored Procedures\LU_LOCATION\spLU_LOCATION_ListPostcodesByDistrict.sql" />
+    <Build Include="Stored Procedures\LU_LOCATION\spLU_LOCATION_ListCityByState.sql" />
+    <Build Include="Stored Procedures\LU_LOCATION\spLU_LOCATION_ListPostcodesByCity.sql" />
     <Build Include="dbo\Tables\LU_ORGANIZATION.sql" />
     <Build Include="Stored Procedures\LU_ORGANIZATION\spLU_ORGANIZATION_List.sql" />
     <Build Include="dbo\Tables\LU_STAFFTYPE.sql" />

@@ -1,5 +1,5 @@
-﻿CREATE PROCEDURE [dbo].[spLU_LOCATION_ListDistrictsByState]
-    @StateId INT
+﻿CREATE PROCEDURE [dbo].[spLU_LOCATION_ListPostcodesByCity]
+    @CityId INT
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -9,8 +9,8 @@ BEGIN
            [Name],
            [SortOrder]
     FROM [dbo].[LU_LOCATION]
-    WHERE [LocationType] = 2
-      AND [ParentId] = @StateId
+    WHERE [LocationType] = 3
+      AND [ParentId] = @CityId
     ORDER BY COALESCE([SortOrder], 2147483647),
              [Name];
 END;
