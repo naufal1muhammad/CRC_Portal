@@ -37,8 +37,11 @@ BEGIN
     DECLARE @StateIDText VARCHAR(2) =
         RIGHT('00' + CAST(@State_ID AS VARCHAR(2)), 2);
 
+    DECLARE @OrganizationIdClean VARCHAR(100) =
+        REPLACE(LTRIM(RTRIM(@Organization_ID)), '*', '');
+
     DECLARE @Prefix VARCHAR(50) =
-        @Organization_ID + @StateIDText;
+        @OrganizationIdClean + @StateIDText;
 
        DECLARE @LastNumber INT;
 
