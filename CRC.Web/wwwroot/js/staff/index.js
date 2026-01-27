@@ -34,24 +34,24 @@
                 tr.setAttribute('data-id', s.staffId);
 
                 tr.innerHTML = `
-                    <td>${s.staffId}</td>
+                    <td class="text-nowrap">${s.staffId}</td>
                     <td>${s.name ?? ''}</td>
-                    <td>${s.nric ?? ''}</td>
-                    <td>${s.phone ?? ''}</td>
+                    <td class="text-nowrap">${s.nric ?? ''}</td>
+                    <td class="text-nowrap">${s.phone ?? ''}</td>
                     <td>${s.email ?? ''}</td>
                     <td>${s.staffTypeName ?? s.staffTypeId ?? ''}</td>
-                    <td>
+                    <td class="text-center text-nowrap">
                         <button type="button"
                                 class="btn btn-sm btn-secondary btn-staff-edit"
                                 data-id="${s.staffId}"
                                 title="Edit">
-                            <i class="fas fa-edit"></i>
+                            Edit
                         </button>
                         <button type="button"
                                 class="btn btn-sm btn-danger btn-staff-delete ms-1"
                                 data-id="${s.staffId}"
                                 title="Delete">
-                            <i class="fas fa-trash"></i>
+                            Delete
                         </button>
                     </td>
                 `;
