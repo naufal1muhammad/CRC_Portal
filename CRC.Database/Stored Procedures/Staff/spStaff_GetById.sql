@@ -5,14 +5,24 @@ BEGIN
     SET NOCOUNT ON;
 
     SELECT TOP 1
-        [Staff_ID],
-        [Staff_Name],
-        [Staff_NRIC],
-        [Staff_Phone],
-        [Staff_Email],
-        [Branch_ID],
-        [Branch_Name],
-        [Staff_Type]
-    FROM [dbo].[Staff]
-    WHERE [Staff_ID] = @Staff_ID;
+        s.[Staff_ID],
+        s.[Staff_Name],
+        s.[Staff_NRIC],
+        s.[Staff_BirthDate],
+        s.[Staff_Age],
+        s.[Staff_Phone],
+        s.[Staff_Email],
+        s.[Staff_Gender],
+        s.[Staff_ResState],
+        s.[Staff_ResCity],
+        s.[Staff_ResPostcode],
+        s.[Staff_AddLine1],
+        s.[Staff_AddLine2],
+        s.[Staff_Base],
+        s.[Staff_Type],
+        st.[StaffType_Name]
+    FROM [dbo].[Staff] s
+    LEFT JOIN [dbo].[LU_STAFFTYPE] st
+        ON s.[Staff_Type] = st.[StaffType_ID]
+    WHERE s.[Staff_ID] = @Staff_ID;
 END;

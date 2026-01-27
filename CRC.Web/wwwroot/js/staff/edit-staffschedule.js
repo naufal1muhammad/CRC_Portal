@@ -1,1 +1,3 @@
-﻿//file for edit-staffschedule.js
+﻿// @ts-nocheck
+(function() {
+})();

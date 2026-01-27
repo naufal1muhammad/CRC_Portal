@@ -1,12 +1,243 @@
 ﻿@{
     ViewData["Title"] = "Staff";
     Layout = "_Layout";
+
+    var staffId = (string)(ViewData["StaffId"] ?? string.Empty);
 }
 
-<h1>Page for Staff Details</h1>
+<div class="container-fluid py-3" data-staff-id="@staffId">
+
+    <!-- Header -->
+    <div class="d-flex align-items-center mb-3">
+        <div>
+            <h2 id="staffHeaderName" class="mb-0">Staff: -</h2>
+            <small id="staffHeaderId" class="text-muted">
+                @if (string.IsNullOrEmpty(staffId))
+                {
+                    @:New Staff (ID will be generated on save)
+                }
+                else
+                {
+                    @:ID: @staffId
+                }
+            </small>
+        </div>
+
+        <div class="ms-auto">
+            <a asp-action="Index" asp-controller="Staff"
+               class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-arrow-left me-1"></i> Staff List
+            </a>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs" id="staffEditTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active"
+                    id="tab-basic-details"
+                    data-bs-toggle="tab"
+                    data-bs-target="#tabBasicDetails"
+                    type="button"
+                    role="tab">
+                Basic Details
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link"
+                    id="tab-documents"
+                    data-bs-toggle="tab"
+                    data-bs-target="#tabDocuments"
+                    type="button"
+                    role="tab">
+                Documents
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link"
+                    id="tab-schedule"
+                    data-bs-toggle="tab"
+                    data-bs-target="#tabSchedule"
+                    type="button"
+                    role="tab">
+                Schedule
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link"
+                    id="tab-performance"
+                    data-bs-toggle="tab"
+                    data-bs-target="#tabPerformance"
+                    type="button"
+                    role="tab">
+                Performance
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab contents -->
+    <div class="tab-content border border-top-0 p-3 bg-white" id="staffEditTabContent">
+
+        <!-- Basic Details tab -->
+        <div class="tab-pane fade show active"
+             id="tabBasicDetails"
+             role="tabpanel"
+             aria-labelledby="tab-basic-details">
+            <div id="basicDetailsContent">
+                <input type="hidden" id="StaffIdHidden" value="@staffId" />
+
+                <h5 class="mb-3">Basic Section</h5>
+
+                <div class="row g-3">
+                    <div class="col-lg-6">
+                        <div class="mb-2">
+                            <label for="StaffId" class="form-label">ID <span class="text-danger">*</span></label>
+                            <input id="StaffId" type="text" class="form-control form-control-sm" readonly />
+                            <div class="form-text">Auto-generated on save for new staff.</div>
+                        </div>
+
+                        <div class="mb-2">
+                            <label for="StaffName" class="form-label">Name <span class="text-danger">*</span></label>
+                            <input id="StaffName" type="text" class="form-control form-control-sm" style="text-transform: uppercase;" />
+                        </div>
+
+                        <div class="mb-2">
+                            <label for="StaffNRIC" class="form-label">NRIC <span class="text-danger">*</span></label>
+                            <input id="StaffNRIC" type="text" class="form-control form-control-sm" />
+                        </div>
+
+                        <div class="mb-2">
+                            <label for="StaffBirthDate" class="form-label">Birth Date (mm/dd/yyyy) <span class="text-danger">*</span></label>
+                            <input id="StaffBirthDate" type="date" class="form-control form-control-sm" readonly />
+                        </div>
+
+                        <div class="mb-2">
+                            <label for="StaffAge" class="form-label">Age <span class="text-danger">*</span></label>
+                            <input id="StaffAge" type="number" class="form-control form-control-sm" readonly />
+                            <div class="form-text">Automatically calculated from Birth Date.</div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <div class="mb-2">
+                            <label for="StaffPhone" class="form-label">Phone <span class="text-danger">*</span></label>
+                            <input id="StaffPhone" type="text" class="form-control form-control-sm" />
+                        </div>
+
+                        <div class="mb-2">
+                            <label for="StaffEmail" class="form-label">Email <span class="text-danger">*</span></label>
+                            <input id="StaffEmail" type="email" class="form-control form-control-sm" />
+                        </div>
+
+                        <div class="mb-2">
+                            <label for="StaffGender" class="form-label">Gender <span class="text-danger">*</span></label>
+                            <select id="StaffGender" class="form-select form-select-sm">
+                                <option value="">-- Select Gender --</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-4" />
+
+                <h5 class="mb-3">Residential Address Section</h5>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="StaffResState" class="form-label">State <span class="text-danger">*</span></label>
+                        <select id="StaffResState" class="form-select form-select-sm">
+                            <option value="">-- Select State --</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="StaffResCity" class="form-label">City <span class="text-danger">*</span></label>
+                        <select id="StaffResCity" class="form-select form-select-sm" disabled>
+                            <option value="">-- Select City --</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="StaffResPostcode" class="form-label">Postcode <span class="text-danger">*</span></label>
+                        <select id="StaffResPostcode" class="form-select form-select-sm" disabled>
+                            <option value="">-- Select Postcode --</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="StaffAddLine1" class="form-label">Address Line 1 <span class="text-danger">*</span></label>
+                        <textarea id="StaffAddLine1" class="form-control form-control-sm" rows="2" disabled></textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="StaffAddLine2" class="form-label">Address Line 2 <span class="text-danger">*</span></label>
+                        <textarea id="StaffAddLine2" class="form-control form-control-sm" rows="2" disabled></textarea>
+                    </div>
+                </div>
+
+                <hr class="my-4" />
+
+                <h5 class="mb-3">Employment Section</h5>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="StaffBase" class="form-label">Base <span class="text-danger">*</span></label>
+                        <input id="StaffBase" type="text" class="form-control form-control-sm" />
+                    </div>
+                    <div class="col-md-6">
+                        <label for="StaffType" class="form-label">Staff Type <span class="text-danger">*</span></label>
+                        <select id="StaffType" class="form-select form-select-sm">
+                            <option value="">-- Select Staff Type --</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Documents tab -->
+        <div class="tab-pane fade"
+             id="tabDocuments"
+             role="tabpanel"
+             aria-labelledby="tab-documents">
+            <div id="staffDocumentsContent">
+                <div id="staffDocumentsMessage" class="text-danger small mb-2"></div>
+                <div id="staffDocumentsContainer">
+                    <p class="text-muted mb-0">
+                        Upload documents by type. Uploads are saved immediately and do not depend on the main Save button.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schedule tab -->
+        <div class="tab-pane fade"
+             id="tabSchedule"
+             role="tabpanel"
+             aria-labelledby="tab-schedule">
+        </div>
+
+        <!-- Performance tab -->
+        <div class="tab-pane fade"
+             id="tabPerformance"
+             role="tabpanel"
+             aria-labelledby="tab-performance">
+        </div>
+    </div>
+
+    <div id="staffBasicMessage" class="text-danger small mb-2"></div>
+
+    <!-- Global Save button -->
+    <div class="mt-3 d-flex justify-content-end">
+        <button id="btnSaveStaffMain"
+                type="button"
+                class="btn btn-primary">
+            <i class="fas fa-save me-1"></i> Save
+        </button>
+    </div>
+</div>
 
 @section Scripts {
     <script src="~/js/staff/edit-staffbasic.js"></script>
     <script src="~/js/staff/edit-staffdocuments.js"></script>
     <script src="~/js/staff/edit-staffschedule.js"></script>
+    <script src="~/js/staff/edit-staffperformance.js"></script>
 }

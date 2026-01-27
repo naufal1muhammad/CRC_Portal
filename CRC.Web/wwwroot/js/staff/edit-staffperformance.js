@@ -1,1 +1,3 @@
-﻿//file for edit-staffperformance.js
+// @ts-nocheck
+(function() {
+})();
