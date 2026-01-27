@@ -52,10 +52,6 @@ wwwroot\js\staffPatient\journey.js
 wwwroot\js\staffPatient\templates\patientAssessment.js
 wwwroot\js\staffPatient\templates\patientColonoscopy.js
 wwwroot\js\staffPatient\templates\patientFollowUp.js
-wwwroot\js\staff\edit-staffbasic.js
-wwwroot\js\staff\edit-staffdocuments.js
-wwwroot\js\staff\edit-staffschedule.js
-wwwroot\js\staff\index.js
 wwwroot\lib\admin-lte\css\adminlte.css
 wwwroot\lib\admin-lte\css\adminlte.css.map
 wwwroot\lib\admin-lte\css\adminlte.min.css
@@ -9144,4 +9140,8 @@ wwwroot\uploads\staff\cbabdac92ac8428faf08e94267ca5b9c_PERSONAL IDENTIFICATION.p
 wwwroot\uploads\staff\e96d839fdcac402dad551e59a8fee99f_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\ea97aa116d0b4d89897f98cdaed6026b_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\fc09a8b391494530a7f571e35d9a629d_BASIC DEGREE CERTIFICATE.pdf
+wwwroot\js\staff\edit-staffbasic.js
+wwwroot\js\staff\edit-staffdocuments.js
 wwwroot\js\staff\edit-staffperformance.js
+wwwroot\js\staff\edit-staffschedule.js
+wwwroot\js\staff\index.js
