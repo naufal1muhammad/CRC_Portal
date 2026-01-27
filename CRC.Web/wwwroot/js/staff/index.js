@@ -45,13 +45,13 @@
                                 class="btn btn-sm btn-secondary btn-staff-edit"
                                 data-id="${s.staffId}"
                                 title="Edit">
-                            Edit
+                                <i class="fas fa-edit"></i>
                         </button>
                         <button type="button"
                                 class="btn btn-sm btn-danger btn-staff-delete ms-1"
                                 data-id="${s.staffId}"
                                 title="Delete">
-                            Delete
+                                <i class="fas fa-trash"></i>
                         </button>
                     </td>
                 `;
