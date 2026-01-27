@@ -33,18 +33,6 @@
             opt.textContent = item[textField] || '';
             select.appendChild(opt);
         });
-
-        if (window.$ && $.fn.select2 && $(select).hasClass('select2-hidden-accessible')) {
-            $(select).trigger('change.select2');
-        }
-    }
-
-    function setSelectDisabled(select, isDisabled) {
-        if (!select) return;
-        select.disabled = !!isDisabled;
-        if (window.$ && $.fn.select2 && $(select).hasClass('select2-hidden-accessible')) {
-            $(select).prop('disabled', !!isDisabled).trigger('change.select2');
-        }
     }
 
     function selectOptionByText(select, text) {
@@ -145,57 +133,6 @@
         if (addLine2) addLine2.disabled = !enabled;
     }
 
-    function applySelect2() {
-        if (!(window.$ && $.fn.select2)) return;
-
-        const select2Config = {
-            theme: 'bootstrap-5',
-            width: '100%',
-            allowClear: true
-        };
-
-        const stateSelect = $('#StaffResState');
-        const citySelect = $('#StaffResCity');
-        const postcodeSelect = $('#StaffResPostcode');
-
-        if (stateSelect.length) {
-            if (stateSelect.hasClass('select2-hidden-accessible')) {
-                stateSelect.select2('destroy');
-            }
-            stateSelect.select2({
-                ...select2Config,
-                placeholder: '-- Select State --'
-            });
-        }
-
-        if (citySelect.length) {
-            if (citySelect.hasClass('select2-hidden-accessible')) {
-                citySelect.select2('destroy');
-            }
-            citySelect.select2({
-                ...select2Config,
-                placeholder: '-- Select City --'
-            });
-        }
-
-        if (postcodeSelect.length) {
-            if (postcodeSelect.hasClass('select2-hidden-accessible')) {
-                postcodeSelect.select2('destroy');
-            }
-            postcodeSelect.select2({
-                ...select2Config,
-                placeholder: '-- Select Postcode --'
-            });
-        }
-    }
-
-    function updateStaffTypeEditable(staffId) {
-        const staffTypeSelect = document.getElementById('StaffType');
-        const isExisting = !!staffId;
-
-        setSelectDisabled(staffTypeSelect, isExisting);
-    }
-
     async function loadLookups() {
         const msg = document.getElementById('staffBasicMessage');
 
@@ -230,10 +167,10 @@
 
         if (!citySelect) return;
 
-        setSelectDisabled(citySelect, true);
+        citySelect.disabled = true;
         setSelectOptions(citySelect, [], 'id', 'name', '-- Select City --');
         if (postcodeSelect) {
-            setSelectDisabled(postcodeSelect, true);
+            postcodeSelect.disabled = true;
             setSelectOptions(postcodeSelect, [], 'id', 'name', '-- Select Postcode --');
         }
         updateAddressLineInputsEnabled();
@@ -252,7 +189,7 @@
             }
 
             setSelectOptions(citySelect, result.cities || [], 'id', 'name', '-- Select City --');
-            setSelectDisabled(citySelect, false);
+            citySelect.disabled = false;
         } catch (err) {
             console.error(err);
         }
@@ -262,7 +199,7 @@
         const postcodeSelect = document.getElementById('StaffResPostcode');
         if (!postcodeSelect) return;
 
-        setSelectDisabled(postcodeSelect, true);
+        postcodeSelect.disabled = true;
         setSelectOptions(postcodeSelect, [], 'id', 'name', '-- Select Postcode --');
         updateAddressLineInputsEnabled();
 
@@ -280,7 +217,7 @@
             }
 
             setSelectOptions(postcodeSelect, result.postcodes || [], 'id', 'name', '-- Select Postcode --');
-            setSelectDisabled(postcodeSelect, false);
+            postcodeSelect.disabled = false;
         } catch (err) {
             console.error(err);
         }
@@ -366,7 +303,6 @@
             }
 
             updateAddressLineInputsEnabled();
-            updateStaffTypeEditable(s.staffId);
 
             if (headerName) headerName.textContent = 'Staff: ' + (s.name || '-');
             if (headerId && s.staffId) headerId.textContent = 'ID: ' + s.staffId;
@@ -473,8 +409,6 @@
                 msg.classList.add('text-success');
             }
 
-            updateStaffTypeEditable(result.staffId || staffId);
-
             if (window.StaffDocumentsTab && typeof window.StaffDocumentsTab.reload === 'function') {
                 window.StaffDocumentsTab.reload();
             }
@@ -489,7 +423,6 @@
 
     document.addEventListener('DOMContentLoaded', async function() {
         await loadLookups();
-        applySelect2();
 
         const staffId = getStaffId();
         if (staffId) {
@@ -497,7 +430,6 @@
         }
 
         await loadStaffBasic(staffId);
-        updateStaffTypeEditable(staffId);
 
         const nricInput = document.getElementById('StaffNRIC');
         if (nricInput) {
