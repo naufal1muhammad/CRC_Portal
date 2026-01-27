@@ -31,6 +31,14 @@ namespace CRC.Web.Controllers.Staff
             return View();
         }
 
+        // GET: /Staff/Edit/{id?}
+        [HttpGet]
+        public IActionResult Edit(string? id)
+        {
+            ViewData["StaffId"] = id ?? string.Empty;
+            return View("StaffEdit");
+        }
+
         // GET: /Staff/GetActiveBranches
         [HttpGet]
         public async Task<IActionResult> GetActiveBranches()
@@ -66,9 +74,8 @@ namespace CRC.Web.Controllers.Staff
                     nric = row["Staff_NRIC"].ToString(),
                     phone = row["Staff_Phone"].ToString(),
                     email = row["Staff_Email"].ToString(),
-                    branchId = row["Branch_ID"].ToString(),
-                    branchName = row["Branch_Name"].ToString(),
-                    staffTypeId = row["Staff_Type"]?.ToString() ?? ""
+                    staffTypeId = row["Staff_Type"]?.ToString() ?? "",
+                    staffTypeName = row["StaffType_Name"]?.ToString() ?? ""
                 });
             }
 
@@ -81,7 +88,7 @@ namespace CRC.Web.Controllers.Staff
         {
             if (string.IsNullOrWhiteSpace(staffId))
             {
-                return BadRequest(new { success = false, message = "Staff ID is required." });
+                return Ok(new { success = true, data = (object?)null });
             }
 
             var parameters = new[]
@@ -106,13 +113,31 @@ namespace CRC.Web.Controllers.Staff
                     staffId = row["Staff_ID"].ToString(),
                     name = row["Staff_Name"].ToString(),
                     nric = row["Staff_NRIC"].ToString(),
+                    birthDate = ToDateInputString(row["Staff_BirthDate"]),
+                    age = row["Staff_Age"] == DBNull.Value ? 0 : Convert.ToInt32(row["Staff_Age"]),
                     phone = row["Staff_Phone"].ToString(),
                     email = row["Staff_Email"].ToString(),
-                    branchId = row["Branch_ID"].ToString(),
-                    branchName = row["Branch_Name"].ToString(),
-                    staffTypeId = row["Staff_Type"]?.ToString() ?? ""
+                    gender = row["Staff_Gender"]?.ToString() ?? "",
+                    resState = row["Staff_ResState"]?.ToString() ?? "",
+                    resCity = row["Staff_ResCity"]?.ToString() ?? "",
+                    resPostcode = row["Staff_ResPostcode"]?.ToString() ?? "",
+                    addLine1 = row["Staff_AddLine1"]?.ToString() ?? "",
+                    addLine2 = row["Staff_AddLine2"]?.ToString() ?? "",
+                    staffBase = row["Staff_Base"]?.ToString() ?? "",
+                    staffTypeId = row["Staff_Type"]?.ToString() ?? "",
+                    staffTypeName = row["StaffType_Name"]?.ToString() ?? ""
                 }
             });
+        }
+
+        private static string? ToDateInputString(object value)
+        {
+            if (value == null || value == DBNull.Value) return null;
+            if (DateTime.TryParse(value.ToString(), out var dt))
+            {
+                return dt.ToString("yyyy-MM-dd");
+            }
+            return null;
         }
 
         public class SaveStaffRequest
@@ -122,11 +147,17 @@ namespace CRC.Web.Controllers.Staff
             public string StaffId { get; set; } = string.Empty;
             public string Name { get; set; } = string.Empty;
             public string NRIC { get; set; } = string.Empty;
+            public string BirthDate { get; set; } = string.Empty;
+            public int Age { get; set; }
             public string Phone { get; set; } = string.Empty;
             public string Email { get; set; } = string.Empty;
-
-            public string BranchId { get; set; } = string.Empty;
-            public string BranchName { get; set; } = string.Empty;
+            public string Gender { get; set; } = string.Empty;
+            public string ResState { get; set; } = string.Empty;
+            public string ResCity { get; set; } = string.Empty;
+            public string ResPostcode { get; set; } = string.Empty;
+            public string AddLine1 { get; set; } = string.Empty;
+            public string AddLine2 { get; set; } = string.Empty;
+            public string StaffBase { get; set; } = string.Empty;
 
             // This stores StaffType_ID from LU_STAFFTYPE
             public string StaffTypeId { get; set; } = string.Empty;
@@ -148,10 +179,17 @@ namespace CRC.Web.Controllers.Staff
 
             if (string.IsNullOrWhiteSpace(model.Name) ||
                 string.IsNullOrWhiteSpace(model.NRIC) ||
+                string.IsNullOrWhiteSpace(model.BirthDate) ||
+                model.Age <= 0 ||
                 string.IsNullOrWhiteSpace(model.Phone) ||
                 string.IsNullOrWhiteSpace(model.Email) ||
-                string.IsNullOrWhiteSpace(model.BranchId) ||
-                string.IsNullOrWhiteSpace(model.BranchName) ||
+                string.IsNullOrWhiteSpace(model.Gender) ||
+                string.IsNullOrWhiteSpace(model.ResState) ||
+                string.IsNullOrWhiteSpace(model.ResCity) ||
+                string.IsNullOrWhiteSpace(model.ResPostcode) ||
+                string.IsNullOrWhiteSpace(model.AddLine1) ||
+                string.IsNullOrWhiteSpace(model.AddLine2) ||
+                string.IsNullOrWhiteSpace(model.StaffBase) ||
                 string.IsNullOrWhiteSpace(model.StaffTypeId))
             {
                 return Ok(new { success = false, message = "Please fill in all required fields." });
@@ -159,18 +197,30 @@ namespace CRC.Web.Controllers.Staff
 
             try
             {
+                if (!DateTime.TryParse(model.BirthDate, out var birthDate))
+                {
+                    return Ok(new { success = false, message = "Invalid birth date." });
+                }
+
                 if (model.IsNew)
                 {
                     // INSERT: Staff_ID is auto-generated in spStaff_Insert
                     var insertParams = new[]
                     {
-                new SqlParameter("@Staff_Name",  model.Name),
-                new SqlParameter("@Staff_NRIC",  model.NRIC),
-                new SqlParameter("@Staff_Phone", model.Phone),
-                new SqlParameter("@Staff_Email", model.Email),
-                new SqlParameter("@Branch_ID",   model.BranchId),
-                new SqlParameter("@Branch_Name", (object?)model.BranchName ?? DBNull.Value),
-                new SqlParameter("@Staff_Type",  model.StaffTypeId) // StaffType_ID
+                new SqlParameter("@Staff_Name",        model.Name),
+                new SqlParameter("@Staff_NRIC",        model.NRIC),
+                new SqlParameter("@Staff_BirthDate",   birthDate),
+                new SqlParameter("@Staff_Age",         model.Age),
+                new SqlParameter("@Staff_Phone",       model.Phone),
+                new SqlParameter("@Staff_Email",       model.Email),
+                new SqlParameter("@Staff_Gender",      model.Gender),
+                new SqlParameter("@Staff_ResState",    model.ResState),
+                new SqlParameter("@Staff_ResCity",     model.ResCity),
+                new SqlParameter("@Staff_ResPostcode", model.ResPostcode),
+                new SqlParameter("@Staff_AddLine1",    model.AddLine1),
+                new SqlParameter("@Staff_AddLine2",    model.AddLine2),
+                new SqlParameter("@Staff_Base",        model.StaffBase),
+                new SqlParameter("@Staff_Type",        model.StaffTypeId) // StaffType_ID
             };
 
                     var dt = await _db.ExecuteDataTableAsync("spStaff_Insert", insertParams);
@@ -179,6 +229,17 @@ namespace CRC.Web.Controllers.Staff
                     if (dt.Rows.Count > 0 && dt.Columns.Contains("NewStaff_ID"))
                     {
                         newStaffId = dt.Rows[0]["NewStaff_ID"]?.ToString() ?? "";
+                    }
+
+                    var missingDocs = await GetMissingMandatoryDocuments(model.StaffTypeId, newStaffId);
+                    if (missingDocs.Count > 0)
+                    {
+                        return Ok(new
+                        {
+                            success = false,
+                            message = "Please upload required documents: " + string.Join(", ", missingDocs),
+                            staffId = newStaffId
+                        });
                     }
 
                     return Ok(new
@@ -198,17 +259,35 @@ namespace CRC.Web.Controllers.Staff
 
                     var updateParams = new[]
                     {
-                new SqlParameter("@Staff_ID",    model.StaffId),
-                new SqlParameter("@Staff_Name",  model.Name),
-                new SqlParameter("@Staff_NRIC",  model.NRIC),
-                new SqlParameter("@Staff_Phone", model.Phone),
-                new SqlParameter("@Staff_Email", model.Email),
-                new SqlParameter("@Branch_ID",   model.BranchId),
-                new SqlParameter("@Branch_Name", (object?)model.BranchName ?? DBNull.Value),
-                new SqlParameter("@Staff_Type",  model.StaffTypeId)
+                new SqlParameter("@Staff_ID",          model.StaffId),
+                new SqlParameter("@Staff_Name",        model.Name),
+                new SqlParameter("@Staff_NRIC",        model.NRIC),
+                new SqlParameter("@Staff_BirthDate",   birthDate),
+                new SqlParameter("@Staff_Age",         model.Age),
+                new SqlParameter("@Staff_Phone",       model.Phone),
+                new SqlParameter("@Staff_Email",       model.Email),
+                new SqlParameter("@Staff_Gender",      model.Gender),
+                new SqlParameter("@Staff_ResState",    model.ResState),
+                new SqlParameter("@Staff_ResCity",     model.ResCity),
+                new SqlParameter("@Staff_ResPostcode", model.ResPostcode),
+                new SqlParameter("@Staff_AddLine1",    model.AddLine1),
+                new SqlParameter("@Staff_AddLine2",    model.AddLine2),
+                new SqlParameter("@Staff_Base",        model.StaffBase),
+                new SqlParameter("@Staff_Type",        model.StaffTypeId)
             };
 
                     await _db.ExecuteNonQueryAsync("spStaff_Update", updateParams);
+
+                    var missingDocs = await GetMissingMandatoryDocuments(model.StaffTypeId, model.StaffId);
+                    if (missingDocs.Count > 0)
+                    {
+                        return Ok(new
+                        {
+                            success = false,
+                            message = "Please upload required documents: " + string.Join(", ", missingDocs),
+                            staffId = model.StaffId
+                        });
+                    }
 
                     return Ok(new
                     {
@@ -254,7 +333,183 @@ namespace CRC.Web.Controllers.Staff
             }
         }
 
+        private async Task<List<string>> GetMissingMandatoryDocuments(string staffTypeId, string staffId)
+        {
+            var missing = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(staffTypeId) || string.IsNullOrWhiteSpace(staffId))
+            {
+                return missing;
+            }
+
+            var settingsParams = new[]
+            {
+                new SqlParameter("@StaffType_ID", staffTypeId)
+            };
+
+            var settingsDt = await _db.ExecuteDataTableAsync("spStaffDocumentSettings_GetByStaffType", settingsParams);
+            var mandatoryDocs = new List<(string Id, string Name)>();
+
+            foreach (DataRow row in settingsDt.Rows)
+            {
+                var isMandatory = row["IsMandatory"] != DBNull.Value && Convert.ToInt32(row["IsMandatory"]) == 1;
+                if (!isMandatory) continue;
+
+                var docTypeId = row["StaffDocumentType_ID"]?.ToString() ?? "";
+                var docTypeName = row["StaffDocumentType_Name"]?.ToString() ?? docTypeId;
+
+                if (!string.IsNullOrWhiteSpace(docTypeId))
+                {
+                    mandatoryDocs.Add((docTypeId, docTypeName));
+                }
+            }
+
+            if (mandatoryDocs.Count == 0)
+            {
+                return missing;
+            }
+
+            var docParams = new[]
+            {
+                new SqlParameter("@Staff_ID", staffId)
+            };
+
+            var docDt = await _db.ExecuteDataTableAsync("spStaffDocument_List", docParams);
+            var existingDocTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (DataRow row in docDt.Rows)
+            {
+                var docTypeId = row["StaffDocumentType_ID"]?.ToString() ?? "";
+                if (!string.IsNullOrWhiteSpace(docTypeId))
+                {
+                    existingDocTypes.Add(docTypeId);
+                }
+            }
+
+            foreach (var doc in mandatoryDocs)
+            {
+                if (!existingDocTypes.Contains(doc.Id))
+                {
+                    missing.Add(doc.Name);
+                }
+            }
+
+            return missing;
+        }
+
+        // ----- Basic lookups -----
+
+        [HttpGet]
+        public async Task<IActionResult> GetStaffLookups()
+        {
+            try
+            {
+                var dtStaffTypes = await _db.ExecuteDataTableAsync("spLU_STAFFTYPE_List");
+                var dtStates = await _db.ExecuteDataTableAsync("spLU_LOCATION_ListStates");
+
+                var staffTypes = new List<object>();
+                foreach (DataRow row in dtStaffTypes.Rows)
+                {
+                    staffTypes.Add(new
+                    {
+                        staffTypeId = row["StaffType_ID"]?.ToString() ?? "",
+                        staffTypeName = row["StaffType_Name"]?.ToString() ?? ""
+                    });
+                }
+
+                var states = new List<object>();
+                foreach (DataRow row in dtStates.Rows)
+                {
+                    states.Add(new
+                    {
+                        id = row["LocationId"]?.ToString() ?? "",
+                        name = row["Name"]?.ToString() ?? ""
+                    });
+                }
+
+                return Ok(new { success = true, staffTypes, states });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error loading staff lookups." });
+            }
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetCitiesByState(int stateId)
+        {
+            if (stateId <= 0)
+            {
+                return Ok(new { success = false, message = "State is required." });
+            }
+
+            var parameters = new[]
+            {
+                new SqlParameter("@StateId", stateId)
+            };
+
+            var dt = await _db.ExecuteDataTableAsync("spLU_LOCATION_ListCityByState", parameters);
+            var cities = new List<object>();
+
+            foreach (DataRow row in dt.Rows)
+            {
+                cities.Add(new
+                {
+                    id = row["LocationId"]?.ToString() ?? "",
+                    name = row["Name"]?.ToString() ?? ""
+                });
+            }
+
+            return Ok(new { success = true, cities });
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetPostcodesByCity(int cityId)
+        {
+            if (cityId <= 0)
+            {
+                return Ok(new { success = false, message = "City is required." });
+            }
+
+            var parameters = new[]
+            {
+                new SqlParameter("@CityId", cityId)
+            };
+
+            var dt = await _db.ExecuteDataTableAsync("spLU_LOCATION_ListPostcodesByCity", parameters);
+            var postcodes = new List<object>();
+
+            foreach (DataRow row in dt.Rows)
+            {
+                postcodes.Add(new
+                {
+                    id = row["LocationId"]?.ToString() ?? "",
+                    name = row["Name"]?.ToString() ?? ""
+                });
+            }
+
+            return Ok(new { success = true, postcodes });
+        }
+
         // ----- Documents -----
+
+        [HttpGet]
+        public async Task<IActionResult> GetStaffDocumentTypes()
+        {
+            var dt = await _db.ExecuteDataTableAsync("spLU_STAFFDOCUMENTTYPE_List");
+            var list = new List<object>();
+
+            foreach (DataRow row in dt.Rows)
+            {
+                list.Add(new
+                {
+                    documentTypeId = row["StaffDocumentType_ID"]?.ToString() ?? "",
+                    documentTypeName = row["StaffDocumentType_Name"]?.ToString() ?? ""
+                });
+            }
+
+            return Ok(new { success = true, data = list });
+        }
 
         // GET: /Staff/GetStaffDocuments?staffId=...
         [HttpGet]
