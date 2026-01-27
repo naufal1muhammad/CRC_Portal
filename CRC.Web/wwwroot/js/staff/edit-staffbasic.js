@@ -1,5 +1,5 @@
 ﻿// @ts-nocheck
-(function() {
+(function () {
     function getStaffId() {
         const root = document.querySelector('[data-staff-id]');
         return root ? (root.getAttribute('data-staff-id') || '') : '';
@@ -47,6 +47,15 @@
         }
     }
 
+    // When Select2 is applied, setting `select.value` alone does not update the UI.
+    // Select2 listens on `change.select2`, so we trigger that to refresh the displayed selection.
+    function refreshSelect2(select) {
+        if (!select) return;
+        if (window.$ && $.fn.select2 && $(select).hasClass('select2-hidden-accessible')) {
+            $(select).trigger('change.select2');
+        }
+    }
+
     function selectOptionByText(select, text) {
         if (!select || !text) return;
         const target = text.trim().toLowerCase();
@@ -55,6 +64,7 @@
             const opt = select.options[i];
             if ((opt.textContent || '').trim().toLowerCase() === target) {
                 select.value = opt.value;
+                refreshSelect2(select);
                 return;
             }
         }
@@ -469,8 +479,15 @@
             }
 
             if (msg) {
-                msg.textContent = result.message || 'Staff saved successfully.';
-                msg.classList.add('text-success');
+                msg.textContent = '';
+                msg.classList.remove('text-success', 'text-danger');
+            }
+
+            // Show the "Saved Successfully" modal
+            const modalEl = document.getElementById('saveSuccessModal');
+            if (modalEl && window.bootstrap && bootstrap.Modal) {
+                const saveModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                saveModal.show();
             }
 
             updateStaffTypeEditable(result.staffId || staffId);
@@ -487,7 +504,7 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', async function() {
+    document.addEventListener('DOMContentLoaded', async function () {
         await loadLookups();
         applySelect2();
 
@@ -504,23 +521,41 @@
             nricInput.addEventListener('blur', updateBirthDateFromNric);
         }
 
-        const stateSelect = document.getElementById('StaffResState');
-        if (stateSelect) {
-            stateSelect.addEventListener('change', async function() {
-                await loadCitiesByState(stateSelect.value);
-            });
-        }
+        if (window.$ && $.fn.select2) {
+            $('#StaffResState')
+                .off('change.staffbasic')
+                .on('change.staffbasic', async function () {
+                    await loadCitiesByState(this.value);
+                });
 
-        const citySelect = document.getElementById('StaffResCity');
-        if (citySelect) {
-            citySelect.addEventListener('change', async function() {
-                await loadPostcodesByCity(citySelect.value);
-            });
-        }
+            $('#StaffResCity')
+                .off('change.staffbasic')
+                .on('change.staffbasic', async function () {
+                    await loadPostcodesByCity(this.value);
+                });
 
-        const postcodeSelect = document.getElementById('StaffResPostcode');
-        if (postcodeSelect) {
-            postcodeSelect.addEventListener('change', updateAddressLineInputsEnabled);
+            $('#StaffResPostcode')
+                .off('change.staffbasic')
+                .on('change.staffbasic', updateAddressLineInputsEnabled);
+        } else {
+            const stateSelect = document.getElementById('StaffResState');
+            if (stateSelect) {
+                stateSelect.addEventListener('change', async function () {
+                    await loadCitiesByState(stateSelect.value);
+                });
+            }
+
+            const citySelect = document.getElementById('StaffResCity');
+            if (citySelect) {
+                citySelect.addEventListener('change', async function () {
+                    await loadPostcodesByCity(citySelect.value);
+                });
+            }
+
+            const postcodeSelect = document.getElementById('StaffResPostcode');
+            if (postcodeSelect) {
+                postcodeSelect.addEventListener('change', updateAddressLineInputsEnabled);
+            }
         }
 
         const btnSave = document.getElementById('btnSaveStaffMain');
