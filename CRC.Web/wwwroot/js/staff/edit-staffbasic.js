@@ -6,6 +6,10 @@
     let existingDocsCache = [];
     let mandatoryDocTypeIds = new Set();
 
+    // Existing documents are NOT deleted immediately.
+    // They are only deleted when user clicks Save and the overall save succeeds.
+    let pendingDeleteDocIds = [];
+
     function getStaffId() {
         const root = document.querySelector('[data-staff-id]');
         return root ? (root.getAttribute('data-staff-id') || '') : '';
@@ -501,8 +505,13 @@
             return;
         }
 
+        const pendingSet = new Set((pendingDeleteDocIds || []).map(x => parseInt(x, 10)).filter(x => x > 0));
+
+        // Hide documents that are marked for deletion (until Save)
+        const visibleExistingDocs = (existingDocs || []).filter(d => !pendingSet.has(parseInt(d.documentId, 10)));
+
         const existingByType = new Map();
-        (existingDocs || []).forEach(d => {
+        visibleExistingDocs.forEach(d => {
             const typeId = d.staffDocumentTypeId || '';
             if (!typeId) return;
             if (!existingByType.has(typeId)) existingByType.set(typeId, []);
@@ -613,39 +622,25 @@
         renderDocumentCards(docTypesCache, existingDocsCache);
     }
 
-    async function deleteDocument(documentId) {
+    function markDocumentForDeletion(documentId) {
         if (!confirm('Are you sure you want to delete this document?')) {
             return;
         }
 
-        try {
-            const response = await fetch('/Staff/DeleteStaffDocument', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({ documentId })
-            });
+        const id = parseInt(documentId, 10) || 0;
+        if (id <= 0) return;
 
-            if (!response.ok) {
-                showDocumentsMessage('Server error while deleting document.', true);
-                return;
-            }
-
-            const result = await response.json();
-
-            if (!result.success) {
-                showDocumentsMessage(result.message || 'Failed to delete document.', true);
-                return;
-            }
-
-            showDocumentsMessage('Document deleted successfully.', false);
-            await reloadDocumentsSection();
-        } catch (err) {
-            console.error(err);
-            showDocumentsMessage('An unexpected error occurred while deleting documents.', true);
+        if (!pendingDeleteDocIds.includes(id)) {
+            pendingDeleteDocIds.push(id);
         }
+
+        // Hide it immediately from the UI, but do not delete on server yet.
+        const li = document.querySelector(`.staff-doc-list [data-doc-id="${id}"]`);
+        if (li) {
+            li.remove();
+        }
+
+        showDocumentsMessage('Document will be deleted when you click Save.', false);
     }
 
     function attachDocumentsHandlers() {
@@ -659,7 +654,7 @@
                 const idStr = deleteBtn.getAttribute('data-id');
                 const docId = idStr ? parseInt(idStr, 10) : 0;
                 if (docId > 0) {
-                    deleteDocument(docId);
+                    markDocumentForDeletion(docId);
                 }
             }
         });
@@ -791,6 +786,11 @@
                 }
             });
 
+            // Pending deletions (existing documents)
+            (pendingDeleteDocIds || []).forEach(id => {
+                formData.append('deleteDocIds', String(id));
+            });
+
             const response = await fetch('/Staff/SaveStaffWithDocuments', {
                 method: 'POST',
                 body: formData
@@ -820,10 +820,18 @@
                     msg.textContent = result.message || 'Failed to save staff.';
                     msg.classList.add('text-danger');
                 }
-                // Still reload documents in case staff/documents were created
+
+                // If save failed, nothing should have been committed.
+                // For existing staff, refresh documents so UI reflects server state.
+                // For new staff, keep the selected files (do NOT re-render).
                 clearDocumentsMessage();
                 if (result.message) showDocumentsMessage(result.message, true);
-                await reloadDocumentsSection();
+
+                pendingDeleteDocIds = [];
+
+                if (!isNew || (result.staffId && result.staffId !== '')) {
+                    await reloadDocumentsSection();
+                }
                 return;
             }
 
@@ -840,6 +848,9 @@
             }
 
             updateStaffTypeEditable(result.staffId || staffId);
+
+            // Clear pending deletions after successful save
+            pendingDeleteDocIds = [];
 
             // Clear file inputs after successful save
             const fileInputs = document.querySelectorAll('#staffDocumentsContainer .staff-doc-file');

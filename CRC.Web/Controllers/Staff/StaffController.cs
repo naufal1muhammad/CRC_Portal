@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,6 +10,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using CRC.Web.Data;
+using Microsoft.Extensions.Configuration;
 
 namespace CRC.Web.Controllers.Staff
 {
@@ -17,11 +19,14 @@ namespace CRC.Web.Controllers.Staff
     {
         private readonly DatabaseHelper _db;
         private readonly IWebHostEnvironment _env;
+        private readonly string _connectionString;
 
-        public StaffController(DatabaseHelper db, IWebHostEnvironment env)
+        public StaffController(DatabaseHelper db, IWebHostEnvironment env, IConfiguration configuration)
         {
             _db = db;
             _env = env;
+            _connectionString = configuration.GetConnectionString("CRC_DB")
+                ?? throw new InvalidOperationException("Connection string 'CRC_DB' not found.");
         }
 
         // GET: /Staff
@@ -314,7 +319,8 @@ namespace CRC.Web.Controllers.Staff
             [FromForm] SaveStaffRequest model,
             List<IFormFile>? files,
             List<string>? docTypeIds,
-            List<string>? docTypeNames)
+            List<string>? docTypeNames,
+            List<int>? deleteDocIds)
         {
             if (model == null)
             {
@@ -339,133 +345,235 @@ namespace CRC.Web.Controllers.Staff
                 return Ok(new { success = false, message = "Please fill in all required fields." });
             }
 
+            if (!DateTime.TryParse(model.BirthDate, out var birthDate))
+            {
+                return Ok(new { success = false, message = "Invalid birth date." });
+            }
+
+            // ----- Phase 1: Validate documents BEFORE saving anything -----
+            var deleteSet = new HashSet<int>();
+            if (deleteDocIds != null)
+            {
+                foreach (var id in deleteDocIds)
+                {
+                    if (id > 0) deleteSet.Add(id);
+                }
+            }
+
+            // Mandatory documents for Staff Type
+            var mandatoryDocs = await GetMandatoryDocsByStaffType(model.StaffTypeId);
+
+            // Document types that will exist after this save (existing - pending deletes + new uploads)
+            var resultingDocTypeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!model.IsNew)
+            {
+                if (string.IsNullOrWhiteSpace(model.StaffId))
+                {
+                    return Ok(new { success = false, message = "Staff ID is required for update." });
+                }
+
+                // Existing docs for this staff (exclude pending deletes)
+                var existingParams = new[] { new SqlParameter("@Staff_ID", model.StaffId) };
+                var existingDt = await _db.ExecuteDataTableAsync("spStaffDocument_List", existingParams);
+
+                foreach (DataRow row in existingDt.Rows)
+                {
+                    int docId = row["StaffDocument_ID"] == DBNull.Value ? 0 : Convert.ToInt32(row["StaffDocument_ID"]);
+                    if (docId > 0 && deleteSet.Contains(docId)) continue;
+
+                    var typeId = row["StaffDocumentType_ID"]?.ToString() ?? "";
+                    if (!string.IsNullOrWhiteSpace(typeId))
+                    {
+                        resultingDocTypeIds.Add(typeId);
+                    }
+                }
+            }
+
+            // New uploads in this request
+            if (docTypeIds != null)
+            {
+                foreach (var t in docTypeIds)
+                {
+                    if (!string.IsNullOrWhiteSpace(t))
+                    {
+                        resultingDocTypeIds.Add(t);
+                    }
+                }
+            }
+
+            var missingDocNames = new List<string>();
+            foreach (var doc in mandatoryDocs)
+            {
+                if (!resultingDocTypeIds.Contains(doc.Id))
+                {
+                    missingDocNames.Add(doc.Name);
+                }
+            }
+
+            if (missingDocNames.Count > 0)
+            {
+                // IMPORTANT: Do not save staff OR documents if mandatory documents are missing.
+                return Ok(new
+                {
+                    success = false,
+                    message = "Please upload required documents: " + string.Join(", ", missingDocNames),
+                    staffId = model.IsNew ? string.Empty : model.StaffId
+                });
+            }
+
+            // ----- Phase 2: Commit everything atomically (DB transaction) -----
+            docTypeIds ??= new List<string>();
+            docTypeNames ??= new List<string>();
+            files ??= new List<IFormFile>();
+
+            var createdFiles = new List<string>();
+            var deleteFilePaths = new List<string>();
+
+            var webRoot = GetWebRootPath();
+            var uploadRoot = Path.Combine(webRoot, "uploads", "staff");
+            if (!Directory.Exists(uploadRoot))
+            {
+                Directory.CreateDirectory(uploadRoot);
+            }
+
+            string staffId;
+
             try
             {
-                if (!DateTime.TryParse(model.BirthDate, out var birthDate))
+                await using var conn = new SqlConnection(_connectionString);
+                await conn.OpenAsync();
+                await using var tx = conn.BeginTransaction();
+
+                try
                 {
-                    return Ok(new { success = false, message = "Invalid birth date." });
-                }
-
-                string staffId = model.StaffId;
-
-                if (model.IsNew)
-                {
-                    var insertParams = new[]
+                    if (model.IsNew)
                     {
-                        new SqlParameter("@Staff_Name",        model.Name),
-                        new SqlParameter("@Staff_NRIC",        model.NRIC),
-                        new SqlParameter("@Staff_BirthDate",   birthDate),
-                        new SqlParameter("@Staff_Age",         model.Age),
-                        new SqlParameter("@Staff_Phone",       model.Phone),
-                        new SqlParameter("@Staff_Email",       model.Email),
-                        new SqlParameter("@Staff_Gender",      model.Gender),
-                        new SqlParameter("@Staff_ResState",    model.ResState),
-                        new SqlParameter("@Staff_ResCity",     model.ResCity),
-                        new SqlParameter("@Staff_ResPostcode", model.ResPostcode),
-                        new SqlParameter("@Staff_AddLine1",    model.AddLine1),
-                        new SqlParameter("@Staff_AddLine2",    model.AddLine2),
-                        new SqlParameter("@Staff_Base",        model.StaffBase),
-                        new SqlParameter("@Staff_Type",        model.StaffTypeId)
-                    };
+                        var insertParams = new[]
+                        {
+                            new SqlParameter("@Staff_Name",        model.Name),
+                            new SqlParameter("@Staff_NRIC",        model.NRIC),
+                            new SqlParameter("@Staff_BirthDate",   birthDate),
+                            new SqlParameter("@Staff_Age",         model.Age),
+                            new SqlParameter("@Staff_Phone",       model.Phone),
+                            new SqlParameter("@Staff_Email",       model.Email),
+                            new SqlParameter("@Staff_Gender",      model.Gender),
+                            new SqlParameter("@Staff_ResState",    model.ResState),
+                            new SqlParameter("@Staff_ResCity",     model.ResCity),
+                            new SqlParameter("@Staff_ResPostcode", model.ResPostcode),
+                            new SqlParameter("@Staff_AddLine1",    model.AddLine1),
+                            new SqlParameter("@Staff_AddLine2",    model.AddLine2),
+                            new SqlParameter("@Staff_Base",        model.StaffBase),
+                            new SqlParameter("@Staff_Type",        model.StaffTypeId)
+                        };
 
-                    var dt = await _db.ExecuteDataTableAsync("spStaff_Insert", insertParams);
+                        var dt = await ExecDataTableAsync(conn, tx, "spStaff_Insert", insertParams);
+                        staffId = string.Empty;
+                        if (dt.Rows.Count > 0 && dt.Columns.Contains("NewStaff_ID"))
+                        {
+                            staffId = dt.Rows[0]["NewStaff_ID"]?.ToString() ?? string.Empty;
+                        }
 
-                    if (dt.Rows.Count > 0 && dt.Columns.Contains("NewStaff_ID"))
-                    {
-                        staffId = dt.Rows[0]["NewStaff_ID"]?.ToString() ?? "";
+                        if (string.IsNullOrWhiteSpace(staffId))
+                        {
+                            throw new Exception("Failed to generate Staff ID.");
+                        }
                     }
-                }
-                else
-                {
-                    if (string.IsNullOrWhiteSpace(model.StaffId))
+                    else
                     {
-                        return Ok(new { success = false, message = "Staff ID is required for update." });
-                    }
+                        staffId = model.StaffId;
 
-                    var updateParams = new[]
-                    {
-                        new SqlParameter("@Staff_ID",          model.StaffId),
-                        new SqlParameter("@Staff_Name",        model.Name),
-                        new SqlParameter("@Staff_NRIC",        model.NRIC),
-                        new SqlParameter("@Staff_BirthDate",   birthDate),
-                        new SqlParameter("@Staff_Age",         model.Age),
-                        new SqlParameter("@Staff_Phone",       model.Phone),
-                        new SqlParameter("@Staff_Email",       model.Email),
-                        new SqlParameter("@Staff_Gender",      model.Gender),
-                        new SqlParameter("@Staff_ResState",    model.ResState),
-                        new SqlParameter("@Staff_ResCity",     model.ResCity),
-                        new SqlParameter("@Staff_ResPostcode", model.ResPostcode),
-                        new SqlParameter("@Staff_AddLine1",    model.AddLine1),
-                        new SqlParameter("@Staff_AddLine2",    model.AddLine2),
-                        new SqlParameter("@Staff_Base",        model.StaffBase),
-                        new SqlParameter("@Staff_Type",        model.StaffTypeId)
-                    };
+                        var updateParams = new[]
+                        {
+                            new SqlParameter("@Staff_ID",          model.StaffId),
+                            new SqlParameter("@Staff_Name",        model.Name),
+                            new SqlParameter("@Staff_NRIC",        model.NRIC),
+                            new SqlParameter("@Staff_BirthDate",   birthDate),
+                            new SqlParameter("@Staff_Age",         model.Age),
+                            new SqlParameter("@Staff_Phone",       model.Phone),
+                            new SqlParameter("@Staff_Email",       model.Email),
+                            new SqlParameter("@Staff_Gender",      model.Gender),
+                            new SqlParameter("@Staff_ResState",    model.ResState),
+                            new SqlParameter("@Staff_ResCity",     model.ResCity),
+                            new SqlParameter("@Staff_ResPostcode", model.ResPostcode),
+                            new SqlParameter("@Staff_AddLine1",    model.AddLine1),
+                            new SqlParameter("@Staff_AddLine2",    model.AddLine2),
+                            new SqlParameter("@Staff_Base",        model.StaffBase),
+                            new SqlParameter("@Staff_Type",        model.StaffTypeId)
+                        };
 
-                    await _db.ExecuteNonQueryAsync("spStaff_Update", updateParams);
-                }
-
-                // Upload documents (if any)
-                if (!string.IsNullOrWhiteSpace(staffId) && files != null && files.Count > 0)
-                {
-                    docTypeIds ??= new List<string>();
-                    docTypeNames ??= new List<string>();
-
-                    var webRoot = _env.WebRootPath;
-                    if (string.IsNullOrWhiteSpace(webRoot))
-                    {
-                        webRoot = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+                        await ExecNonQueryAsync(conn, tx, "spStaff_Update", updateParams);
                     }
 
-                    var uploadRoot = Path.Combine(webRoot, "uploads", "staff");
-                    if (!Directory.Exists(uploadRoot))
+                    // Get file paths for docs to be deleted (and delete DB rows). Do NOT delete physical files yet.
+                    foreach (var docId in deleteSet)
                     {
-                        Directory.CreateDirectory(uploadRoot);
+                        var dtDoc = await ExecDataTableAsync(conn, tx, "spStaffDocument_GetById",
+                            new[] { new SqlParameter("@StaffDocument_ID", docId) });
+
+                        if (dtDoc.Rows.Count > 0)
+                        {
+                            var filePath = dtDoc.Rows[0]["FilePath"]?.ToString() ?? "";
+                            if (!string.IsNullOrWhiteSpace(filePath))
+                            {
+                                deleteFilePaths.Add(filePath);
+                            }
+                        }
+
+                        await ExecNonQueryAsync(conn, tx, "spStaffDocument_Delete",
+                            new[] { new SqlParameter("@StaffDocument_ID", docId) });
                     }
 
+                    // Upload new documents (if any)
                     for (int i = 0; i < files.Count; i++)
                     {
                         var file = files[i];
                         if (file == null || file.Length == 0) continue;
 
-                        string docTypeId = (i < docTypeIds.Count) ? docTypeIds[i] : string.Empty;
-                        string docTypeName = (i < docTypeNames.Count) ? docTypeNames[i] : string.Empty;
+                        string tId = (i < docTypeIds.Count) ? docTypeIds[i] : string.Empty;
+                        string tName = (i < docTypeNames.Count) ? docTypeNames[i] : string.Empty;
 
                         var originalFileName = Path.GetFileName(file.FileName);
                         var uniqueFileName = $"{Guid.NewGuid():N}_{originalFileName}";
                         var physicalPath = Path.Combine(uploadRoot, uniqueFileName);
 
-                        using (var stream = new FileStream(physicalPath, FileMode.Create))
+                        // Write to disk BEFORE inserting DB row. If DB fails, we will delete the file on rollback.
+                        await using (var stream = new FileStream(physicalPath, FileMode.Create))
                         {
                             await file.CopyToAsync(stream);
                         }
 
+                        createdFiles.Add(physicalPath);
+
                         var relativePath = $"/uploads/staff/{uniqueFileName}";
                         var contentType = file.ContentType ?? "application/octet-stream";
 
-                        var parameters = new[]
+                        var insertDocParams = new[]
                         {
                             new SqlParameter("@Staff_ID",              staffId),
                             new SqlParameter("@Staff_Name",            (object?)model.Name ?? DBNull.Value),
-                            new SqlParameter("@StaffDocumentType_ID",  (object?)docTypeId ?? DBNull.Value),
-                            new SqlParameter("@StaffDocumentType_Name",(object?)docTypeName ?? DBNull.Value),
+                            new SqlParameter("@StaffDocumentType_ID",  (object?)tId ?? DBNull.Value),
+                            new SqlParameter("@StaffDocumentType_Name",(object?)tName ?? DBNull.Value),
                             new SqlParameter("@FileName",              originalFileName),
                             new SqlParameter("@FilePath",              relativePath),
                             new SqlParameter("@ContentType",           contentType)
                         };
 
-                        await _db.ExecuteNonQueryAsync("spStaffDocument_Insert", parameters);
+                        await ExecNonQueryAsync(conn, tx, "spStaffDocument_Insert", insertDocParams);
                     }
+
+                    await tx.CommitAsync();
+                }
+                catch
+                {
+                    await tx.RollbackAsync();
+                    throw;
                 }
 
-                var missingDocs = await GetMissingMandatoryDocuments(model.StaffTypeId, staffId);
-                if (missingDocs.Count > 0)
+                // Delete physical files only AFTER successful commit
+                foreach (var fp in deleteFilePaths)
                 {
-                    return Ok(new
-                    {
-                        success = false,
-                        message = "Please upload required documents: " + string.Join(", ", missingDocs),
-                        staffId = staffId
-                    });
+                    TryDeletePhysicalFile(fp);
                 }
 
                 return Ok(new
@@ -477,11 +585,151 @@ namespace CRC.Web.Controllers.Staff
             }
             catch (SqlException ex)
             {
+                // Cleanup any newly written files when DB failed
+                CleanupCreatedFiles(createdFiles);
                 return Ok(new { success = false, message = ex.Message });
             }
             catch (Exception)
             {
+                CleanupCreatedFiles(createdFiles);
                 return Ok(new { success = false, message = "An unexpected error occurred." });
+            }
+        }
+
+
+
+        // --------------------
+        // Helper methods for transactional stored-proc execution & file handling
+        // --------------------
+
+        private sealed class MandatoryDocInfo
+        {
+            public string Id { get; set; } = string.Empty;
+            public string Name { get; set; } = string.Empty;
+        }
+
+        private async Task<List<MandatoryDocInfo>> GetMandatoryDocsByStaffType(string staffTypeId)
+        {
+            var list = new List<MandatoryDocInfo>();
+
+            if (string.IsNullOrWhiteSpace(staffTypeId))
+                return list;
+
+            var settingsParams = new[]
+            {
+                new SqlParameter("@StaffType_ID", staffTypeId)
+            };
+
+            var settingsDt = await _db.ExecuteDataTableAsync("spStaffDocumentSettings_GetByStaffType", settingsParams);
+
+            foreach (DataRow row in settingsDt.Rows)
+            {
+                var isMandatory = row["IsMandatory"] != DBNull.Value && Convert.ToInt32(row["IsMandatory"]) == 1;
+                if (!isMandatory) continue;
+
+                var docTypeId = row["StaffDocumentType_ID"]?.ToString() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(docTypeId)) continue;
+
+                var docTypeName = row["StaffDocumentType_Name"]?.ToString() ?? docTypeId;
+
+                list.Add(new MandatoryDocInfo
+                {
+                    Id = docTypeId,
+                    Name = docTypeName
+                });
+            }
+
+            return list;
+        }
+
+        private string GetWebRootPath()
+        {
+            if (!string.IsNullOrWhiteSpace(_env.WebRootPath))
+                return _env.WebRootPath;
+
+            return Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+        }
+
+        private static async Task<DataTable> ExecDataTableAsync(SqlConnection conn, SqlTransaction tx, string storedProc, SqlParameter[]? parameters)
+        {
+            await using var cmd = new SqlCommand(storedProc, conn, tx)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            if (parameters != null && parameters.Length > 0)
+            {
+                cmd.Parameters.AddRange(parameters);
+            }
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var dt = new DataTable();
+            dt.Load(reader);
+            return dt;
+        }
+
+        private static async Task<int> ExecNonQueryAsync(SqlConnection conn, SqlTransaction tx, string storedProc, SqlParameter[]? parameters)
+        {
+            await using var cmd = new SqlCommand(storedProc, conn, tx)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            if (parameters != null && parameters.Length > 0)
+            {
+                cmd.Parameters.AddRange(parameters);
+            }
+
+            return await cmd.ExecuteNonQueryAsync();
+        }
+
+        private static void CleanupCreatedFiles(List<string> createdFiles)
+        {
+            if (createdFiles == null || createdFiles.Count == 0) return;
+
+            foreach (var fp in createdFiles)
+            {
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(fp)) continue;
+                    if (System.IO.File.Exists(fp))
+                    {
+                        System.IO.File.Delete(fp);
+                    }
+                }
+                catch
+                {
+                    // best effort
+                }
+            }
+        }
+
+        private void TryDeletePhysicalFile(string filePath)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(filePath)) return;
+
+                // If it's already a physical path
+                if (Path.IsPathRooted(filePath))
+                {
+                    if (System.IO.File.Exists(filePath))
+                        System.IO.File.Delete(filePath);
+                    return;
+                }
+
+                // Treat as web-relative path like /uploads/staff/xxx.pdf
+                var rel = filePath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
+                var physicalPath = Path.Combine(GetWebRootPath(), rel);
+
+                if (System.IO.File.Exists(physicalPath))
+                {
+                    System.IO.File.Delete(physicalPath);
+                }
+            }
+            catch
+            {
+                // best effort
             }
         }
 
@@ -804,6 +1052,8 @@ namespace CRC.Web.Controllers.Staff
         {
             public int DocumentId { get; set; }
         }
+
+
 
         // POST: /Staff/DeleteStaffDocument
         [HttpPost]
