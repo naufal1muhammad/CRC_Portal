@@ -52,6 +52,7 @@ wwwroot\js\staffPatient\journey.js
 wwwroot\js\staffPatient\templates\patientAssessment.js
 wwwroot\js\staffPatient\templates\patientColonoscopy.js
 wwwroot\js\staffPatient\templates\patientFollowUp.js
+wwwroot\js\staff\edit-staffbasic.js
 wwwroot\js\staff\edit-staffdocuments.js
 wwwroot\js\staff\edit-staffperformance.js
 wwwroot\js\staff\edit-staffschedule.js
@@ -9116,7 +9117,6 @@ wwwroot\uploads\staff\2a1b16f9adb34f2998bbfc690c05de76_ANNUAL PRACTICING CERTIFI
 wwwroot\uploads\staff\2dbf0018a3584274a3134cbc04104e62_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\2f91670f3c57497d87041b235fc1ea4e_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\31dd98ab765c4b05b515f5b489156b0c_BASIC DEGREE CERTIFICATE.pdf
-wwwroot\uploads\staff\473796f7761645abb9c78cda7425371f_HIGHER PROFESSIONAL QUALIFICATION.pdf
 wwwroot\uploads\staff\57fbe046d551495ea2ce20a21b1041e3_HIGHER PROFESSIONAL QUALIFICATION.pdf
 wwwroot\uploads\staff\5b817b0713e24f7d8f63153fa4bce611_CV_RESUME.pdf
 wwwroot\uploads\staff\636d1cb6ce4e48eab5e728757948e654_MMC REGISTRATION CERTIFICATE.pdf
@@ -9127,7 +9127,6 @@ wwwroot\uploads\staff\6d4373999374497e9bfb52df7b071d29_CV_RESUME.pdf
 wwwroot\uploads\staff\6ef372c6eda44b5597c90eb4d0965238_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\7259fa9546974cdfa16cc268c1bb61c9_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\7cf058e31759412da5ac89c117e76c8f_MMC REGISTRATION CERTIFICATE.pdf
-wwwroot\uploads\staff\885255e1f7ef4d0ea011df81275d6b39_ANNUAL PRACTICING CERTIFICATE.pdf
 wwwroot\uploads\staff\8fcec57e51fe4670973d548549f289bc_NSR SPECIALIST REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\96d8fb84d4ad49f59644260531235952_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\staff\9c14cfa4270342618bf4ace645480bea_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
@@ -9143,5 +9142,5 @@ wwwroot\uploads\staff\b79fae31fe404caa998558ab331d99b4_CV_RESUME.pdf
 wwwroot\uploads\staff\cbabdac92ac8428faf08e94267ca5b9c_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\staff\e96d839fdcac402dad551e59a8fee99f_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\ea97aa116d0b4d89897f98cdaed6026b_BASIC DEGREE CERTIFICATE.pdf
+wwwroot\uploads\staff\fb6a8861a1164102b8453617826ebf40_HIGHER PROFESSIONAL QUALIFICATION.pdf
 wwwroot\uploads\staff\fc09a8b391494530a7f571e35d9a629d_BASIC DEGREE CERTIFICATE.pdf
-wwwroot\js\staff\edit-staffbasic.js
