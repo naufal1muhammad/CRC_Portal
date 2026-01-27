@@ -1,11 +1,28 @@
 ﻿// @ts-nocheck
 (function () {
+    function isTempStaffId(staffId) {
+        return !!staffId && /^TMP-/i.test(staffId);
+    }
+
+    function generateTempStaffId() {
+        try {
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+                return 'TMP-' + window.crypto.randomUUID();
+            }
+        } catch (e) {
+            // ignore
+        }
+
+        return 'TMP-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+    }
+
     function getStaffId() {
         const root = document.querySelector('[data-staff-id]');
         return root ? (root.getAttribute('data-staff-id') || '') : '';
     }
 
-    function setStaffId(newId) {
+    function setStaffId(newId, updateTextBox) {
+        const shouldUpdateTextBox = (updateTextBox !== false);
         const root = document.querySelector('[data-staff-id]');
         const hidden = document.getElementById('StaffIdHidden');
         const txtId = document.getElementById('StaffId');
@@ -13,7 +30,7 @@
             root.setAttribute('data-staff-id', newId);
         }
         if (hidden) hidden.value = newId || '';
-        if (txtId) txtId.value = newId || '';
+        if (txtId && shouldUpdateTextBox) txtId.value = newId || '';
     }
 
     function setSelectOptions(select, items, valueField, textField, placeholder) {
@@ -47,15 +64,6 @@
         }
     }
 
-    // When Select2 is applied, setting `select.value` alone does not update the UI.
-    // Select2 listens on `change.select2`, so we trigger that to refresh the displayed selection.
-    function refreshSelect2(select) {
-        if (!select) return;
-        if (window.$ && $.fn.select2 && $(select).hasClass('select2-hidden-accessible')) {
-            $(select).trigger('change.select2');
-        }
-    }
-
     function selectOptionByText(select, text) {
         if (!select || !text) return;
         const target = text.trim().toLowerCase();
@@ -64,7 +72,6 @@
             const opt = select.options[i];
             if ((opt.textContent || '').trim().toLowerCase() === target) {
                 select.value = opt.value;
-                refreshSelect2(select);
                 return;
             }
         }
@@ -201,7 +208,7 @@
 
     function updateStaffTypeEditable(staffId) {
         const staffTypeSelect = document.getElementById('StaffType');
-        const isExisting = !!staffId;
+        const isExisting = !!staffId && !isTempStaffId(staffId);
 
         setSelectDisabled(staffTypeSelect, isExisting);
     }
@@ -301,7 +308,7 @@
         const headerName = document.getElementById('staffHeaderName');
         const headerId = document.getElementById('staffHeaderId');
 
-        if (!staffId) {
+        if (!staffId || isTempStaffId(staffId)) {
             if (headerName) headerName.textContent = 'Staff: -';
             return;
         }
@@ -394,7 +401,7 @@
         }
 
         const staffId = getStaffId();
-        const isNew = !staffId;
+        const isNew = !staffId || isTempStaffId(staffId);
 
         const txtName = document.getElementById('StaffName');
         const txtNRIC = document.getElementById('StaffNRIC');
@@ -479,15 +486,8 @@
             }
 
             if (msg) {
-                msg.textContent = '';
-                msg.classList.remove('text-success', 'text-danger');
-            }
-
-            // Show the "Saved Successfully" modal
-            const modalEl = document.getElementById('saveSuccessModal');
-            if (modalEl && window.bootstrap && bootstrap.Modal) {
-                const saveModal = bootstrap.Modal.getOrCreateInstance(modalEl);
-                saveModal.show();
+                msg.textContent = result.message || 'Staff saved successfully.';
+                msg.classList.add('text-success');
             }
 
             updateStaffTypeEditable(result.staffId || staffId);
@@ -504,40 +504,30 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', async function () {
-        await loadLookups();
-        applySelect2();
-
-        const staffId = getStaffId();
-        if (staffId) {
-            setStaffId(staffId);
-        }
-
-        await loadStaffBasic(staffId);
-        updateStaffTypeEditable(staffId);
-
-        const nricInput = document.getElementById('StaffNRIC');
-        if (nricInput) {
-            nricInput.addEventListener('blur', updateBirthDateFromNric);
-        }
-
-        if (window.$ && $.fn.select2) {
-            $('#StaffResState')
-                .off('change.staffbasic')
-                .on('change.staffbasic', async function () {
-                    await loadCitiesByState(this.value);
-                });
-
-            $('#StaffResCity')
-                .off('change.staffbasic')
-                .on('change.staffbasic', async function () {
-                    await loadPostcodesByCity(this.value);
-                });
-
-            $('#StaffResPostcode')
-                .off('change.staffbasic')
-                .on('change.staffbasic', updateAddressLineInputsEnabled);
+    document.addEventListener('DOMContentLoaded', function () {
+        // IMPORTANT: Ensure we have a Staff ID early (before any awaited calls),
+        // so the Documents tab can upload immediately for new staff.
+        const initialStaffId = getStaffId();
+        if (!initialStaffId) {
+            const tempId = generateTempStaffId();
+            setStaffId(tempId, false); // keep StaffId textbox empty for new staff
         } else {
+            setStaffId(initialStaffId);
+        }
+
+        (async function initAsync() {
+            await loadLookups();
+            applySelect2();
+
+            const staffId = getStaffId();
+            await loadStaffBasic(staffId);
+            updateStaffTypeEditable(staffId);
+
+            const nricInput = document.getElementById('StaffNRIC');
+            if (nricInput) {
+                nricInput.addEventListener('blur', updateBirthDateFromNric);
+            }
+
             const stateSelect = document.getElementById('StaffResState');
             if (stateSelect) {
                 stateSelect.addEventListener('change', async function () {
@@ -556,11 +546,11 @@
             if (postcodeSelect) {
                 postcodeSelect.addEventListener('change', updateAddressLineInputsEnabled);
             }
-        }
 
-        const btnSave = document.getElementById('btnSaveStaffMain');
-        if (btnSave) {
-            btnSave.addEventListener('click', saveStaff);
-        }
+            const btnSave = document.getElementById('btnSaveStaffMain');
+            if (btnSave) {
+                btnSave.addEventListener('click', saveStaff);
+            }
+        })();
     });
 })();

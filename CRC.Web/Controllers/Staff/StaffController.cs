@@ -231,6 +231,10 @@ namespace CRC.Web.Controllers.Staff
                         newStaffId = dt.Rows[0]["NewStaff_ID"]?.ToString() ?? "";
                     }
 
+                    // If documents were uploaded before saving Basic Details (using a temporary Staff ID),
+                    // move them to the newly generated Staff ID before validating mandatory docs.
+                    await ReassignTempStaffDocumentsIfAny(model.StaffId, newStaffId, model.Name);
+
                     var missingDocs = await GetMissingMandatoryDocuments(model.StaffTypeId, newStaffId);
                     if (missingDocs.Count > 0)
                     {
@@ -304,6 +308,70 @@ namespace CRC.Web.Controllers.Staff
             catch (Exception)
             {
                 return Ok(new { success = false, message = "An unexpected error occurred." });
+            }
+        }
+
+        private async Task ReassignTempStaffDocumentsIfAny(string tempStaffId, string newStaffId, string staffName)
+        {
+            if (string.IsNullOrWhiteSpace(tempStaffId) || string.IsNullOrWhiteSpace(newStaffId))
+            {
+                return;
+            }
+
+            if (tempStaffId.Equals(newStaffId, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            // Only allow reassignment from our client-generated temp IDs.
+            if (!tempStaffId.StartsWith("TMP-", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var listParams = new[]
+            {
+                new SqlParameter("@Staff_ID", tempStaffId)
+            };
+
+            var dt = await _db.ExecuteDataTableAsync("spStaffDocument_List", listParams);
+            if (dt.Rows.Count == 0)
+            {
+                return;
+            }
+
+            foreach (DataRow row in dt.Rows)
+            {
+                var oldId = row["StaffDocument_ID"] == DBNull.Value ? 0 : Convert.ToInt32(row["StaffDocument_ID"]);
+
+                var docTypeId = row["StaffDocumentType_ID"]?.ToString() ?? "";
+                var docTypeName = row["StaffDocumentType_Name"]?.ToString() ?? "";
+                var fileName = row["FileName"]?.ToString() ?? "";
+                var filePath = row["FilePath"]?.ToString() ?? "";
+                var contentType = row["ContentType"]?.ToString() ?? "application/octet-stream";
+
+                var insertParams = new[]
+                {
+                    new SqlParameter("@Staff_ID", newStaffId),
+                    new SqlParameter("@Staff_Name", string.IsNullOrWhiteSpace(staffName) ? (object)DBNull.Value : staffName),
+                    new SqlParameter("@StaffDocumentType_ID", string.IsNullOrWhiteSpace(docTypeId) ? (object)DBNull.Value : docTypeId),
+                    new SqlParameter("@StaffDocumentType_Name", string.IsNullOrWhiteSpace(docTypeName) ? (object)DBNull.Value : docTypeName),
+                    new SqlParameter("@FileName", fileName),
+                    new SqlParameter("@FilePath", filePath),
+                    new SqlParameter("@ContentType", contentType)
+                };
+
+                await _db.ExecuteNonQueryAsync("spStaffDocument_Insert", insertParams);
+
+                if (oldId > 0)
+                {
+                    var deleteParams = new[]
+                    {
+                        new SqlParameter("@StaffDocument_ID", oldId)
+                    };
+
+                    await _db.ExecuteNonQueryAsync("spStaffDocument_Delete", deleteParams);
+                }
             }
         }
 
