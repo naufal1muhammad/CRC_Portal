@@ -34,8 +34,8 @@ BEGIN
         RETURN;
     END
 
-    DECLARE @StateIDText VARCHAR(2) =
-        RIGHT('00' + CAST(@State_ID AS VARCHAR(2)), 2);
+    DECLARE @StateIDText VARCHAR(4) =
+        RIGHT('0000' + CAST(@State_ID AS VARCHAR(10)), 4);
 
     DECLARE @OrganizationIdClean VARCHAR(100) =
         REPLACE(LTRIM(RTRIM(@Organization_ID)), '*', '');

@@ -1,3 +1,3 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 (function() {
 })();
