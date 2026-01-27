@@ -307,6 +307,184 @@ namespace CRC.Web.Controllers.Staff
             }
         }
 
+        // POST: /Staff/SaveStaffWithDocuments
+        // Saves Staff (insert/update) and uploads any selected documents in the same request.
+        [HttpPost]
+        public async Task<IActionResult> SaveStaffWithDocuments(
+            [FromForm] SaveStaffRequest model,
+            List<IFormFile>? files,
+            List<string>? docTypeIds,
+            List<string>? docTypeNames)
+        {
+            if (model == null)
+            {
+                return BadRequest(new { success = false, message = "Invalid data." });
+            }
+
+            if (string.IsNullOrWhiteSpace(model.Name) ||
+                string.IsNullOrWhiteSpace(model.NRIC) ||
+                string.IsNullOrWhiteSpace(model.BirthDate) ||
+                model.Age <= 0 ||
+                string.IsNullOrWhiteSpace(model.Phone) ||
+                string.IsNullOrWhiteSpace(model.Email) ||
+                string.IsNullOrWhiteSpace(model.Gender) ||
+                string.IsNullOrWhiteSpace(model.ResState) ||
+                string.IsNullOrWhiteSpace(model.ResCity) ||
+                string.IsNullOrWhiteSpace(model.ResPostcode) ||
+                string.IsNullOrWhiteSpace(model.AddLine1) ||
+                string.IsNullOrWhiteSpace(model.AddLine2) ||
+                string.IsNullOrWhiteSpace(model.StaffBase) ||
+                string.IsNullOrWhiteSpace(model.StaffTypeId))
+            {
+                return Ok(new { success = false, message = "Please fill in all required fields." });
+            }
+
+            try
+            {
+                if (!DateTime.TryParse(model.BirthDate, out var birthDate))
+                {
+                    return Ok(new { success = false, message = "Invalid birth date." });
+                }
+
+                string staffId = model.StaffId;
+
+                if (model.IsNew)
+                {
+                    var insertParams = new[]
+                    {
+                        new SqlParameter("@Staff_Name",        model.Name),
+                        new SqlParameter("@Staff_NRIC",        model.NRIC),
+                        new SqlParameter("@Staff_BirthDate",   birthDate),
+                        new SqlParameter("@Staff_Age",         model.Age),
+                        new SqlParameter("@Staff_Phone",       model.Phone),
+                        new SqlParameter("@Staff_Email",       model.Email),
+                        new SqlParameter("@Staff_Gender",      model.Gender),
+                        new SqlParameter("@Staff_ResState",    model.ResState),
+                        new SqlParameter("@Staff_ResCity",     model.ResCity),
+                        new SqlParameter("@Staff_ResPostcode", model.ResPostcode),
+                        new SqlParameter("@Staff_AddLine1",    model.AddLine1),
+                        new SqlParameter("@Staff_AddLine2",    model.AddLine2),
+                        new SqlParameter("@Staff_Base",        model.StaffBase),
+                        new SqlParameter("@Staff_Type",        model.StaffTypeId)
+                    };
+
+                    var dt = await _db.ExecuteDataTableAsync("spStaff_Insert", insertParams);
+
+                    if (dt.Rows.Count > 0 && dt.Columns.Contains("NewStaff_ID"))
+                    {
+                        staffId = dt.Rows[0]["NewStaff_ID"]?.ToString() ?? "";
+                    }
+                }
+                else
+                {
+                    if (string.IsNullOrWhiteSpace(model.StaffId))
+                    {
+                        return Ok(new { success = false, message = "Staff ID is required for update." });
+                    }
+
+                    var updateParams = new[]
+                    {
+                        new SqlParameter("@Staff_ID",          model.StaffId),
+                        new SqlParameter("@Staff_Name",        model.Name),
+                        new SqlParameter("@Staff_NRIC",        model.NRIC),
+                        new SqlParameter("@Staff_BirthDate",   birthDate),
+                        new SqlParameter("@Staff_Age",         model.Age),
+                        new SqlParameter("@Staff_Phone",       model.Phone),
+                        new SqlParameter("@Staff_Email",       model.Email),
+                        new SqlParameter("@Staff_Gender",      model.Gender),
+                        new SqlParameter("@Staff_ResState",    model.ResState),
+                        new SqlParameter("@Staff_ResCity",     model.ResCity),
+                        new SqlParameter("@Staff_ResPostcode", model.ResPostcode),
+                        new SqlParameter("@Staff_AddLine1",    model.AddLine1),
+                        new SqlParameter("@Staff_AddLine2",    model.AddLine2),
+                        new SqlParameter("@Staff_Base",        model.StaffBase),
+                        new SqlParameter("@Staff_Type",        model.StaffTypeId)
+                    };
+
+                    await _db.ExecuteNonQueryAsync("spStaff_Update", updateParams);
+                }
+
+                // Upload documents (if any)
+                if (!string.IsNullOrWhiteSpace(staffId) && files != null && files.Count > 0)
+                {
+                    docTypeIds ??= new List<string>();
+                    docTypeNames ??= new List<string>();
+
+                    var webRoot = _env.WebRootPath;
+                    if (string.IsNullOrWhiteSpace(webRoot))
+                    {
+                        webRoot = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+                    }
+
+                    var uploadRoot = Path.Combine(webRoot, "uploads", "staff");
+                    if (!Directory.Exists(uploadRoot))
+                    {
+                        Directory.CreateDirectory(uploadRoot);
+                    }
+
+                    for (int i = 0; i < files.Count; i++)
+                    {
+                        var file = files[i];
+                        if (file == null || file.Length == 0) continue;
+
+                        string docTypeId = (i < docTypeIds.Count) ? docTypeIds[i] : string.Empty;
+                        string docTypeName = (i < docTypeNames.Count) ? docTypeNames[i] : string.Empty;
+
+                        var originalFileName = Path.GetFileName(file.FileName);
+                        var uniqueFileName = $"{Guid.NewGuid():N}_{originalFileName}";
+                        var physicalPath = Path.Combine(uploadRoot, uniqueFileName);
+
+                        using (var stream = new FileStream(physicalPath, FileMode.Create))
+                        {
+                            await file.CopyToAsync(stream);
+                        }
+
+                        var relativePath = $"/uploads/staff/{uniqueFileName}";
+                        var contentType = file.ContentType ?? "application/octet-stream";
+
+                        var parameters = new[]
+                        {
+                            new SqlParameter("@Staff_ID",              staffId),
+                            new SqlParameter("@Staff_Name",            (object?)model.Name ?? DBNull.Value),
+                            new SqlParameter("@StaffDocumentType_ID",  (object?)docTypeId ?? DBNull.Value),
+                            new SqlParameter("@StaffDocumentType_Name",(object?)docTypeName ?? DBNull.Value),
+                            new SqlParameter("@FileName",              originalFileName),
+                            new SqlParameter("@FilePath",              relativePath),
+                            new SqlParameter("@ContentType",           contentType)
+                        };
+
+                        await _db.ExecuteNonQueryAsync("spStaffDocument_Insert", parameters);
+                    }
+                }
+
+                var missingDocs = await GetMissingMandatoryDocuments(model.StaffTypeId, staffId);
+                if (missingDocs.Count > 0)
+                {
+                    return Ok(new
+                    {
+                        success = false,
+                        message = "Please upload required documents: " + string.Join(", ", missingDocs),
+                        staffId = staffId
+                    });
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = model.IsNew ? "Staff created successfully." : "Staff updated successfully.",
+                    staffId = staffId
+                });
+            }
+            catch (SqlException ex)
+            {
+                return Ok(new { success = false, message = ex.Message });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "An unexpected error occurred." });
+            }
+        }
+
         // POST: /Staff/DeleteStaff
         [HttpPost]
         public async Task<IActionResult> DeleteStaff([FromBody] DeleteStaffRequest model)

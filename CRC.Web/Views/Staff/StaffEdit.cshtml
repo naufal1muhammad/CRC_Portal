@@ -45,16 +45,6 @@
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link"
-                    id="tab-documents"
-                    data-bs-toggle="tab"
-                    data-bs-target="#tabDocuments"
-                    type="button"
-                    role="tab">
-                Documents
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link"
                     id="tab-schedule"
                     data-bs-toggle="tab"
                     data-bs-target="#tabSchedule"
@@ -86,124 +76,135 @@
             <div id="basicDetailsContent">
                 <input type="hidden" id="StaffIdHidden" value="@staffId" />
 
-                <h5 class="mb-3">Basic Section</h5>
+                <!-- Basic Section -->
+                <div class="card bg-light border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Basic Section</h5>
 
-                <div class="row g-3">
-                    <div class="col-lg-6">
-                        <div class="mb-2">
-                            <label for="StaffId" class="form-label">ID <span class="text-danger">*</span></label>
-                            <input id="StaffId" type="text" class="form-control form-control-sm" readonly />
-                            <div class="form-text">Auto-generated on save for new staff.</div>
-                        </div>
+                        <div class="row g-3">
+                            <div class="col-lg-6">
+                                <div class="mb-2">
+                                    <label for="StaffId" class="form-label">ID <span class="text-danger">*</span></label>
+                                    <input id="StaffId" type="text" class="form-control form-control-sm" readonly />
+                                    <div class="form-text">Auto-generated on save for new staff.</div>
+                                </div>
 
-                        <div class="mb-2">
-                            <label for="StaffName" class="form-label">Name <span class="text-danger">*</span></label>
-                            <input id="StaffName" type="text" class="form-control form-control-sm" style="text-transform: uppercase;" />
-                        </div>
+                                <div class="mb-2">
+                                    <label for="StaffName" class="form-label">Name <span class="text-danger">*</span></label>
+                                    <input id="StaffName" type="text" class="form-control form-control-sm" style="text-transform: uppercase;" />
+                                </div>
 
-                        <div class="mb-2">
-                            <label for="StaffNRIC" class="form-label">NRIC <span class="text-danger">*</span></label>
-                            <input id="StaffNRIC" type="text" class="form-control form-control-sm" />
-                        </div>
+                                <div class="mb-2">
+                                    <label for="StaffNRIC" class="form-label">NRIC <span class="text-danger">*</span></label>
+                                    <input id="StaffNRIC" type="text" class="form-control form-control-sm" />
+                                </div>
 
-                        <div class="mb-2">
-                            <label for="StaffBirthDate" class="form-label">Birth Date (mm/dd/yyyy) <span class="text-danger">*</span></label>
-                            <input id="StaffBirthDate" type="date" class="form-control form-control-sm" readonly />
-                        </div>
+                                <div class="mb-2">
+                                    <label for="StaffBirthDate" class="form-label">Birth Date (mm/dd/yyyy) <span class="text-danger">*</span></label>
+                                    <input id="StaffBirthDate" type="date" class="form-control form-control-sm" readonly />
+                                </div>
 
-                        <div class="mb-2">
-                            <label for="StaffAge" class="form-label">Age <span class="text-danger">*</span></label>
-                            <input id="StaffAge" type="number" class="form-control form-control-sm" readonly />
-                            <div class="form-text">Automatically calculated from Birth Date.</div>
-                        </div>
-                    </div>
+                                <div class="mb-2">
+                                    <label for="StaffAge" class="form-label">Age <span class="text-danger">*</span></label>
+                                    <input id="StaffAge" type="number" class="form-control form-control-sm" readonly />
+                                    <div class="form-text">Automatically calculated from Birth Date.</div>
+                                </div>
+                            </div>
 
-                    <div class="col-lg-6">
-                        <div class="mb-2">
-                            <label for="StaffPhone" class="form-label">Phone <span class="text-danger">*</span></label>
-                            <input id="StaffPhone" type="text" class="form-control form-control-sm" />
-                        </div>
+                            <div class="col-lg-6">
+                                <div class="mb-2">
+                                    <label for="StaffPhone" class="form-label">Phone <span class="text-danger">*</span></label>
+                                    <input id="StaffPhone" type="text" class="form-control form-control-sm" />
+                                </div>
 
-                        <div class="mb-2">
-                            <label for="StaffEmail" class="form-label">Email <span class="text-danger">*</span></label>
-                            <input id="StaffEmail" type="email" class="form-control form-control-sm" />
-                        </div>
+                                <div class="mb-2">
+                                    <label for="StaffEmail" class="form-label">Email <span class="text-danger">*</span></label>
+                                    <input id="StaffEmail" type="email" class="form-control form-control-sm" />
+                                </div>
 
-                        <div class="mb-2">
-                            <label for="StaffGender" class="form-label">Gender <span class="text-danger">*</span></label>
-                            <select id="StaffGender" class="form-select form-select-sm">
-                                <option value="">-- Select Gender --</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                            </select>
+                                <div class="mb-2">
+                                    <label for="StaffGender" class="form-label">Gender <span class="text-danger">*</span></label>
+                                    <select id="StaffGender" class="form-select form-select-sm">
+                                        <option value="">-- Select Gender --</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <hr class="my-4" />
+                <!-- Residential Address Section -->
+                <div class="card bg-light border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Residential Address Section</h5>
 
-                <h5 class="mb-3">Residential Address Section</h5>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="StaffResState" class="form-label">State <span class="text-danger">*</span></label>
+                                <select id="StaffResState" class="form-select form-select-sm select2">
+                                    <option value="">-- Select State --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="StaffResCity" class="form-label">City <span class="text-danger">*</span></label>
+                                <select id="StaffResCity" class="form-select form-select-sm select2" disabled>
+                                    <option value="">-- Select City --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="StaffResPostcode" class="form-label">Postcode <span class="text-danger">*</span></label>
+                                <select id="StaffResPostcode" class="form-select form-select-sm select2" disabled>
+                                    <option value="">-- Select Postcode --</option>
+                                </select>
+                            </div>
 
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label for="StaffResState" class="form-label">State <span class="text-danger">*</span></label>
-                        <select id="StaffResState" class="form-select form-select-sm select2">
-                            <option value="">-- Select State --</option>
-                        </select>
+                            <div class="col-md-6">
+                                <label for="StaffAddLine1" class="form-label">Address Line 1 <span class="text-danger">*</span></label>
+                                <textarea id="StaffAddLine1" class="form-control form-control-sm" rows="2" disabled></textarea>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="StaffAddLine2" class="form-label">Address Line 2 <span class="text-danger">*</span></label>
+                                <textarea id="StaffAddLine2" class="form-control form-control-sm" rows="2" disabled></textarea>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-md-4">
-                        <label for="StaffResCity" class="form-label">City <span class="text-danger">*</span></label>
-                        <select id="StaffResCity" class="form-select form-select-sm select2" disabled>
-                            <option value="">-- Select City --</option>
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label for="StaffResPostcode" class="form-label">Postcode <span class="text-danger">*</span></label>
-                        <select id="StaffResPostcode" class="form-select form-select-sm select2" disabled>
-                            <option value="">-- Select Postcode --</option>
-                        </select>
-                    </div>
+                </div>
 
-                    <div class="col-md-6">
-                        <label for="StaffAddLine1" class="form-label">Address Line 1 <span class="text-danger">*</span></label>
-                        <textarea id="StaffAddLine1" class="form-control form-control-sm" rows="2" disabled></textarea>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="StaffAddLine2" class="form-label">Address Line 2 <span class="text-danger">*</span></label>
-                        <textarea id="StaffAddLine2" class="form-control form-control-sm" rows="2" disabled></textarea>
+                <!-- Employment Section -->
+                <div class="card bg-light border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Employment Section</h5>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="StaffBase" class="form-label">Base <span class="text-danger">*</span></label>
+                                <input id="StaffBase" type="text" class="form-control form-control-sm" />
+                            </div>
+                            <div class="col-md-6">
+                                <label for="StaffType" class="form-label">Staff Type <span class="text-danger">*</span></label>
+                                <select id="StaffType" class="form-select form-select-sm">
+                                    <option value="">-- Select Staff Type --</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <hr class="my-4" />
+                <!-- Documents Section -->
+                <div class="card bg-light border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                            <h5 class="card-title mb-0">Documents Section</h5>
+                            <small class="text-muted">Files will be uploaded when you click <strong>Save</strong>.</small>
+                        </div>
 
-                <h5 class="mb-3">Employment Section</h5>
-
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label for="StaffBase" class="form-label">Base <span class="text-danger">*</span></label>
-                        <input id="StaffBase" type="text" class="form-control form-control-sm" />
+                        <div id="staffDocumentsMessage" class="text-danger small mb-2"></div>
+                        <div id="staffDocumentsContainer">
+                            <p class="text-muted mb-0">Loading document types...</p>
+                        </div>
                     </div>
-                    <div class="col-md-6">
-                        <label for="StaffType" class="form-label">Staff Type <span class="text-danger">*</span></label>
-                        <select id="StaffType" class="form-select form-select-sm">
-                            <option value="">-- Select Staff Type --</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Documents tab -->
-        <div class="tab-pane fade"
-             id="tabDocuments"
-             role="tabpanel"
-             aria-labelledby="tab-documents">
-            <div id="staffDocumentsContent">
-                <div id="staffDocumentsMessage" class="text-danger small mb-2"></div>
-                <div id="staffDocumentsContainer">
-                    <p class="text-muted mb-0">
-                        Upload documents by type. Uploads are saved immediately and do not depend on the main Save button.
-                    </p>
                 </div>
             </div>
         </div>
@@ -255,7 +256,6 @@
 
 @section Scripts {
     <script src="~/js/staff/edit-staffbasic.js"></script>
-    <script src="~/js/staff/edit-staffdocuments.js"></script>
     <script src="~/js/staff/edit-staffschedule.js"></script>
     <script src="~/js/staff/edit-staffperformance.js"></script>
 }

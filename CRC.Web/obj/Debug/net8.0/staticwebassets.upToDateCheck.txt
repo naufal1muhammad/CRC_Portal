@@ -53,7 +53,6 @@ wwwroot\js\staffPatient\templates\patientAssessment.js
 wwwroot\js\staffPatient\templates\patientColonoscopy.js
 wwwroot\js\staffPatient\templates\patientFollowUp.js
 wwwroot\js\staff\edit-staffbasic.js
-wwwroot\js\staff\edit-staffdocuments.js
 wwwroot\js\staff\edit-staffperformance.js
 wwwroot\js\staff\edit-staffschedule.js
 wwwroot\js\staff\index.js

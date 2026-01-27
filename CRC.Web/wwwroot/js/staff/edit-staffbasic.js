@@ -1,5 +1,11 @@
 ﻿// @ts-nocheck
 (function () {
+    let documentsContainer;
+    let documentsMsg;
+    let docTypesCache = [];
+    let existingDocsCache = [];
+    let mandatoryDocTypeIds = new Set();
+
     function getStaffId() {
         const root = document.querySelector('[data-staff-id]');
         return root ? (root.getAttribute('data-staff-id') || '') : '';
@@ -378,11 +384,319 @@
             updateAddressLineInputsEnabled();
             updateStaffTypeEditable(s.staffId);
 
+            await refreshMandatoryDocuments();
+            await reloadDocumentsSection();
+
             if (headerName) headerName.textContent = 'Staff: ' + (s.name || '-');
             if (headerId && s.staffId) headerId.textContent = 'ID: ' + s.staffId;
         } catch (err) {
             console.error(err);
             if (msg) msg.textContent = 'Error loading staff details.';
+        }
+    }
+
+    // ----- Documents (Documents Section under Basic Details) -----
+
+    function showDocumentsMessage(text, isError) {
+        if (!documentsMsg) return;
+        documentsMsg.textContent = text || '';
+        documentsMsg.classList.remove('text-success', 'text-danger');
+        documentsMsg.classList.add(isError ? 'text-danger' : 'text-success');
+    }
+
+    function clearDocumentsMessage() {
+        if (!documentsMsg) return;
+        documentsMsg.textContent = '';
+        documentsMsg.classList.remove('text-success', 'text-danger');
+    }
+
+    async function loadDocumentTypes() {
+        try {
+            const response = await fetch('/Staff/GetStaffDocumentTypes', {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+
+            if (!response.ok) {
+                showDocumentsMessage('Error loading document types.', true);
+                return [];
+            }
+
+            const result = await response.json();
+            if (!result.success) {
+                showDocumentsMessage(result.message || 'Error loading document types.', true);
+                return [];
+            }
+
+            return result.data || [];
+        } catch (err) {
+            console.error(err);
+            showDocumentsMessage('Error loading document types.', true);
+            return [];
+        }
+    }
+
+    async function loadExistingDocuments(staffId) {
+        if (!staffId) return [];
+
+        try {
+            const response = await fetch('/Staff/GetStaffDocuments?staffId=' + encodeURIComponent(staffId), {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+
+            if (!response.ok) return [];
+            const result = await response.json();
+            if (!result.success) return [];
+
+            return result.data || [];
+        } catch (err) {
+            console.error(err);
+            return [];
+        }
+    }
+
+    async function refreshMandatoryDocuments() {
+        mandatoryDocTypeIds = new Set();
+
+        const staffTypeSelect = document.getElementById('StaffType');
+        const staffTypeId = staffTypeSelect?.value || '';
+        if (!staffTypeId) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/Staff/GetMandatoryDocumentsForStaffType?staffTypeId=' + encodeURIComponent(staffTypeId), {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+
+            if (!response.ok) return;
+            const result = await response.json();
+            if (!result.success) return;
+
+            const list = result.data || [];
+            list.forEach(d => {
+                const id = d.staffDocumentTypeId || '';
+                if (id) mandatoryDocTypeIds.add(id);
+            });
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function getDocTypeNameFromCard(card) {
+        return card.getAttribute('data-doc-type-name') || '';
+    }
+
+    function renderDocumentCards(docTypes, existingDocs) {
+        if (!documentsContainer) return;
+
+        clearDocumentsMessage();
+
+        if (!docTypes || docTypes.length === 0) {
+            documentsContainer.innerHTML = `
+                <p class="text-muted mb-0">No staff document types configured.</p>
+            `;
+            return;
+        }
+
+        const existingByType = new Map();
+        (existingDocs || []).forEach(d => {
+            const typeId = d.staffDocumentTypeId || '';
+            if (!typeId) return;
+            if (!existingByType.has(typeId)) existingByType.set(typeId, []);
+            existingByType.get(typeId).push(d);
+        });
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'row g-3';
+
+        docTypes.forEach(t => {
+            const docTypeId = t.documentTypeId || '';
+            const docTypeName = t.documentTypeName || '';
+
+            const col = document.createElement('div');
+            col.className = 'col-md-6';
+
+            const card = document.createElement('div');
+            card.className = 'card h-100';
+            card.setAttribute('data-doc-type-id', docTypeId);
+            card.setAttribute('data-doc-type-name', docTypeName);
+
+            const body = document.createElement('div');
+            body.className = 'card-body';
+
+            const isMandatory = mandatoryDocTypeIds.has(docTypeId);
+            const existingForType = existingByType.get(docTypeId) || [];
+
+            body.innerHTML = `
+                <div class="d-flex align-items-start justify-content-between gap-2">
+                    <h6 class="card-title mb-2">${docTypeName}</h6>
+                    ${isMandatory ? '<span class="badge bg-warning text-dark">Mandatory</span>' : ''}
+                </div>
+
+                <div class="mb-2">
+                    <input type="file"
+                           class="form-control form-control-sm staff-doc-file"
+                           multiple />
+                    <div class="form-text selected-files">No new files selected.</div>
+                </div>
+
+                <div class="small text-muted mb-1">Existing documents:</div>
+                <div class="staff-doc-list">
+                    <p class="text-muted mb-0">No documents uploaded.</p>
+                </div>
+            `;
+
+            card.appendChild(body);
+            col.appendChild(card);
+            wrapper.appendChild(col);
+
+            // Existing documents
+            const listDiv = body.querySelector('.staff-doc-list');
+            if (listDiv && existingForType.length > 0) {
+                const ul = document.createElement('ul');
+                ul.className = 'list-group mb-0';
+
+                existingForType.forEach(d => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    li.setAttribute('data-doc-id', d.documentId);
+
+                    const safeName = d.fileName || '';
+                    const safePath = d.filePath || '#';
+                    const uploaded = d.uploadedOn || '';
+
+                    const left = document.createElement('div');
+                    left.innerHTML = `
+                        <a href="${safePath}" target="_blank" rel="noopener noreferrer">
+                            ${safeName}
+                        </a>
+                        <br />
+                        <small class="text-muted">${uploaded}</small>
+                    `;
+
+                    const right = document.createElement('div');
+                    right.innerHTML = `
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger btn-staff-doc-delete"
+                                data-id="${d.documentId}">
+                            Delete
+                        </button>
+                    `;
+
+                    li.appendChild(left);
+                    li.appendChild(right);
+                    ul.appendChild(li);
+                });
+
+                listDiv.innerHTML = '';
+                listDiv.appendChild(ul);
+            }
+        });
+
+        documentsContainer.innerHTML = '';
+        documentsContainer.appendChild(wrapper);
+    }
+
+    async function reloadDocumentsSection() {
+        if (!documentsContainer) return;
+
+        documentsContainer.innerHTML = '<p class="text-muted mb-0">Loading document types...</p>';
+
+        if (!docTypesCache || docTypesCache.length === 0) {
+            docTypesCache = await loadDocumentTypes();
+        }
+
+        existingDocsCache = await loadExistingDocuments(getStaffId());
+        renderDocumentCards(docTypesCache, existingDocsCache);
+    }
+
+    async function deleteDocument(documentId) {
+        if (!confirm('Are you sure you want to delete this document?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/Staff/DeleteStaffDocument', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ documentId })
+            });
+
+            if (!response.ok) {
+                showDocumentsMessage('Server error while deleting document.', true);
+                return;
+            }
+
+            const result = await response.json();
+
+            if (!result.success) {
+                showDocumentsMessage(result.message || 'Failed to delete document.', true);
+                return;
+            }
+
+            showDocumentsMessage('Document deleted successfully.', false);
+            await reloadDocumentsSection();
+        } catch (err) {
+            console.error(err);
+            showDocumentsMessage('An unexpected error occurred while deleting documents.', true);
+        }
+    }
+
+    function attachDocumentsHandlers() {
+        // Delete handler
+        document.addEventListener('click', function (e) {
+            const target = e.target;
+            if (!target) return;
+
+            const deleteBtn = target.closest('.btn-staff-doc-delete');
+            if (deleteBtn) {
+                const idStr = deleteBtn.getAttribute('data-id');
+                const docId = idStr ? parseInt(idStr, 10) : 0;
+                if (docId > 0) {
+                    deleteDocument(docId);
+                }
+            }
+        });
+
+        // Show selected file(s)
+        document.addEventListener('change', function (e) {
+            const target = e.target;
+            if (!target) return;
+
+            if (target.classList && target.classList.contains('staff-doc-file')) {
+                const card = target.closest('.card');
+                const hint = card ? card.querySelector('.selected-files') : null;
+
+                const files = target.files;
+                if (!hint) return;
+
+                if (!files || files.length === 0) {
+                    hint.textContent = 'No new files selected.';
+                    return;
+                }
+
+                if (files.length === 1) {
+                    hint.textContent = `Selected: ${files[0].name}`;
+                    return;
+                }
+
+                hint.textContent = `Selected: ${files.length} files`;
+            }
+        });
+
+        // Mandatory docs refresh when Staff Type changes (for new staff)
+        const staffTypeSelect = document.getElementById('StaffType');
+        if (staffTypeSelect) {
+            staffTypeSelect.addEventListener('change', async function () {
+                await refreshMandatoryDocuments();
+                await reloadDocumentsSection();
+            });
         }
     }
 
@@ -442,13 +756,44 @@
         }
 
         try {
-            const response = await fetch('/Staff/SaveStaff', {
+            // Build multipart payload (staff + documents)
+            const formData = new FormData();
+            formData.append('IsNew', String(isNew));
+            formData.append('StaffId', payload.staffId || '');
+            formData.append('Name', payload.name || '');
+            formData.append('NRIC', payload.nric || '');
+            formData.append('BirthDate', payload.birthDate || '');
+            formData.append('Age', String(payload.age || 0));
+            formData.append('Phone', payload.phone || '');
+            formData.append('Email', payload.email || '');
+            formData.append('Gender', payload.gender || '');
+            formData.append('ResState', payload.resState || '');
+            formData.append('ResCity', payload.resCity || '');
+            formData.append('ResPostcode', payload.resPostcode || '');
+            formData.append('AddLine1', payload.addLine1 || '');
+            formData.append('AddLine2', payload.addLine2 || '');
+            formData.append('StaffBase', payload.staffBase || '');
+            formData.append('StaffTypeId', payload.staffTypeId || '');
+
+            // Add files selected in Documents Section
+            const cards = document.querySelectorAll('#staffDocumentsContainer .card[data-doc-type-id]');
+            cards.forEach(card => {
+                const docTypeId = card.getAttribute('data-doc-type-id') || '';
+                const docTypeName = getDocTypeNameFromCard(card);
+                const input = card.querySelector('.staff-doc-file');
+                if (!input || !input.files || input.files.length === 0) return;
+
+                for (let i = 0; i < input.files.length; i++) {
+                    const file = input.files[i];
+                    formData.append('files', file);
+                    formData.append('docTypeIds', docTypeId);
+                    formData.append('docTypeNames', docTypeName);
+                }
+            });
+
+            const response = await fetch('/Staff/SaveStaffWithDocuments', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify(payload)
+                body: formData
             });
 
             if (!response.ok) {
@@ -475,6 +820,10 @@
                     msg.textContent = result.message || 'Failed to save staff.';
                     msg.classList.add('text-danger');
                 }
+                // Still reload documents in case staff/documents were created
+                clearDocumentsMessage();
+                if (result.message) showDocumentsMessage(result.message, true);
+                await reloadDocumentsSection();
                 return;
             }
 
@@ -492,9 +841,10 @@
 
             updateStaffTypeEditable(result.staffId || staffId);
 
-            if (window.StaffDocumentsTab && typeof window.StaffDocumentsTab.reload === 'function') {
-                window.StaffDocumentsTab.reload();
-            }
+            // Clear file inputs after successful save
+            const fileInputs = document.querySelectorAll('#staffDocumentsContainer .staff-doc-file');
+            fileInputs.forEach(i => { try { i.value = ''; } catch { } });
+            await reloadDocumentsSection();
         } catch (err) {
             console.error(err);
             if (msg) {
@@ -507,6 +857,12 @@
     document.addEventListener('DOMContentLoaded', async function () {
         await loadLookups();
         applySelect2();
+
+        documentsContainer = document.getElementById('staffDocumentsContainer');
+        documentsMsg = document.getElementById('staffDocumentsMessage');
+        attachDocumentsHandlers();
+        await refreshMandatoryDocuments();
+        await reloadDocumentsSection();
 
         const staffId = getStaffId();
         if (staffId) {
