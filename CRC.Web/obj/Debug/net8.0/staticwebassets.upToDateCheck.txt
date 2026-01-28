@@ -52,6 +52,7 @@ wwwroot\js\staffPatient\journey.js
 wwwroot\js\staffPatient\templates\patientAssessment.js
 wwwroot\js\staffPatient\templates\patientColonoscopy.js
 wwwroot\js\staffPatient\templates\patientFollowUp.js
+wwwroot\js\staff\edit-staffbasic.js
 wwwroot\js\staff\edit-staffperformance.js
 wwwroot\js\staff\edit-staffschedule.js
 wwwroot\js\staff\index.js
@@ -9108,6 +9109,7 @@ wwwroot\uploads\patient\fe3f211b971c4916966b82a9c447e500_PATIENT BILL.pdf
 wwwroot\uploads\patient\fe999bbc63ee4e64a436975f3b93e575_iFOBT RESULTS.pdf
 wwwroot\uploads\staff\0d248220c8dc4968926643946a6f70f7_ANNUAL PRACTICING CERTIFICATE.pdf
 wwwroot\uploads\staff\1275e7c7e9e8400f8a49fc2a6368b649_CV_RESUME.pdf
+wwwroot\uploads\staff\159df1ef5b3f4f05bf271ae95b726913_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\19a6a815a066439486a8f62ba86cd5a7_NSR SPECIALIST REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\29250b0a74dd47de9a17ed90a865a000_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\298d9f5c5bb046d0b3261862ce022619_NSR SPECIALIST REGISTRATION CERTIFICATE.pdf
@@ -9115,7 +9117,9 @@ wwwroot\uploads\staff\2a1b16f9adb34f2998bbfc690c05de76_ANNUAL PRACTICING CERTIFI
 wwwroot\uploads\staff\2dbf0018a3584274a3134cbc04104e62_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\2f91670f3c57497d87041b235fc1ea4e_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\31dd98ab765c4b05b515f5b489156b0c_BASIC DEGREE CERTIFICATE.pdf
+wwwroot\uploads\staff\559a73a1c58e4e2c8ae4dbd9db224a2b_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\staff\57fbe046d551495ea2ce20a21b1041e3_HIGHER PROFESSIONAL QUALIFICATION.pdf
+wwwroot\uploads\staff\5800857799ad4b149129a045d4565d10_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\5b817b0713e24f7d8f63153fa4bce611_CV_RESUME.pdf
 wwwroot\uploads\staff\5c4df128a14f4eafa1b95a2df0f961bf_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\636d1cb6ce4e48eab5e728757948e654_MMC REGISTRATION CERTIFICATE.pdf
@@ -9136,10 +9140,11 @@ wwwroot\uploads\staff\ae71f18804c54904abde145d80a2e6a5_PERSONAL IDENTIFICATION.p
 wwwroot\uploads\staff\ae7fc41b4712496da25b97847c9a3b21_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\staff\b387ac08cb744af8912f6a605099c88e_CV_RESUME.pdf
 wwwroot\uploads\staff\b43347a8cbe54066be820e64a1dcfff5_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
+wwwroot\uploads\staff\c2e2c1b046124adda21ad980b5e9e98a_CV_RESUME.pdf
 wwwroot\uploads\staff\cbabdac92ac8428faf08e94267ca5b9c_PERSONAL IDENTIFICATION.pdf
+wwwroot\uploads\staff\dbec582fda9a46f6bedbec4aa7d58130_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\e96d839fdcac402dad551e59a8fee99f_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\ea97aa116d0b4d89897f98cdaed6026b_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\fb6a8861a1164102b8453617826ebf40_HIGHER PROFESSIONAL QUALIFICATION.pdf
 wwwroot\uploads\staff\fc09a8b391494530a7f571e35d9a629d_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\fc7030a46b7a4c96b69992e0f0ab253e_CV_RESUME.pdf
-wwwroot\js\staff\edit-staffbasic.js
