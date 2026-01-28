@@ -10,7 +10,6 @@ using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using CRC.Web.Data;
-using Microsoft.Extensions.Configuration;
 
 namespace CRC.Web.Controllers.Staff
 {
@@ -19,14 +18,11 @@ namespace CRC.Web.Controllers.Staff
     {
         private readonly DatabaseHelper _db;
         private readonly IWebHostEnvironment _env;
-        private readonly string _connectionString;
 
-        public StaffController(DatabaseHelper db, IWebHostEnvironment env, IConfiguration configuration)
+        public StaffController(DatabaseHelper db, IWebHostEnvironment env)
         {
             _db = db;
             _env = env;
-            _connectionString = configuration.GetConnectionString("CRC_DB")
-                ?? throw new InvalidOperationException("Connection string 'CRC_DB' not found.");
         }
 
         // GET: /Staff
@@ -441,7 +437,7 @@ namespace CRC.Web.Controllers.Staff
 
             try
             {
-                await using var conn = new SqlConnection(_connectionString);
+                await using var conn = _db.CreateConnection();
                 await conn.OpenAsync();
                 await using var tx = conn.BeginTransaction();
 
