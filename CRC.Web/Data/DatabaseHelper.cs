@@ -50,5 +50,10 @@ namespace CRC.Web.Data
             dt.Load(reader);
             return dt;
         }
+
+        public SqlConnection CreateConnection()
+        {
+            return new SqlConnection(_connectionString);
+        }
     }
 }
