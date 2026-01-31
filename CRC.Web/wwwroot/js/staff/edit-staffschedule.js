@@ -339,6 +339,100 @@
         }
     }
 
+    function pad2(n) {
+        return String(n).padStart(2, '0');
+    }
+
+    function hourValue(h) {
+        return `${pad2(h)}:00`;
+    }
+
+    function findFirstExistingId(ids) {
+        for (const id of ids) {
+            const el = document.getElementById(id);
+            if (el) return el;
+        }
+        return null;
+    }
+
+    function buildHourSelectReplacingInput(inputEl, hours) {
+        const sel = document.createElement('select');
+
+        // Keep styling & identity
+        sel.id = inputEl.id;
+        sel.name = inputEl.name || inputEl.id;
+        sel.className = inputEl.className;          // preserve Bootstrap classes (form-control etc)
+        sel.required = inputEl.required;
+        sel.disabled = inputEl.disabled;
+
+        // Copy data-* attributes (if any)
+        for (const attr of inputEl.attributes) {
+            if (attr.name.startsWith('data-')) {
+                sel.setAttribute(attr.name, attr.value);
+            }
+        }
+
+        // Add options
+        hours.forEach(h => {
+            const opt = document.createElement('option');
+            opt.value = hourValue(h);
+            opt.textContent = hourValue(h);
+            sel.appendChild(opt);
+        });
+
+        // Set initial value (if valid), otherwise first option
+        const current = (inputEl.value || '').slice(0, 5);
+        if (current && Array.from(sel.options).some(o => o.value === current)) {
+            sel.value = current;
+        }
+
+        // Replace in DOM
+        inputEl.parentNode.replaceChild(sel, inputEl);
+
+        return sel;
+    }
+
+    function initHourOnlyTimeSelectors() {
+        // Your JS uses these IDs:
+        // ScheduleStartTime / ScheduleEndTime
+        // But I also support startTime / endTime just in case your cshtml uses those.
+        const startEl = findFirstExistingId(['ScheduleStartTime', 'startTime']);
+        const endEl = findFirstExistingId(['ScheduleEndTime', 'endTime']);
+
+        if (!startEl || !endEl) return;
+
+        // Start can be 00:00 .. 22:00 (23:00 would have no valid 1-hour slot ending <= 23:59)
+        const startHours = [];
+        for (let h = 0; h <= 22; h++) startHours.push(h);
+
+        // End can be 01:00 .. 23:00
+        const endHours = [];
+        for (let h = 1; h <= 23; h++) endHours.push(h);
+
+        const startSel = buildHourSelectReplacingInput(startEl, startHours);
+        const endSel = buildHourSelectReplacingInput(endEl, endHours);
+
+        function refreshEndOptions() {
+            const sh = parseInt(startSel.value.substring(0, 2), 10);
+            const minEndHour = sh + 1;
+
+            // Disable end options that are <= start
+            for (const opt of endSel.options) {
+                const eh = parseInt(opt.value.substring(0, 2), 10);
+                opt.disabled = eh < minEndHour;
+            }
+
+            // If current end is invalid, set to minEndHour
+            const currentEh = parseInt(endSel.value.substring(0, 2), 10);
+            if (isNaN(currentEh) || currentEh < minEndHour) {
+                endSel.value = hourValue(minEndHour);
+            }
+        }
+
+        startSel.addEventListener('change', refreshEndOptions);
+        refreshEndOptions();
+    }
+
     function attachHandlers() {
         const btnCreate = qs('btnCreateStaffSlots');
         const btnFilter = qs('btnFilterSlots');
@@ -405,6 +499,7 @@
         if (from && !from.value) from.value = d;
         if (to && !to.value) to.value = d;
 
+        initHourOnlyTimeSelectors();
         attachHandlers();
         loadSlots();
     });
