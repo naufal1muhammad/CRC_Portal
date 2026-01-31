@@ -1,0 +1,199 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Globalization;
+using System.Threading.Tasks;
+using CRC.Web.Data;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
+
+namespace CRC.Web.Controllers.Staff
+{
+    [Authorize(Policy = "AdminOrSuperOrStaff")]
+    public class StaffScheduleController : Controller
+    {
+        private readonly DatabaseHelper _db;
+
+        public StaffScheduleController(DatabaseHelper db)
+        {
+            _db = db;
+        }
+
+        public sealed class CreateRangeRequest
+        {
+            public string StaffId { get; set; } = string.Empty;
+            public string FromDate { get; set; } = string.Empty; // yyyy-MM-dd
+            public string ToDate { get; set; } = string.Empty;   // yyyy-MM-dd
+            public string StartTime { get; set; } = string.Empty; // HH:mm
+            public string EndTime { get; set; } = string.Empty;   // HH:mm
+        }
+
+        public sealed class DeleteSlotRequest
+        {
+            public int StaffSlotId { get; set; }
+        }
+
+        // GET: /StaffSchedule/List?staffId=...&fromDate=yyyy-MM-dd&toDate=yyyy-MM-dd
+        [HttpGet]
+        public async Task<IActionResult> List(string staffId, string? fromDate = null, string? toDate = null)
+        {
+            if (string.IsNullOrWhiteSpace(staffId))
+                return Ok(new { success = true, data = Array.Empty<object>() });
+
+            DateTime? from = null;
+            DateTime? to = null;
+
+            if (!string.IsNullOrWhiteSpace(fromDate))
+            {
+                if (!DateTime.TryParseExact(fromDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d1))
+                    return Ok(new { success = false, message = "Invalid From Date." });
+
+                from = d1.Date;
+            }
+
+            if (!string.IsNullOrWhiteSpace(toDate))
+            {
+                if (!DateTime.TryParseExact(toDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d2))
+                    return Ok(new { success = false, message = "Invalid To Date." });
+
+                to = d2.Date;
+            }
+
+            try
+            {
+                var parameters = new[]
+                {
+            new SqlParameter("@Staff_ID", SqlDbType.VarChar, 100) { Value = staffId },
+            new SqlParameter("@FromDate", SqlDbType.Date) { Value = (object?)from ?? DBNull.Value },
+            new SqlParameter("@ToDate", SqlDbType.Date) { Value = (object?)to ?? DBNull.Value }
+        };
+
+                var dt = await _db.ExecuteDataTableAsync("dbo.spStaffSlots_List", parameters);
+
+                var rows = new List<object>();
+
+                foreach (DataRow r in dt.Rows)
+                {
+                    rows.Add(new
+                    {
+                        staffSlotId = r["StaffSlot_ID"] == DBNull.Value ? 0 : Convert.ToInt32(r["StaffSlot_ID"]),
+                        slotDate = r["SlotDate"] == DBNull.Value ? "" : Convert.ToDateTime(r["SlotDate"]).ToString("yyyy-MM-dd"),
+                        slotStartTime = r["SlotStartTime"]?.ToString() ?? "",
+                        slotEndTime = r["SlotEndTime"]?.ToString() ?? "",
+                        patientAppointmentId = r["PatientAppointment_ID"] == DBNull.Value ? (int?)null : Convert.ToInt32(r["PatientAppointment_ID"])
+                    });
+                }
+
+                return Ok(new { success = true, data = rows });
+            }
+            catch (SqlException ex)
+            {
+                return Ok(new { success = false, message = ex.Message });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "An unexpected error occurred." });
+            }
+        }
+
+        // POST: /StaffSchedule/CreateRange
+        [HttpPost]
+        public async Task<IActionResult> CreateRange([FromBody] CreateRangeRequest model)
+        {
+            if (model == null)
+                return BadRequest(new { success = false, message = "Invalid data." });
+
+            if (string.IsNullOrWhiteSpace(model.StaffId) ||
+                string.IsNullOrWhiteSpace(model.FromDate) ||
+                string.IsNullOrWhiteSpace(model.ToDate) ||
+                string.IsNullOrWhiteSpace(model.StartTime) ||
+                string.IsNullOrWhiteSpace(model.EndTime))
+            {
+                return Ok(new { success = false, message = "Please fill in all required fields." });
+            }
+
+            if (!DateTime.TryParseExact(model.FromDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var fromDate) ||
+                !DateTime.TryParseExact(model.ToDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var toDate))
+            {
+                return Ok(new { success = false, message = "Invalid date range." });
+            }
+
+            if (!TimeSpan.TryParseExact(model.StartTime, @"hh\:mm", CultureInfo.InvariantCulture, out var startTime) ||
+                !TimeSpan.TryParseExact(model.EndTime, @"hh\:mm", CultureInfo.InvariantCulture, out var endTime))
+            {
+                return Ok(new { success = false, message = "Invalid time range." });
+            }
+
+
+            try
+            {
+                var parameters = new[]
+                {
+                    new SqlParameter("@Staff_ID", SqlDbType.VarChar, 100) { Value = model.StaffId },
+                    new SqlParameter("@FromDate", SqlDbType.Date) { Value = fromDate.Date },
+                    new SqlParameter("@ToDate", SqlDbType.Date) { Value = toDate.Date },
+                    new SqlParameter("@StartTime", SqlDbType.Time) { Value = startTime },
+                    new SqlParameter("@EndTime", SqlDbType.Time) { Value = endTime }
+                };
+
+                var dt = await _db.ExecuteDataTableAsync("dbo.spStaffSlots_CreateRange", parameters);
+
+                int created = 0;
+                int skipped = 0;
+
+                if (dt.Rows.Count > 0)
+                {
+                    var row = dt.Rows[0];
+                    if (dt.Columns.Contains("CreatedCount") && row["CreatedCount"] != DBNull.Value)
+                        created = Convert.ToInt32(row["CreatedCount"]);
+                    if (dt.Columns.Contains("SkippedExistingCount") && row["SkippedExistingCount"] != DBNull.Value)
+                        skipped = Convert.ToInt32(row["SkippedExistingCount"]);
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    createdCount = created,
+                    skippedExistingCount = skipped
+                });
+            }
+            catch (SqlException ex)
+            {
+                return Ok(new { success = false, message = ex.Message });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "An unexpected error occurred." });
+            }
+        }
+
+        // POST: /StaffSchedule/Delete
+        [HttpPost]
+        public async Task<IActionResult> Delete([FromBody] DeleteSlotRequest model)
+        {
+            if (model == null || model.StaffSlotId <= 0)
+                return BadRequest(new { success = false, message = "Invalid slot." });
+
+            try
+            {
+                var parameters = new[]
+                {
+                    new SqlParameter("@StaffSlot_ID", SqlDbType.Int) { Value = model.StaffSlotId }
+                };
+
+                await _db.ExecuteNonQueryAsync("dbo.spStaffSlots_Delete", parameters);
+
+                return Ok(new { success = true });
+            }
+            catch (SqlException ex)
+            {
+                return Ok(new { success = false, message = ex.Message });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "An unexpected error occurred." });
+            }
+        }
+    }
+}

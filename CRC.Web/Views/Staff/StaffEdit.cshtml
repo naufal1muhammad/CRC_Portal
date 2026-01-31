@@ -214,6 +214,88 @@
              id="tabSchedule"
              role="tabpanel"
              aria-labelledby="tab-schedule">
+
+            <div id="staffScheduleContent">
+                <div id="staffScheduleInfo" class="alert alert-info py-2 small d-none">
+                    Please save the staff first before managing schedule slots.
+                </div>
+
+                <!-- Create Slots -->
+                <div class="card bg-light border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Create Slots</h5>
+
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-3">
+                                <label for="ScheduleFromDate" class="form-label">From Date <span class="text-danger">*</span></label>
+                                <input id="ScheduleFromDate" type="date" class="form-control form-control-sm" />
+                            </div>
+                            <div class="col-md-3">
+                                <label for="ScheduleToDate" class="form-label">To Date <span class="text-danger">*</span></label>
+                                <input id="ScheduleToDate" type="date" class="form-control form-control-sm" />
+                            </div>
+                            <div class="col-md-2">
+                                <label for="ScheduleStartTime" class="form-label">Start Time <span class="text-danger">*</span></label>
+                                <input id="ScheduleStartTime" type="time" step="3600" class="form-control form-control-sm" />
+                            </div>
+                            <div class="col-md-2">
+                                <label for="ScheduleEndTime" class="form-label">End Time <span class="text-danger">*</span></label>
+                                <input id="ScheduleEndTime" type="time" step="3600" class="form-control form-control-sm" />
+                            </div>
+                            <div class="col-md-2 d-grid">
+                                <button id="btnCreateStaffSlots" type="button" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-plus me-1"></i> Create Slots
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="staffScheduleMessage" class="small mt-2"></div>
+                    </div>
+                </div>
+
+                <!-- Slots Grid -->
+                <div class="card bg-light border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-2">
+                            <h5 class="card-title mb-0">Slots</h5>
+
+                            <div class="d-flex flex-wrap gap-2 align-items-end">
+                                <div>
+                                    <label for="ScheduleFilterFrom" class="form-label mb-0 small">Filter From</label>
+                                    <input id="ScheduleFilterFrom" type="date" class="form-control form-control-sm" />
+                                </div>
+                                <div>
+                                    <label for="ScheduleFilterTo" class="form-label mb-0 small">Filter To</label>
+                                    <input id="ScheduleFilterTo" type="date" class="form-control form-control-sm" />
+                                </div>
+                                <button id="btnFilterSlots" type="button" class="btn btn-outline-secondary btn-sm">
+                                    <i class="fas fa-filter me-1"></i> Apply
+                                </button>
+                                <button id="btnClearFilterSlots" type="button" class="btn btn-outline-secondary btn-sm">
+                                    <i class="fas fa-times me-1"></i> Clear
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table id="staffSlotsTable" class="table table-striped table-sm table-bordered align-middle w-100">
+                                <thead class="table-secondary">
+                                    <tr>
+                                        <th scope="col" class="text-nowrap">Date</th>
+                                        <th scope="col" class="text-nowrap">Start Time</th>
+                                        <th scope="col" class="text-nowrap">End Time</th>
+                                        <th scope="col" class="text-nowrap">Status</th>
+                                        <th scope="col" class="text-center" style="width: 140px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Performance tab -->

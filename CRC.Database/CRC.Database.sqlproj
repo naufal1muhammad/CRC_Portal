@@ -86,6 +86,7 @@
     <Folder Include="Stored Procedures\PatientAssessment" />
     <Folder Include="Stored Procedures\PatientColonoscopy" />
     <Folder Include="Stored Procedures\PatientFollowUp" />
+    <Folder Include="Stored Procedures\StaffSlots" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="dbo\Tables\Users.sql" />
@@ -198,5 +199,9 @@
     <Build Include="Stored Procedures\Users\spUsers_UpdateLastLogin.sql" />
     <Build Include="Stored Procedures\Users\spUsers_UpdatePassword.sql" />
     <Build Include="Stored Procedures\Users\spUsers_GetById.sql" />
+    <Build Include="dbo\Tables\StaffSlots.sql" />
+    <Build Include="Stored Procedures\StaffSlots\spStaffSlots_Delete.sql" />
+    <Build Include="Stored Procedures\StaffSlots\spStaffSlots_CreateRange.sql" />
+    <Build Include="Stored Procedures\StaffSlots\spStaffSlots_List.sql" />
   </ItemGroup>
 </Project>

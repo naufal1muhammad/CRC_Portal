@@ -54,7 +54,6 @@ wwwroot\js\staffPatient\templates\patientColonoscopy.js
 wwwroot\js\staffPatient\templates\patientFollowUp.js
 wwwroot\js\staff\edit-staffbasic.js
 wwwroot\js\staff\edit-staffperformance.js
-wwwroot\js\staff\edit-staffschedule.js
 wwwroot\js\staff\index.js
 wwwroot\lib\admin-lte\css\adminlte.css
 wwwroot\lib\admin-lte\css\adminlte.css.map
@@ -9148,3 +9147,4 @@ wwwroot\uploads\staff\ea97aa116d0b4d89897f98cdaed6026b_BASIC DEGREE CERTIFICATE.
 wwwroot\uploads\staff\fb6a8861a1164102b8453617826ebf40_HIGHER PROFESSIONAL QUALIFICATION.pdf
 wwwroot\uploads\staff\fc09a8b391494530a7f571e35d9a629d_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\fc7030a46b7a4c96b69992e0f0ab253e_CV_RESUME.pdf
+wwwroot\js\staff\edit-staffschedule.js
