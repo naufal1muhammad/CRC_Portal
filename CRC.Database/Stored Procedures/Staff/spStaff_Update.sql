@@ -45,13 +45,6 @@ BEGIN
     -- 2) Cascade updates to children
     ---------------------------------
 
-    -- PatientAppointment: Staff_ID, Staff_Name
-    UPDATE pa
-    SET
-        pa.[Staff_Name] = @Staff_Name
-    FROM [dbo].[PatientAppointment] pa
-    WHERE pa.[Staff_ID] = @Staff_ID;
-
     -- PatientJourneyAudit: Staff_ID, Staff_Name
     UPDATE pja
     SET

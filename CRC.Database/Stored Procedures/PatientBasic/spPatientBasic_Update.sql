@@ -96,14 +96,5 @@ BEGIN
     FROM [dbo].[PatientAssessment] pas
     WHERE pas.[Patient_ID] = @Patient_ID;
 
-    -- PatientAppointment: Patient_ID, Patient_Name, Patient_Email, Patient_Phone
-    UPDATE pa
-    SET
-        pa.[Patient_Name]  = @Patient_Name,
-        pa.[Patient_Email] = @Patient_Email,
-        pa.[Patient_Phone] = @Patient_Phone
-    FROM [dbo].[PatientAppointment] pa
-    WHERE pa.[Patient_ID] = @Patient_ID;
-
 END;
 GO
