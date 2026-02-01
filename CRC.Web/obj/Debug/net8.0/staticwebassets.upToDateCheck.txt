@@ -52,6 +52,8 @@ wwwroot\js\staffPatient\journey.js
 wwwroot\js\staffPatient\templates\patientAssessment.js
 wwwroot\js\staffPatient\templates\patientColonoscopy.js
 wwwroot\js\staffPatient\templates\patientFollowUp.js
+wwwroot\js\staff\edit-staffbasic.js
+wwwroot\js\staff\edit-staffperformance.js
 wwwroot\js\staff\index.js
 wwwroot\lib\admin-lte\css\adminlte.css
 wwwroot\lib\admin-lte\css\adminlte.css.map
@@ -9002,6 +9004,7 @@ wwwroot\uploads\patient\174b988276604d59b491fb0fa959fe0a_COLONOSCOPY FINDING FOR
 wwwroot\uploads\patient\1987ec56549e4471974dd6fdd01a8b0b_ADVISE FORM.pdf
 wwwroot\uploads\patient\1af80da8fb404b3db9799750dde0b1ac_SEDATION CONSENT FORM.pdf
 wwwroot\uploads\patient\20836877d8974bfdbfac044d71b2de97_REFERRAL LETTER.pdf
+wwwroot\uploads\patient\228f5d8b8bb84c5592ef5fc5cd6395e0_COLONOSCOPY FINDING FORM.pdf
 wwwroot\uploads\patient\24ad997f7d8d4e8d8aa13c0cb5e7d237_HISTORY AND EXAMINATION FORM.pdf
 wwwroot\uploads\patient\24ca93e5a1b544428daf7b066165fd00_ADVISE FORM.pdf
 wwwroot\uploads\patient\279566b9a08446c5a25f5b6d83a33ddf_PDPA FORM.pdf
@@ -9059,6 +9062,7 @@ wwwroot\uploads\patient\91a655005e2b437aa7303bb25ba06e17_ADVISE FORM.pdf
 wwwroot\uploads\patient\93d5d961c2d049f3bdc6aba94175bf8a_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\patient\94d6980993b54c8dac69b27e10f1a791_HISTOPATHOLOGICAL EXAMINATION FORM.pdf
 wwwroot\uploads\patient\95d98a79979a4054a83397772818fa89_COLONOSCOPY CONSENT FORM.pdf
+wwwroot\uploads\patient\970a2d1281884eb28fb92bbd3b19dac6_COLONOSCOPY CONSENT FORM.pdf
 wwwroot\uploads\patient\99c3d72fa03c4764924292422d00cf0e_DISCHARGE SUMMARY.pdf
 wwwroot\uploads\patient\9ab56f4a47a94fd0821ab729dd510680_COLONOSCOPY FINDING FORM.pdf
 wwwroot\uploads\patient\9bae5a7e19904fb0a54698c8f9398d11_HISTORY AND EXAMINATION FORM.pdf
@@ -9104,6 +9108,7 @@ wwwroot\uploads\patient\fe3f211b971c4916966b82a9c447e500_PATIENT BILL.pdf
 wwwroot\uploads\patient\fe999bbc63ee4e64a436975f3b93e575_iFOBT RESULTS.pdf
 wwwroot\uploads\staff\0d248220c8dc4968926643946a6f70f7_ANNUAL PRACTICING CERTIFICATE.pdf
 wwwroot\uploads\staff\1275e7c7e9e8400f8a49fc2a6368b649_CV_RESUME.pdf
+wwwroot\uploads\staff\159df1ef5b3f4f05bf271ae95b726913_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\19a6a815a066439486a8f62ba86cd5a7_NSR SPECIALIST REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\29250b0a74dd47de9a17ed90a865a000_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\298d9f5c5bb046d0b3261862ce022619_NSR SPECIALIST REGISTRATION CERTIFICATE.pdf
@@ -9111,9 +9116,11 @@ wwwroot\uploads\staff\2a1b16f9adb34f2998bbfc690c05de76_ANNUAL PRACTICING CERTIFI
 wwwroot\uploads\staff\2dbf0018a3584274a3134cbc04104e62_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\2f91670f3c57497d87041b235fc1ea4e_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\31dd98ab765c4b05b515f5b489156b0c_BASIC DEGREE CERTIFICATE.pdf
-wwwroot\uploads\staff\473796f7761645abb9c78cda7425371f_HIGHER PROFESSIONAL QUALIFICATION.pdf
+wwwroot\uploads\staff\559a73a1c58e4e2c8ae4dbd9db224a2b_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\staff\57fbe046d551495ea2ce20a21b1041e3_HIGHER PROFESSIONAL QUALIFICATION.pdf
+wwwroot\uploads\staff\5800857799ad4b149129a045d4565d10_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\5b817b0713e24f7d8f63153fa4bce611_CV_RESUME.pdf
+wwwroot\uploads\staff\5c4df128a14f4eafa1b95a2df0f961bf_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\636d1cb6ce4e48eab5e728757948e654_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\6418cf55018c483f9acea49eb90ae834_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\649d37cb656a4a2a994dc8302b11667c_PERSONAL IDENTIFICATION.pdf
@@ -9122,20 +9129,22 @@ wwwroot\uploads\staff\6d4373999374497e9bfb52df7b071d29_CV_RESUME.pdf
 wwwroot\uploads\staff\6ef372c6eda44b5597c90eb4d0965238_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\7259fa9546974cdfa16cc268c1bb61c9_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\7cf058e31759412da5ac89c117e76c8f_MMC REGISTRATION CERTIFICATE.pdf
-wwwroot\uploads\staff\885255e1f7ef4d0ea011df81275d6b39_ANNUAL PRACTICING CERTIFICATE.pdf
 wwwroot\uploads\staff\8fcec57e51fe4670973d548549f289bc_NSR SPECIALIST REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\96d8fb84d4ad49f59644260531235952_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\staff\9c14cfa4270342618bf4ace645480bea_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\a3119c2bd3644e21a44bb416e26eccef_PERSONAL IDENTIFICATION.pdf
-wwwroot\uploads\staff\a954bccdf2654ee0a3c06627c59a37e7_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\ab3db37cef3044628937c75280975428_HIGHER PROFESSIONAL QUALIFICATION.pdf
 wwwroot\uploads\staff\ab4409828c704ea5843b439f710e3454_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\ae71f18804c54904abde145d80a2e6a5_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\staff\ae7fc41b4712496da25b97847c9a3b21_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\staff\b387ac08cb744af8912f6a605099c88e_CV_RESUME.pdf
 wwwroot\uploads\staff\b43347a8cbe54066be820e64a1dcfff5_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
-wwwroot\uploads\staff\b79fae31fe404caa998558ab331d99b4_CV_RESUME.pdf
+wwwroot\uploads\staff\c2e2c1b046124adda21ad980b5e9e98a_CV_RESUME.pdf
 wwwroot\uploads\staff\cbabdac92ac8428faf08e94267ca5b9c_PERSONAL IDENTIFICATION.pdf
+wwwroot\uploads\staff\dbec582fda9a46f6bedbec4aa7d58130_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\e96d839fdcac402dad551e59a8fee99f_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\ea97aa116d0b4d89897f98cdaed6026b_BASIC DEGREE CERTIFICATE.pdf
+wwwroot\uploads\staff\fb6a8861a1164102b8453617826ebf40_HIGHER PROFESSIONAL QUALIFICATION.pdf
 wwwroot\uploads\staff\fc09a8b391494530a7f571e35d9a629d_BASIC DEGREE CERTIFICATE.pdf
+wwwroot\uploads\staff\fc7030a46b7a4c96b69992e0f0ab253e_CV_RESUME.pdf
+wwwroot\js\staff\edit-staffschedule.js

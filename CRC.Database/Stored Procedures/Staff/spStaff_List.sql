@@ -4,14 +4,15 @@ BEGIN
     SET NOCOUNT ON;
 
     SELECT
-        [Staff_ID],
-        [Staff_Name],
-        [Staff_NRIC],
-        [Staff_Phone],
-        [Staff_Email],
-        [Branch_ID],
-        [Branch_Name],
-        [Staff_Type]
-    FROM [dbo].[Staff]
-    ORDER BY [Staff_Name];
+        s.[Staff_ID],
+        s.[Staff_Name],
+        s.[Staff_NRIC],
+        s.[Staff_Phone],
+        s.[Staff_Email],
+        s.[Staff_Type],
+        st.[StaffType_Name]
+    FROM [dbo].[Staff] s
+    LEFT JOIN [dbo].[LU_STAFFTYPE] st
+        ON s.[Staff_Type] = st.[StaffType_ID]
+    ORDER BY s.[Staff_Name];
 END;

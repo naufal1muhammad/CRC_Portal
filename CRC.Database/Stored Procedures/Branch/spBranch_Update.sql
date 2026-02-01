@@ -42,12 +42,4 @@ BEGIN
         pb.[Branch_Name] = @Branch_Name
     FROM [dbo].[PatientBasic] pb
     WHERE pb.[Branch_Name] = @OldBranch_Name;
-
-    -- PatientStaff: Branch_Name
-    UPDATE ps
-    SET
-        ps.[Branch_Name] = @Branch_Name
-    FROM [dbo].[Staff] ps
-    WHERE ps.[Branch_Name] = @OldBranch_Name;
-
 END;

@@ -23,21 +23,25 @@ BEGIN
 
     DECLARE @State_ID INT;
 
-    SELECT @State_ID = [State_ID]
-    FROM [dbo].[LU_STATES]
-    WHERE [State_Name] = @Branch_State;
+    SELECT @State_ID = [LocationId]
+    FROM [dbo].[LU_LOCATION]
+    WHERE [LocationType] = 1
+      AND [Name] = @Branch_State;
 
     IF @State_ID IS NULL
     BEGIN
-        RAISERROR('Invalid Branch_State. No matching State_ID found in LU_STATES.', 16, 1);
+        RAISERROR('Invalid Branch_State. No matching state found in LU_LOCATION.', 16, 1);
         RETURN;
     END
 
-    DECLARE @StateIDText VARCHAR(2) =
-        RIGHT('00' + CAST(@State_ID AS VARCHAR(2)), 2);
+    DECLARE @StateIDText VARCHAR(4) =
+        RIGHT('0000' + CAST(@State_ID AS VARCHAR(10)), 4);
+
+    DECLARE @OrganizationIdClean VARCHAR(100) =
+        REPLACE(LTRIM(RTRIM(@Organization_ID)), '*', '');
 
     DECLARE @Prefix VARCHAR(50) =
-        @Organization_ID + @StateIDText;
+        @OrganizationIdClean + @StateIDText;
 
        DECLARE @LastNumber INT;
 

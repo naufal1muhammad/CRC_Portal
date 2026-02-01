@@ -226,15 +226,15 @@ namespace CRC.Web.Controllers.Branch
         [HttpGet]
         public async Task<IActionResult> GetStates()
         {
-            var dt = await _db.ExecuteDataTableAsync("spLU_STATES_List");
+            var dt = await _db.ExecuteDataTableAsync("spLU_LOCATION_ListStates");
             var list = new List<object>();
 
             foreach (DataRow row in dt.Rows)
             {
                 list.Add(new
                 {
-                    stateId = row["State_ID"] == DBNull.Value ? 0 : Convert.ToInt32(row["State_ID"]),
-                    stateName = row["State_Name"]?.ToString() ?? string.Empty
+                    stateId = row["LocationId"] == DBNull.Value ? 0 : Convert.ToInt32(row["LocationId"]),
+                    stateName = row["Name"]?.ToString() ?? string.Empty
                 });
             }
 
