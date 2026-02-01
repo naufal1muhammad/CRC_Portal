@@ -4,9 +4,11 @@ BEGIN
     SET NOCOUNT ON;
 
     SELECT DISTINCT
-        [Patient_Name]
-    FROM [dbo].[PatientAppointment]
-    WHERE ISNULL([Patient_Name], '') <> ''
-    ORDER BY [Patient_Name];
+        pb.[Patient_Name]
+    FROM [dbo].[PatientAppointment] pa
+    INNER JOIN [dbo].[PatientBasic] pb
+        ON pa.[Patient_ID] = pb.[Patient_ID]
+    WHERE ISNULL(pb.[Patient_Name], '') <> ''
+    ORDER BY pb.[Patient_Name];
 END;
 GO

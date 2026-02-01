@@ -1,12 +1,12 @@
 ﻿CREATE PROCEDURE [dbo].[spPatientAppointment_Search]
 (
-    @PatientName       VARCHAR(100) = NULL,
-    @StaffName         VARCHAR(100) = NULL,
-    @Status            VARCHAR(100) = NULL,
-    @FromDate          DATE        = NULL,
-    @ToDate            DATE        = NULL,
-    @PjAppTypeName     VARCHAR(100) = NULL,
-    @BranchName        VARCHAR(100) = NULL
+    @PatientName   VARCHAR(100) = NULL,
+    @StaffName     VARCHAR(100) = NULL,
+    @Status        VARCHAR(100) = NULL,
+    @FromDate      DATE         = NULL,
+    @ToDate        DATE         = NULL,
+    @PjAppTypeName VARCHAR(100) = NULL,
+    @BranchName    VARCHAR(100) = NULL
 )
 AS
 BEGIN
@@ -15,61 +15,36 @@ BEGIN
     SELECT
         pa.[PatientAppointment_ID],
         pa.[Patient_ID],
-        pa.[Patient_Name],
-        pa.[Patient_Phone],
-        pa.[Patient_Email],
-        pa.[PjAppType_Name],
+        pb.[Patient_Name],
+        pb.[Patient_Phone],
+        pb.[Patient_Email],
+        t.[PjAppType_Name],
         pa.[PatientAppointment_Status],
-        pa.[Staff_ID],
-        pa.[Staff_Name],
-        pb.[Branch_Name],
-        pa.[PatientAppointment_Date]
+        s.[Staff_Name],
+        b.[Branch_Name],
+        -- Keep legacy column name used by existing controllers/JS (start datetime)
+        DATEADD(SECOND, DATEDIFF(SECOND, 0, pa.[PatientAppointment_StartTime]),
+            CAST(pa.[PatientAppointment_Date] AS DATETIME)) AS [PatientAppointment_Date]
     FROM [dbo].[PatientAppointment] pa
     LEFT JOIN [dbo].[PatientBasic] pb
-        ON pb.[Patient_ID] = pa.[Patient_ID]
+        ON pa.[Patient_ID] = pb.[Patient_ID]
+    LEFT JOIN [dbo].[Staff] s
+        ON pa.[Staff_ID] = s.[Staff_ID]
+    LEFT JOIN [dbo].[LU_PJ_APP_TYPE] t
+        ON pa.[PjAppType_ID] = t.[PjAppType_ID]
+    LEFT JOIN [dbo].[Branch] b
+        ON pa.[Branch_ID] = b.[Branch_ID]
     WHERE
-        -- Patient Name filter (exact match from dropdown)
-        (
-            @PatientName IS NULL
-            OR LTRIM(RTRIM(@PatientName)) = ''
-            OR pa.[Patient_Name] = @PatientName
-        )
-        -- Staff Name filter
-        AND (
-            @StaffName IS NULL
-            OR LTRIM(RTRIM(@StaffName)) = ''
-            OR pa.[Staff_Name] = @StaffName
-        )
-        -- Attendance Status filter
-        AND (
-            @Status IS NULL
-            OR LTRIM(RTRIM(@Status)) = ''
-            OR pa.[PatientAppointment_Status] = @Status
-        )
-        -- Appointment Type filter
-        AND (
-            @PjAppTypeName IS NULL
-            OR LTRIM(RTRIM(@PjAppTypeName)) = ''
-            OR pa.[PjAppType_Name] = @PjAppTypeName
-        )
-        -- Branch filter (coming from PatientBasic via join)
-        AND (
-            @BranchName IS NULL
-            OR LTRIM(RTRIM(@BranchName)) = ''
-            OR pb.[Branch_Name] = @BranchName
-        )
-        -- From Date filter (start of range, inclusive)
-        AND (
-            @FromDate IS NULL
-            OR pa.[PatientAppointment_Date] >= @FromDate
-        )
-        -- To Date filter (end of range, inclusive)
-        AND (
-            @ToDate IS NULL
-            OR pa.[PatientAppointment_Date] < DATEADD(DAY, 1, @ToDate)
-        )
+        (@PatientName IS NULL OR pb.[Patient_Name] = @PatientName)
+        AND (@StaffName IS NULL OR s.[Staff_Name] = @StaffName)
+        AND (@Status IS NULL OR pa.[PatientAppointment_Status] = @Status)
+        AND (@PjAppTypeName IS NULL OR t.[PjAppType_Name] = @PjAppTypeName)
+        AND (@BranchName IS NULL OR b.[Branch_Name] = @BranchName)
+        AND (@FromDate IS NULL OR pa.[PatientAppointment_Date] >= @FromDate)
+        AND (@ToDate IS NULL OR pa.[PatientAppointment_Date] < DATEADD(DAY, 1, @ToDate))
     ORDER BY
         pa.[PatientAppointment_Date] DESC,
+        pa.[PatientAppointment_StartTime] ASC,
         pa.[PatientAppointment_ID] DESC;
 END;
 GO
