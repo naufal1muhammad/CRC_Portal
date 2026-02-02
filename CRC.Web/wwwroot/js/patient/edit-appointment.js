@@ -377,17 +377,18 @@
 
         // Delegated actions in table
         qs('appointmentTable')?.addEventListener('click', async (e) => {
-            const t = e.target;
-            if (!t) return;
-
-            const row = t.closest('tr');
-            if (!row) return;
-
-            if (t.classList.contains('btn-edit-appointment')) {
+            const editBtn = e.target.closest('.btn-edit-appointment');
+            if (editBtn) {
+                const row = editBtn.closest('tr');
+                if (!row) return;
                 await openEditModal(row);
+                return;
             }
 
-            if (t.classList.contains('btn-delete-appointment')) {
+            const deleteBtn = e.target.closest('.btn-delete-appointment');
+            if (deleteBtn) {
+                const row = deleteBtn.closest('tr');
+                if (!row) return;
                 const id = parseInt(row.getAttribute('data-id') || '0', 10) || 0;
                 await deleteAppointment(id);
             }
