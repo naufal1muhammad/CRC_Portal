@@ -131,7 +131,7 @@
         if (!list || list.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="7" class="text-center text-muted">
+                    <td colspan="8" class="text-center text-muted">
                         No appointments found.
                     </td>
                 </tr>`;
@@ -155,6 +155,7 @@
                 <td>${escapeHtml(a.from || '')}</td>
                 <td>${escapeHtml(a.to || '')}</td>
                 <td>${escapeHtml(a.typeName || '')}</td>
+                <td>${escapeHtml(a.branchName || '')}</td>
                 <td>${statusBadge(a.status)}</td>
                 <td>${escapeHtml(a.staffName || '')}</td>
                 <td>
