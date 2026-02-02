@@ -158,8 +158,16 @@
                 <td>${statusBadge(a.status)}</td>
                 <td>${escapeHtml(a.staffName || '')}</td>
                 <td>
-                    <button type="button" class="btn btn-sm btn-secondary me-1 btn-edit-appointment" title="Edit"><i class="fas fa-edit"></i></button>
-                    <button type="button" class="btn btn-sm btn-danger btn-delete-appointment" title="Delete"><i class="fas fa-trash"></i></button>
+                    <button type="button" 
+                            class="btn btn-sm btn-secondary me-1 btn-edit-appointment" 
+                            title="Edit">
+                         <i class="fas fa-edit"></i>
+                    </button>
+                    <button type="button" 
+                            class="btn btn-sm btn-danger btn-delete-appointment" 
+                            title="Delete">
+                         <i class="fas fa-trash"></i>
+                    </button>
                 </td>
             `;
 
