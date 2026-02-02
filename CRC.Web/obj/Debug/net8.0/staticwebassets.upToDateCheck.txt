@@ -39,6 +39,7 @@ wwwroot\js\helpers\FormValidator.js
 wwwroot\js\helpers\FormValidatorFalcon.js
 wwwroot\js\patient\active-list.js
 wwwroot\js\patient\discharged-list.js
+wwwroot\js\patient\edit-appointment.js
 wwwroot\js\patient\edit-basic.js
 wwwroot\js\patient\edit-discharge.js
 wwwroot\js\patient\edit-documents.js
@@ -9148,4 +9149,3 @@ wwwroot\uploads\staff\ea97aa116d0b4d89897f98cdaed6026b_BASIC DEGREE CERTIFICATE.
 wwwroot\uploads\staff\fb6a8861a1164102b8453617826ebf40_HIGHER PROFESSIONAL QUALIFICATION.pdf
 wwwroot\uploads\staff\fc09a8b391494530a7f571e35d9a629d_BASIC DEGREE CERTIFICATE.pdf
 wwwroot\uploads\staff\fc7030a46b7a4c96b69992e0f0ab253e_CV_RESUME.pdf
-wwwroot\js\patient\edit-appointment.js

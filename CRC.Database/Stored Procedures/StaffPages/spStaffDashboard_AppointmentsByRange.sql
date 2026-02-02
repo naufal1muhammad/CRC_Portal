@@ -8,15 +8,6 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    /*
-      Updated for new dbo.PatientAppointment schema (now stores IDs + Date/Time, not denormalized names).
-      Keep the same output column names to avoid breaking existing Staff Dashboard UI.
-
-      Note:
-        dbo.PatientAppointment.PatientAppointment_Date is DATE, while this sproc accepts DATETIME.
-        We preserve the original half-open interval logic: [StartDate, EndDate).
-    */
-
     DECLARE @StartDateOnly DATE = CAST(@StartDate AS DATE);
     DECLARE @EndDateOnly   DATE = CAST(@EndDate   AS DATE);
 
