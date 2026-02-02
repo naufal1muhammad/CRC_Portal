@@ -7,11 +7,6 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    /*
-      Updated for new dbo.PatientAppointment schema (now stores IDs + Date/Time, not denormalized names).
-      Keep the same output column names to avoid breaking existing Staff Dashboard UI.
-    */
-
     SELECT
         pa.[PatientAppointment_ID],
         pa.[Patient_ID],

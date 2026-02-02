@@ -159,7 +159,7 @@
                 <td>${escapeHtml(a.staffName || '')}</td>
                 <td>
                     <button type="button" 
-                            class="btn btn-sm btn-secondary me-1 btn-edit-appointment" 
+                            class="btn btn-sm btn-secondary me-1 btn-edit-appointment"
                             title="Edit">
                          <i class="fas fa-edit"></i>
                     </button>
