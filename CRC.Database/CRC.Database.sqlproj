@@ -82,7 +82,7 @@
     <Folder Include="Stored Procedures\PatientAppointment" />
     <Folder Include="Stored Procedures\PatientJourney" />
     <Folder Include="Stored Procedures\PatientDocumentSettings" />
-    <Folder Include="Stored Procedures\StaffPages" />
+    <Folder Include="Stored Procedures\StaffDashboard" />
     <Folder Include="Stored Procedures\PatientAssessment" />
     <Folder Include="Stored Procedures\PatientColonoscopy" />
     <Folder Include="Stored Procedures\PatientFollowUp" />
@@ -177,8 +177,6 @@
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByDischargeType.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_AdmitDischargeLast12Months.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_UpdateStatus.sql" />
-    <Build Include="Stored Procedures\StaffPages\spStaffDashboard_TodayAppointments.sql" />
-    <Build Include="Stored Procedures\StaffPages\spStaffDashboard_AppointmentsByRange.sql" />
     <Build Include="dbo\Tables\PatientJourneyAudit.sql" />
     <Build Include="Stored Procedures\PatientJourney\spPatientJourney_TimelineByPatient.sql" />
     <Build Include="Stored Procedures\PatientAssessment\spPatientAssessment_GetByJourneyId.sql" />
@@ -203,5 +201,8 @@
     <Build Include="Stored Procedures\StaffSlots\spStaffSlots_Delete.sql" />
     <Build Include="Stored Procedures\StaffSlots\spStaffSlots_CreateRange.sql" />
     <Build Include="Stored Procedures\StaffSlots\spStaffSlots_List.sql" />
+    <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_TodayAppointments.sql" />
+    <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_ThisWeekAppointments.sql" />
+    <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_ThisMonthAppointments.sql" />
   </ItemGroup>
 </Project>

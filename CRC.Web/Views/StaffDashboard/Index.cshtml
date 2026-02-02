@@ -2,17 +2,6 @@
     ViewData["Title"] = "Staff Dashboard";
 }
 
-@section Stylesheets {
-    <style>
-        #staffWeekCalendar .fc-event,
-        #staffWeekCalendar .fc-event * {
-            cursor: pointer !important;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-    </style>
-}
-
 <div class="mb-3">
     <h2 class="mb-1">Dashboard</h2>
 </div>
@@ -48,70 +37,66 @@
         </div>
     </div>
 
-    <!-- Row 2: Week View Calendar -->
+    <!-- Row 2: This Week's Appointments -->
     <div class="col-12">
         <div class="card shadow-sm">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <div>
-                    <h5 class="mb-0">Weekly Calendar</h5>
+                    <h5 class="mb-0">This Week’s Appointments</h5>
+                </div>
+                <div class="text-muted small">
+                    <i class="fas fa-calendar-week me-1"></i>
+                    <span id="weekRangeLabel"></span>
                 </div>
             </div>
 
             <div class="card-body">
-                <div id="weekCalendarMsg" class="small mb-2 text-muted"></div>
+                <div id="weekAppointmentsMsg" class="small mb-2 text-muted"></div>
 
-                <!-- Week calendar container (JS will render the week-view calendar here) -->
-                <div id="staffWeekCalendar" class="border rounded p-2 bg-white" style="min-height: 520px;">
-                    <!-- JS will inject the week calendar UI -->
+                <div class="table-responsive">
+                    <table id="weekAppointmentsTable" class="table table-sm table-striped table-hover align-middle w-100">
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
                 </div>
-
-                <div id="calendarLegend" class="d-flex flex-wrap gap-2 mt-2"></div>
-
-                <small class="text-muted d-block mt-2">
-                    Click an event to view details.
-                </small>
             </div>
         </div>
     </div>
 
-</div>
-
-<div class="modal fade" id="staffApptModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Appointment Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-
-            <div class="modal-body">
-                <div class="mb-3">
-                    <div class="text-muted small">Patient</div>
-                    <div id="mdPatient" class="fw-semibold"></div>
+    <!-- Row 3: This Month's Appointments -->
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <div>
+                    <h5 class="mb-0">This Month’s Appointments</h5>
                 </div>
 
-                <div class="mb-3">
-                    <div class="text-muted small">Appointment Type</div>
-                    <div id="mdType" class="fw-semibold"></div>
-                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" id="monthPrevBtn" class="btn btn-sm btn-outline-secondary" title="Previous month">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
 
-                <div class="mb-3">
-                    <div class="text-muted small">Branch</div>
-                    <div id="mdBranch" class="fw-semibold"></div>
-                </div>
+                    <input type="month" id="monthPicker" class="form-control form-control-sm" style="max-width: 160px;" />
 
-                <div class="mb-0">
-                    <div class="text-muted small">Date &amp; Time</div>
-                    <div id="mdWhen" class="fw-semibold"></div>
+                    <button type="button" id="monthNextBtn" class="btn btn-sm btn-outline-secondary" title="Next month">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
                 </div>
             </div>
 
-            <div class="modal-footer">
-                <a id="mdOpenPatient" class="btn btn-primary" href="#">Open Patient</a>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <div class="card-body">
+                <div id="monthAppointmentsMsg" class="small mb-2 text-muted"></div>
+
+                <div class="table-responsive">
+                    <table id="monthAppointmentsTable" class="table table-sm table-striped table-hover align-middle w-100">
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
+
 </div>
 
 @section Scripts {
