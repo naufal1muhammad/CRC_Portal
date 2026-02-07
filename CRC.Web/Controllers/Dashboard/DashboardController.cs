@@ -234,35 +234,5 @@ namespace CRC.Web.Controllers.Dashboard
             }
         }
 
-        // ---------------------------------------------------------
-        //  Row 4 – Horizontal double bar: admit vs discharge
-        // ---------------------------------------------------------
-        [HttpGet]
-        public async Task<IActionResult> GetAdmitDischargeLast12Months()
-        {
-            try
-            {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spDashboard_Patient_AdmitDischargeLast12Months",
-                    Array.Empty<SqlParameter>());
-
-                var items = dt.Rows.Cast<DataRow>()
-                    .Select(r => new
-                    {
-                        year = Convert.ToInt32(r["Year"]),
-                        month = Convert.ToInt32(r["Month"]),
-                        label = r["MonthLabel"]?.ToString() ?? "",
-                        admittedCount = Convert.ToInt32(r["AdmittedCount"]),
-                        dischargedCount = Convert.ToInt32(r["DischargedCount"])
-                    })
-                    .ToList();
-
-                return Ok(new { success = true, data = items });
-            }
-            catch (Exception)
-            {
-                return Ok(new { success = false, message = "Error loading admit/discharge trend." });
-            }
-        }
     }
 }

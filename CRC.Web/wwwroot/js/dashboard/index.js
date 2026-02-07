@@ -7,7 +7,6 @@
     let chartRace = null;
     let chartAge = null;
     let chartDischargeType = null;
-    let chartAdmitDischarge = null;
 
     // ---------- helpers ----------
 
@@ -249,76 +248,6 @@
         }
     }
 
-    // ---------- row 4: horizontal diverging bar (Admissions vs Discharges) ----------
-
-    async function loadChartAdmitDischarge() {
-        try {
-            const result = await getJson(`${baseUrl}/GetAdmitDischargeLast12Months`);
-            if (!result.success) throw new Error(result.message || 'Error');
-
-            const list = result.data || [];
-            const labels = list.map(x => x.label || '');
-            const admitted = list.map(x => -(x.admittedCount || 0));    // negative => left side
-            const discharged = list.map(x => x.dischargedCount || 0);   // positive => right side
-
-            const ctx = document.getElementById('chartAdmitDischarge');
-            if (!ctx) return;
-
-            if (chartAdmitDischarge) chartAdmitDischarge.destroy();
-
-            chartAdmitDischarge = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'Admitted',
-                            data: admitted,
-                            backgroundColor: '#0000ff'
-                        },
-                        {
-                            label: 'Discharged',
-                            data: discharged,
-                            backgroundColor: '#f0a207'
-                        }
-                    ]
-                },
-                options: {
-                    indexAxis: 'y',
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            stacked: true,
-                            ticks: {
-                                callback: function(value) {
-                                    // show absolute numbers on axis
-                                    return Math.abs(value);
-                                }
-                            }
-                        },
-                        y: {
-                            stacked: true
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(ctx) {
-                                    const label = ctx.dataset.label || '';
-                                    const val = ctx.parsed.x || 0;
-                                    return `${label}: ${Math.abs(val)}`;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        } catch (err) {
-            console.error('Error loading Admissions vs Discharges chart', err);
-        }
-    }
-
     // ---------- init ----------
 
     document.addEventListener('DOMContentLoaded', async function() {
@@ -354,6 +283,5 @@
         loadChartPatientsByRace();
         loadChartPatientsByAgeGroup();
         loadChartPatientsByDischargeType();
-        loadChartAdmitDischarge();
     });
 })();
