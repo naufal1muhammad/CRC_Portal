@@ -112,6 +112,16 @@
         return date;
     }
 
+    function parseGenderFromNric(nric) {
+        const digits = (nric || '').replace(/\D/g, '');
+        if (digits.length !== 12) return '';
+
+        const lastDigit = parseInt(digits[digits.length - 1], 10);
+        if (isNaN(lastDigit)) return '';
+
+        return lastDigit % 2 === 0 ? 'Female' : 'Male';
+    }
+
     function computeAgeFromBirthDateInput() {
         const birthInput = document.getElementById('StaffBirthDate');
         const ageInput = document.getElementById('StaffAge');
@@ -152,6 +162,28 @@
 
         birthInput.value = formatDate(date);
         computeAgeFromBirthDateInput();
+    }
+
+    function updateGenderFromNric() {
+        const nricInput = document.getElementById('StaffNRIC');
+        const genderSelect = document.getElementById('StaffGender');
+        if (!nricInput || !genderSelect) return;
+
+        const gender = parseGenderFromNric(nricInput.value || '');
+        if (!gender) return;
+
+        genderSelect.value = gender;
+        refreshSelect2(genderSelect);
+    }
+
+    function normalizeNricInput() {
+        const nricInput = document.getElementById('StaffNRIC');
+        if (!nricInput) return;
+
+        const digits = (nricInput.value || '').replace(/\D/g, '').slice(0, 12);
+        if (nricInput.value !== digits) {
+            nricInput.value = digits;
+        }
     }
 
     function updateAddressLineInputsEnabled() {
@@ -750,6 +782,15 @@
             return;
         }
 
+        const nricDigits = (payload.nric || '').replace(/\D/g, '');
+        if (nricDigits.length !== 12) {
+            if (msg) {
+                msg.textContent = 'NRIC must be exactly 12 digits.';
+                msg.classList.add('text-danger');
+            }
+            return;
+        }
+
         try {
             // Build multipart payload (staff + documents)
             const formData = new FormData();
@@ -885,7 +926,18 @@
 
         const nricInput = document.getElementById('StaffNRIC');
         if (nricInput) {
-            nricInput.addEventListener('blur', updateBirthDateFromNric);
+            nricInput.addEventListener('input', function () {
+                normalizeNricInput();
+                if ((nricInput.value || '').length === 12) {
+                    updateBirthDateFromNric();
+                    updateGenderFromNric();
+                }
+            });
+            nricInput.addEventListener('blur', function () {
+                normalizeNricInput();
+                updateBirthDateFromNric();
+                updateGenderFromNric();
+            });
         }
 
         if (window.$ && $.fn.select2) {

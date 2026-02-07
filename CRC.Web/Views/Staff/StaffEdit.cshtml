@@ -96,7 +96,15 @@
 
                                 <div class="mb-2">
                                     <label for="StaffNRIC" class="form-label">NRIC <span class="text-danger">*</span></label>
-                                    <input id="StaffNRIC" type="text" class="form-control form-control-sm" />
+                                    <input id="StaffNRIC"
+                                           type="text"
+                                           class="form-control form-control-sm"
+                                           inputmode="numeric"
+                                           minlength="12"
+                                           maxlength="12"
+                                           pattern="\d{12}"
+                                           autocomplete="off" />
+                                    <div class="form-text">Enter exactly 12 digits.</div>
                                 </div>
 
                                 <div class="mb-2">
