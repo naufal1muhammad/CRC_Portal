@@ -29,27 +29,6 @@
         return await response.json();
     }
 
-    function setBranchesOnSelect(selectEl, branches) {
-    if (!selectEl) return;
-
-    selectEl.innerHTML = '';
-
-    const optAll = document.createElement('option');
-    optAll.value = '';
-    optAll.textContent = 'All Branches';
-    selectEl.appendChild(optAll);
-
-    (branches || []).forEach(b => {
-        const opt = document.createElement('option');
-        // Use branchName as the value because the API filters by Branch_Name
-        opt.value = b.branchName || '';
-        opt.textContent = b.branchName || '';
-        // Optional: still keep ID if you ever need it later
-        opt.dataset.branchId = b.branchId || '';
-        selectEl.appendChild(opt);
-    });
-}
-
     // ---------- row 1: KPIs ----------
 
     async function loadActiveBranchCount() {
@@ -62,54 +41,6 @@
             setKpiText('kpiActiveBranches', '-');
         }
     }
-
-    async function loadBranchesForKpiCards() {
-        try {
-            const result = await getJson(`${baseUrl}/GetDashboardBranches`);
-            if (!result.success) throw new Error(result.message || 'Error');
-
-            const branches = result.data || [];
-            const ddlActive = document.getElementById('ddlActivePatientsBranch');
-            const ddlDischarged = document.getElementById('ddlDischargedPatientsBranch');
-
-            setBranchesOnSelect(ddlActive, branches);
-            setBranchesOnSelect(ddlDischarged, branches);
-        } catch (err) {
-            console.error('Error loading branches', err);
-        }
-    }
-
-    async function loadActivePatientCount(branchId) {
-    try {
-        const url = branchId
-            ? `${baseUrl}/GetActivePatientsCount?branchName=${encodeURIComponent(branchId)}`
-            : `${baseUrl}/GetActivePatientsCount`;
-
-        const result = await getJson(url);
-        if (!result.success) throw new Error(result.message || 'Error');
-
-        setKpiText('kpiActivePatients', result.count || 0);
-    } catch (err) {
-        console.error('Error loading active patient count', err);
-        setKpiText('kpiActivePatients', '-');
-    }
-}
-
-    async function loadDischargedPatientCount(branchId) {
-    try {
-        const url = branchId
-            ? `${baseUrl}/GetDischargedPatientsCount?branchName=${encodeURIComponent(branchId)}`
-            : `${baseUrl}/GetDischargedPatientsCount`;
-
-        const result = await getJson(url);
-        if (!result.success) throw new Error(result.message || 'Error');
-
-        setKpiText('kpiDischargedPatients', result.count || 0);
-    } catch (err) {
-        console.error('Error loading discharged patient count', err);
-        setKpiText('kpiDischargedPatients', '-');
-    }
-}
 
     // ---------- row 2: pie charts ----------
 
@@ -258,26 +189,7 @@
         }
 
         // 1) KPI stuff
-        await loadBranchesForKpiCards();
         await loadActiveBranchCount();
-        await loadActivePatientCount(null);
-        await loadDischargedPatientCount(null);
-
-        const ddlActive = document.getElementById('ddlActivePatientsBranch');
-        if (ddlActive) {
-            ddlActive.addEventListener('change', function() {
-                const branchId = ddlActive.value || null;
-                loadActivePatientCount(branchId);
-            });
-        }
-
-        const ddlDischarged = document.getElementById('ddlDischargedPatientsBranch');
-        if (ddlDischarged) {
-            ddlDischarged.addEventListener('change', function() {
-                const branchId = ddlDischarged.value || null;
-                loadDischargedPatientCount(branchId);
-            });
-        }
 
         // 2) Charts
         loadChartPatientsByRace();
