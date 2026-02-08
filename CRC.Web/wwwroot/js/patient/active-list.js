@@ -31,7 +31,7 @@
         // Show loading row
         tableBody.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center text-muted">Loading...</td>
+                <td colspan="3" class="text-center text-muted">Loading...</td>
             </tr>
         `;
 
@@ -44,7 +44,7 @@
             if (!response.ok) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="5" class="text-center text-danger">Error loading patients.</td>
+                        <td colspan="3" class="text-center text-danger">Error loading patients.</td>
                     </tr>
                 `;
                 return;
@@ -55,7 +55,7 @@
             if (!data || !Array.isArray(data) || data.length === 0) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="5" class="text-center text-muted">No active patients found.</td>
+                        <td colspan="3" class="text-center text-muted">No active patients found.</td>
                     </tr>
                 `;
                 // Initialise empty DataTable so search & paging still render
@@ -63,7 +63,7 @@
                 return;
             }
 
-            // Build rows with the *new* 5 columns
+            // Build rows with the current columns
             tableBody.innerHTML = '';
 
             data.forEach(p => {
@@ -73,8 +73,6 @@
                 tr.innerHTML = `
                     <td>${p.patientId || ''}</td>
                     <td>${p.name || ''}</td>
-                    <td>${p.branchName || ''}</td>
-                    <td>${p.admittedOn || ''}</td>
                     <td>
                         <button type="button"
                                 class="btn btn-sm btn-secondary btn-patient-edit"
@@ -103,7 +101,7 @@
             console.error('Error loading active patients', err);
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="5" class="text-center text-danger">Error loading patients.</td>
+                    <td colspan="3" class="text-center text-danger">Error loading patients.</td>
                 </tr>
             `;
         }
