@@ -31,7 +31,7 @@
 
         tableBody.innerHTML = `
             <tr>
-                <td colspan="6" class="text-center text-muted">Loading...</td>
+                <td colspan="4" class="text-center text-muted">Loading...</td>
             </tr>
         `;
 
@@ -44,7 +44,7 @@
             if (!response.ok) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="6" class="text-center text-danger">Error loading patients.</td>
+                        <td colspan="4" class="text-center text-danger">Error loading patients.</td>
                     </tr>
                 `;
                 return;
@@ -55,7 +55,7 @@
             if (!data || !Array.isArray(data) || data.length === 0) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="6" class="text-center text-muted">No discharged patients found.</td>
+                        <td colspan="4" class="text-center text-muted">No discharged patients found.</td>
                     </tr>
                 `;
                 // Still initialise DataTables so the UI (arrows, pager) appears
@@ -72,8 +72,6 @@
                 tr.innerHTML = `
                     <td>${p.patientId || ''}</td>
                     <td>${p.name || ''}</td>
-                    <td>${p.branchName || ''}</td>
-                    <td>${p.dischargeTypeName || ''}</td>
                     <td>${p.dischargeDate || ''}</td>
                     <td>
                         <button type="button"
@@ -101,7 +99,7 @@
             console.error('Error loading discharged patients', err);
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="text-center text-danger">Error loading patients.</td>
+                    <td colspan="4" class="text-center text-danger">Error loading patients.</td>
                 </tr>
             `;
         }

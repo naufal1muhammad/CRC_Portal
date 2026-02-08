@@ -43,17 +43,7 @@ namespace CRC.Web.Controllers.Patient
                     .Select(r => new
                     {
                         patientId = r["Patient_ID"]?.ToString(),
-                        name = r["Patient_Name"]?.ToString(),
-                        email = r["Patient_Email"]?.ToString(),
-                        phone = r["Patient_Phone"]?.ToString(),
-                        branchName = r["Branch_Name"]?.ToString(),
-                        admittedOn = r["Patient_AdmittedOn"] == DBNull.Value
-                            ? ""
-                            : Convert.ToDateTime(r["Patient_AdmittedOn"]).ToString("dd/MM/yyyy"),
-                        dischargeTypeName = r["DischargeType_Name"]?.ToString() ?? "",
-                        dischargeDate = r["Patient_DischargeDate"] == DBNull.Value
-                            ? ""
-                            : Convert.ToDateTime(r["Patient_DischargeDate"]).ToString("dd/MM/yyyy")
+                        name = r["Patient_Name"]?.ToString()
                     })
                     .ToList();
 
@@ -123,13 +113,6 @@ namespace CRC.Web.Controllers.Patient
                     {
                         patientId = r["Patient_ID"]?.ToString(),
                         name = r["Patient_Name"]?.ToString(),
-                        email = r["Patient_Email"]?.ToString(),
-                        phone = r["Patient_Phone"]?.ToString(),
-                        branchName = r["Branch_Name"]?.ToString(),
-                        admittedOn = r["Patient_AdmittedOn"] == DBNull.Value
-                            ? ""
-                            : Convert.ToDateTime(r["Patient_AdmittedOn"]).ToString("dd/MM/yyyy"),
-                        dischargeTypeName = r["DischargeType_Name"]?.ToString() ?? "",
                         dischargeDate = r["Patient_DischargeDate"] == DBNull.Value
                             ? ""
                             : Convert.ToDateTime(r["Patient_DischargeDate"]).ToString("dd/MM/yyyy")
