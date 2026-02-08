@@ -41,91 +41,134 @@
 
                     <!-- Basic Details (readonly) -->
                     <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Patient Name</label>
-                            <input id="sp_name" class="form-control" type="text" readonly />
+                        <div class="col-12">
+                            <h6 class="text-muted text-uppercase mb-2">Basic</h6>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">NRIC</label>
-                            <input id="sp_nric" class="form-control" type="text" readonly />
+
+                        <div class="col-lg-6">
+                            <div class="mb-2">
+                                <label class="form-label">Name</label>
+                                <input id="sp_patientName" class="form-control form-control-sm" type="text" readonly />
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label">Email</label>
+                                <input id="sp_patientEmail" class="form-control form-control-sm" type="email" readonly />
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label">Phone</label>
+                                <input id="sp_patientPhone" class="form-control form-control-sm" type="text" readonly />
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label">NRIC</label>
+                                <input id="sp_patientNric" class="form-control form-control-sm" type="text" readonly />
+                            </div>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Gender</label>
-                            <input id="sp_gender" class="form-control" type="text" readonly />
+
+                        <div class="col-lg-6">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Birth Date</label>
+                                    <input id="sp_patientBirthDate" class="form-control form-control-sm" type="date" readonly />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label">Age</label>
+                                    <input id="sp_patientAge" class="form-control form-control-sm" type="number" readonly />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label">Gender</label>
+                                    <input id="sp_patientGender" class="form-control form-control-sm" type="text" readonly />
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mt-0">
+                                <div class="col-md-6">
+                                    <label class="form-label">Race</label>
+                                    <input id="sp_patientRace" class="form-control form-control-sm" type="text" readonly />
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">Religion</label>
+                                    <input id="sp_patientReligion" class="form-control form-control-sm" type="text" readonly />
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">Source</label>
+                                    <input id="sp_patientSource" class="form-control form-control-sm" type="text" readonly />
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">Marital Status</label>
+                                    <input id="sp_patientMaritalStatus" class="form-control form-control-sm" type="text" readonly />
+                                </div>
+
+                                <div class="col-md-12">
+                                    <label class="form-label">Occupation</label>
+                                    <input id="sp_patientOccupation" class="form-control form-control-sm" type="text" readonly />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-3" />
+
+                    <!-- Residential -->
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <h6 class="text-muted text-uppercase mb-2">Residential</h6>
                         </div>
 
                         <div class="col-md-4">
-                            <label class="form-label">Email</label>
-                            <input id="sp_email" class="form-control" type="text" readonly />
+                            <label class="form-label">State</label>
+                            <input id="sp_patientResState" class="form-control form-control-sm" type="text" readonly />
                         </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">City</label>
+                            <input id="sp_patientResCity" class="form-control form-control-sm" type="text" readonly />
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Postcode</label>
+                            <input id="sp_patientResPostcode" class="form-control form-control-sm" type="text" readonly />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Address Line 1</label>
+                            <input id="sp_patientAddLine1" class="form-control form-control-sm" type="text" readonly />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Address Line 2</label>
+                            <input id="sp_patientAddLine2" class="form-control form-control-sm" type="text" readonly />
+                        </div>
+                    </div>
+
+                    <hr class="my-3" />
+
+                    <!-- Emergency Contact -->
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <h6 class="text-muted text-uppercase mb-2">Emergency Contact</h6>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Name</label>
+                            <input id="sp_patientEmergencyName" class="form-control form-control-sm" type="text" readonly />
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Relationship</label>
+                            <input id="sp_patientEmergencyRelationship" class="form-control form-control-sm" type="text" readonly />
+                        </div>
+
                         <div class="col-md-4">
                             <label class="form-label">Phone</label>
-                            <input id="sp_phone" class="form-control" type="text" readonly />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Branch</label>
-                            <input id="sp_branchName" class="form-control" type="text" readonly />
-                        </div>
-
-                        <div class="col-md-3">
-                            <label class="form-label">Admitted On</label>
-                            <input id="sp_admittedOn" class="form-control" type="date" readonly />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Birth Date</label>
-                            <input id="sp_birthDate" class="form-control" type="date" readonly />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Race</label>
-                            <input id="sp_raceName" class="form-control" type="text" readonly />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Religion</label>
-                            <input id="sp_religionName" class="form-control" type="text" readonly />
-                        </div>
-
-                        <div class="col-md-3">
-                            <label class="form-label">Marital Status</label>
-                            <input id="sp_maritalStatusName" class="form-control" type="text" readonly />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Occupation</label>
-                            <input id="sp_occupationName" class="form-control" type="text" readonly />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Source</label>
-                            <input id="sp_sourceName" class="form-control" type="text" readonly />
-                        </div>
-
-                        <div class="col-12">
-                            <label class="form-label">Address</label>
-                            <textarea id="sp_address" class="form-control" rows="2" readonly></textarea>
-                        </div>
-
-                        <div class="col-md-4">
-                            <label class="form-label">Emergency Contact Name</label>
-                            <input id="sp_emergencyName" class="form-control" type="text" readonly />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Emergency Relationship</label>
-                            <input id="sp_emergencyRelationship" class="form-control" type="text" readonly />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Emergency Number</label>
-                            <input id="sp_emergencyNumber" class="form-control" type="text" readonly />
-                        </div>
-
-                        <div class="col-md-4">
-                            <label class="form-label">Discharge Type</label>
-                            <input id="sp_dischargeTypeName" class="form-control" type="text" readonly />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Discharge Date (mm/dd/yyyy)</label>
-                            <input id="sp_dischargeDate" class="form-control" type="date" readonly />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Discharge Remarks</label>
-                            <input id="sp_dischargeRemarks" class="form-control" type="text" readonly />
+                            <input id="sp_patientEmergencyNumber" class="form-control form-control-sm" type="text" readonly />
                         </div>
                     </div>
 
