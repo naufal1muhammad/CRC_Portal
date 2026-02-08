@@ -5,6 +5,38 @@
         selType,
         txtRemarks,
         msg;
+    const saveBasicMessage = 'Please save basic details first.';
+
+    function getPatientId() {
+        const root = document.querySelector('[data-patient-id]');
+        return root ? (root.getAttribute('data-patient-id') || '') : '';
+    }
+
+    function setTabMessage(text, isError) {
+        if (!msg) return;
+        msg.textContent = text || '';
+        msg.classList.remove('text-danger', 'text-success', 'text-muted');
+        msg.classList.add(isError ? 'text-danger' : 'text-muted');
+    }
+
+    function updateTabState() {
+        const hasPatient = !!getPatientId();
+
+        if (!hasPatient) {
+            if (chkDischarged) {
+                chkDischarged.checked = false;
+                chkDischarged.disabled = true;
+            }
+            setFieldsEnabled(false);
+            setTabMessage(saveBasicMessage, false);
+            return;
+        }
+
+        if (chkDischarged) {
+            chkDischarged.disabled = false;
+        }
+        setTabMessage('', false);
+    }
 
     function setFieldsEnabled(enabled) {
         if (txtDate) {
@@ -183,6 +215,7 @@ async function loadDischargeTypesIntoTab() {
 
         // default state: disabled
         setFieldsEnabled(false);
+        updateTabState();
 
         if (chkDischarged) {
             chkDischarged.addEventListener('change', function() {
@@ -190,5 +223,9 @@ async function loadDischargeTypesIntoTab() {
                 setFieldsEnabled(enabled);
             });
         }
+    });
+
+    document.addEventListener('patient:saved', function() {
+        updateTabState();
     });
 })();
