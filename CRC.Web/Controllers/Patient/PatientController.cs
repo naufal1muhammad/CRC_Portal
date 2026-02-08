@@ -182,25 +182,134 @@ namespace CRC.Web.Controllers.Patient
             try
             {
                 var emptyParams = Array.Empty<SqlParameter>();
+
                 var dtRace = await _db.ExecuteDataTableAsync("spLU_Race_List", emptyParams);
                 var dtSource = await _db.ExecuteDataTableAsync("spLU_Source_List", emptyParams);
                 var dtReligion = await _db.ExecuteDataTableAsync("spLU_Religion_List", emptyParams);
                 var dtMarital = await _db.ExecuteDataTableAsync("spLU_MaritalStatus_List", emptyParams);
                 var dtOccupation = await _db.ExecuteDataTableAsync("spLU_Occupation_List", emptyParams);
-                var dtBranches = await _db.ExecuteDataTableAsync("spBranch_ListActive", emptyParams);
-                var races = dtRace.Rows.Cast<DataRow>().Select(r => new { id = r["Race_ID"]?.ToString(), name = r["Race_Name"]?.ToString() }).ToList();
-                var sources = dtSource.Rows.Cast<DataRow>().Select(r => new { id = r["Source_ID"]?.ToString(), name = r["Source_Name"]?.ToString() }).ToList();
-                var religions = dtReligion.Rows.Cast<DataRow>().Select(r => new { id = r["Religion_ID"]?.ToString(), name = r["Religion_Name"]?.ToString() }).ToList();
-                var maritalStatuses = dtMarital.Rows.Cast<DataRow>().Select(r => new { id = r["MaritalStatus_ID"]?.ToString(), name = r["MaritalStatus_Name"]?.ToString() }).ToList();
-                var occupations = dtOccupation.Rows.Cast<DataRow>().Select(r => new { id = r["Occupation_ID"]?.ToString(), name = r["Occupation_Name"]?.ToString() }).ToList();
-                var branches = dtBranches.Rows.Cast<DataRow>().Select(r => new { branchId = r["Branch_ID"]?.ToString(), branchName = r["Branch_Name"]?.ToString() }).ToList();
+
+                var races = dtRace.Rows.Cast<DataRow>()
+                    .Select(r => new { id = r["Race_ID"]?.ToString(), name = r["Race_Name"]?.ToString() })
+                    .Where(x => !string.IsNullOrWhiteSpace(x.id))
+                    .ToList();
+
+                var sources = dtSource.Rows.Cast<DataRow>()
+                    .Select(r => new { id = r["Source_ID"]?.ToString(), name = r["Source_Name"]?.ToString() })
+                    .Where(x => !string.IsNullOrWhiteSpace(x.id))
+                    .ToList();
+
+                var religions = dtReligion.Rows.Cast<DataRow>()
+                    .Select(r => new { id = r["Religion_ID"]?.ToString(), name = r["Religion_Name"]?.ToString() })
+                    .Where(x => !string.IsNullOrWhiteSpace(x.id))
+                    .ToList();
+
+                var maritalStatuses = dtMarital.Rows.Cast<DataRow>()
+                    .Select(r => new { id = r["MaritalStatus_ID"]?.ToString(), name = r["MaritalStatus_Name"]?.ToString() })
+                    .Where(x => !string.IsNullOrWhiteSpace(x.id))
+                    .ToList();
+
+                var occupations = dtOccupation.Rows.Cast<DataRow>()
+                    .Select(r => new { id = r["Occupation_ID"]?.ToString(), name = r["Occupation_Name"]?.ToString() })
+                    .Where(x => !string.IsNullOrWhiteSpace(x.id))
+                    .ToList();
+
                 return Ok(new
-                { success = true, races, sources, religions, maritalStatuses, occupations, branches });
+                {
+                    success = true,
+                    races,
+                    sources,
+                    religions,
+                    maritalStatuses,
+                    occupations
+                });
             }
-            catch (Exception)
+            catch
             {
-                return Ok(new
-                { success = false, message = "Error loading lookups." });
+                return Ok(new { success = false, message = "Error loading lookups." });
+            }
+        }
+
+        // Location lookups (for Basic Details -> Residential)
+        [HttpGet]
+        public async Task<IActionResult> GetStates()
+        {
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync("spLU_LOCATION_ListStates", Array.Empty<SqlParameter>());
+
+                var list = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        id = r["LocationId"] == DBNull.Value ? 0 : Convert.ToInt32(r["LocationId"]),
+                        name = r["Name"]?.ToString() ?? ""
+                    })
+                    .Where(x => x.id > 0 && !string.IsNullOrWhiteSpace(x.name))
+                    .ToList();
+
+                return Ok(new { success = true, data = list });
+            }
+            catch
+            {
+                return Ok(new { success = false, message = "Error loading states." });
+            }
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetCitiesByState(int stateId)
+        {
+            if (stateId <= 0)
+                return Ok(new { success = true, data = Array.Empty<object>() });
+
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spLU_LOCATION_ListCityByState",
+                    new[] { new SqlParameter("@StateId", SqlDbType.Int) { Value = stateId } });
+
+                var list = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        id = r["LocationId"] == DBNull.Value ? 0 : Convert.ToInt32(r["LocationId"]),
+                        name = r["Name"]?.ToString() ?? ""
+                    })
+                    .Where(x => x.id > 0 && !string.IsNullOrWhiteSpace(x.name))
+                    .ToList();
+
+                return Ok(new { success = true, data = list });
+            }
+            catch
+            {
+                return Ok(new { success = false, message = "Error loading cities." });
+            }
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetPostcodesByCity(int cityId)
+        {
+            if (cityId <= 0)
+                return Ok(new { success = true, data = Array.Empty<object>() });
+
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spLU_LOCATION_ListPostcodesByCity",
+                    new[] { new SqlParameter("@CityId", SqlDbType.Int) { Value = cityId } });
+
+                var list = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        id = r["LocationId"] == DBNull.Value ? 0 : Convert.ToInt32(r["LocationId"]),
+                        name = r["Name"]?.ToString() ?? ""
+                    })
+                    .Where(x => x.id > 0 && !string.IsNullOrWhiteSpace(x.name))
+                    .ToList();
+
+                return Ok(new { success = true, data = list });
+            }
+            catch
+            {
+                return Ok(new { success = false, message = "Error loading postcodes." });
             }
         }
 
@@ -217,7 +326,7 @@ namespace CRC.Web.Controllers.Patient
             {
                 var dt = await _db.ExecuteDataTableAsync(
                     "spPatientBasic_GetById",
-                    new[] { new SqlParameter("@Patient_ID", patientId) }
+                    new[] { new SqlParameter("@Patient_ID", patientId.Trim()) }
                 );
 
                 if (dt.Rows.Count == 0)
@@ -229,42 +338,47 @@ namespace CRC.Web.Controllers.Patient
 
                 var patient = new
                 {
-                    patientId = row["Patient_ID"]?.ToString(),
-                    name = row["Patient_Name"]?.ToString(),
-                    email = row["Patient_Email"]?.ToString(),
-                    phone = row["Patient_Phone"]?.ToString(),
-                    nric = row["Patient_NRIC"]?.ToString(),
-                    admittedOn = ToDateInputString(row["Patient_AdmittedOn"]),
+                    patientId = row["Patient_ID"]?.ToString() ?? "",
+                    name = row["Patient_Name"]?.ToString() ?? "",
+                    email = row["Patient_Email"]?.ToString() ?? "",
+                    phone = row["Patient_Phone"]?.ToString() ?? "",
+                    nric = row["Patient_NRIC"]?.ToString() ?? "",
+
                     birthDate = ToDateInputString(row["Patient_BirthDate"]),
-                    raceName = row["Race_Name"]?.ToString(),
-                    branchName = row["Branch_Name"]?.ToString(),
-                    sourceName = row["Source_Name"]?.ToString(),
-                    gender = row["Patient_Gender"]?.ToString(),
-                    religionName = row["Religion_Name"]?.ToString(),
-                    maritalStatusName = row["MaritalStatus_Name"]?.ToString(),
-                    address = row["Patient_Address"]?.ToString(),
-                    emergencyName = row["Patient_EmergencyName"]?.ToString(),
-                    emergencyRelationship = row["Patient_EmergencyRelationship"]?.ToString(),
-                    emergencyNumber = row["Patient_EmergencyNumber"]?.ToString(),
-                    occupationName = row["Occupation_Name"]?.ToString(),
-                    dischargeTypeName = row["DischargeType_Name"] == DBNull.Value
-        ? null
-        : row["DischargeType_Name"]?.ToString(),
+                    age = row["Patient_Age"] == DBNull.Value ? 0 : Convert.ToInt32(row["Patient_Age"]),
+                    gender = row["Patient_Gender"]?.ToString() ?? "",
+
+                    raceId = row["Race_ID"]?.ToString() ?? "",
+                    sourceId = row["Source_ID"]?.ToString() ?? "",
+                    religionId = row["Religion_ID"]?.ToString() ?? "",
+                    maritalStatusId = row["MaritalStatus_ID"]?.ToString() ?? "",
+                    occupationId = row["Occupation_ID"]?.ToString() ?? "",
+
+                    resState = row["Patient_ResState"]?.ToString() ?? "",
+                    resCity = row["Patient_ResCity"]?.ToString() ?? "",
+                    resPostcode = row["Patient_ResPostcode"]?.ToString() ?? "",
+                    addLine1 = row["Patient_AddLine1"]?.ToString() ?? "",
+                    addLine2 = row["Patient_AddLine2"] == DBNull.Value ? "" : row["Patient_AddLine2"]?.ToString() ?? "",
+
+                    emergencyName = row["Patient_EmergencyName"]?.ToString() ?? "",
+                    emergencyRelationship = row["Patient_EmergencyRelationship"]?.ToString() ?? "",
+                    emergencyNumber = row["Patient_EmergencyNumber"]?.ToString() ?? "",
+
+                    dischargeTypeId = row["DischargeType_ID"] == DBNull.Value ? null : row["DischargeType_ID"]?.ToString(),
+                    dischargeTypeName = row["DischargeType_Name"] == DBNull.Value ? null : row["DischargeType_Name"]?.ToString(),
                     dischargeDate = ToDateInputString(row["Patient_DischargeDate"]),
-                    dischargeRemarks = row["Patient_DischargeRemarks"] == DBNull.Value
-        ? null
-        : row["Patient_DischargeRemarks"]?.ToString()
+                    dischargeRemarks = row["Patient_DischargeRemarks"] == DBNull.Value ? "" : row["Patient_DischargeRemarks"]?.ToString() ?? ""
                 };
 
                 return Ok(new { success = true, patient });
             }
-            catch (Exception)
+            catch
             {
                 return Ok(new { success = false, message = "Error loading patient details." });
             }
         }
 
-        // DTO for saving basic details
+        // DTO for saving basic details (Basic Details + Discharge tab)
         public class SaveBasicRequest
         {
             public string? PatientId { get; set; }
@@ -274,26 +388,25 @@ namespace CRC.Web.Controllers.Patient
             public string Phone { get; set; } = string.Empty;
             public string NRIC { get; set; } = string.Empty;
 
-            public string AdmittedOn { get; set; } = string.Empty; // yyyy-MM-dd
-            public string BirthDate { get; set; } = string.Empty;  // yyyy-MM-dd
+            public string RaceId { get; set; } = string.Empty;
+            public string SourceId { get; set; } = string.Empty;
+            public string ReligionId { get; set; } = string.Empty;
+            public string MaritalStatusId { get; set; } = string.Empty;
+            public string OccupationId { get; set; } = string.Empty;
 
-            public string RaceName { get; set; } = string.Empty;
-            public string BranchName { get; set; } = string.Empty;
-            public string SourceName { get; set; } = string.Empty;
+            public string ResState { get; set; } = string.Empty;       // store Name
+            public string ResCity { get; set; } = string.Empty;        // store Name
+            public string ResPostcode { get; set; } = string.Empty;    // store Name
+            public string AddLine1 { get; set; } = string.Empty;
+            public string AddLine2 { get; set; } = string.Empty;
 
-            public string Gender { get; set; } = string.Empty;
-            public string ReligionName { get; set; } = string.Empty;
-            public string MaritalStatusName { get; set; } = string.Empty;
-
-            public string Address { get; set; } = string.Empty;
             public string EmergencyName { get; set; } = string.Empty;
             public string EmergencyRelationship { get; set; } = string.Empty;
             public string EmergencyNumber { get; set; } = string.Empty;
 
-            public string OccupationName { get; set; } = string.Empty;
+            // Discharge
             public bool IsDischarged { get; set; }
             public string? DischargeTypeId { get; set; }          // LU_DISCHARGETYPE.DischargeType_ID
-            public string? DischargeTypeName { get; set; }        // DischargeType_Name to store in PatientBasic
             public string DischargeDate { get; set; } = string.Empty; // yyyy-MM-dd
             public string DischargeRemarks { get; set; } = string.Empty;
         }
@@ -328,70 +441,77 @@ namespace CRC.Web.Controllers.Patient
         public async Task<IActionResult> SaveBasic([FromBody] SaveBasicRequest model)
         {
             if (model == null)
-            {
                 return BadRequest(new { success = false, message = "Invalid request." });
-            }
 
-            // ----------- BASIC FIELDS (same as before) -----------
-            string name = model.Name?.Trim() ?? string.Empty;
-            string email = model.Email?.Trim() ?? string.Empty;
-            string phone = model.Phone?.Trim() ?? string.Empty;
-            string nric = model.NRIC?.Trim() ?? string.Empty;
+            // ----------- BASIC FIELDS -----------
+            string name = (model.Name ?? "").Trim();
+            string email = (model.Email ?? "").Trim();
+            string phone = (model.Phone ?? "").Trim();
+            string nricRaw = (model.NRIC ?? "").Trim();
 
-            string admittedOnStr = model.AdmittedOn?.Trim() ?? string.Empty;
-            string birthDateStr = model.BirthDate?.Trim() ?? string.Empty;
+            string raceId = (model.RaceId ?? "").Trim();
+            string sourceId = (model.SourceId ?? "").Trim();
+            string religionId = (model.ReligionId ?? "").Trim();
+            string maritalStatusId = (model.MaritalStatusId ?? "").Trim();
+            string occupationId = (model.OccupationId ?? "").Trim();
 
-            string raceName = model.RaceName?.Trim() ?? string.Empty;
-            string branchName = model.BranchName?.Trim() ?? string.Empty;
-            string sourceName = model.SourceName?.Trim() ?? string.Empty;
-            string gender = model.Gender?.Trim() ?? string.Empty;
-            string religionName = model.ReligionName?.Trim() ?? string.Empty;
-            string maritalStatusName = model.MaritalStatusName?.Trim() ?? string.Empty;
-            string address = model.Address?.Trim() ?? string.Empty;
-            string emergencyName = model.EmergencyName?.Trim() ?? string.Empty;
-            string emergencyRel = model.EmergencyRelationship?.Trim() ?? string.Empty;
-            string emergencyNum = model.EmergencyNumber?.Trim() ?? string.Empty;
-            string occupationName = model.OccupationName?.Trim() ?? string.Empty;
+            string resState = (model.ResState ?? "").Trim();
+            string resCity = (model.ResCity ?? "").Trim();
+            string resPostcode = (model.ResPostcode ?? "").Trim();
+            string addLine1 = (model.AddLine1 ?? "").Trim();
+            string addLine2 = (model.AddLine2 ?? "").Trim();
+
+            string emergencyName = (model.EmergencyName ?? "").Trim();
+            string emergencyRel = (model.EmergencyRelationship ?? "").Trim();
+            string emergencyNum = (model.EmergencyNumber ?? "").Trim();
 
             if (string.IsNullOrWhiteSpace(name) ||
                 string.IsNullOrWhiteSpace(email) ||
                 string.IsNullOrWhiteSpace(phone) ||
-                string.IsNullOrWhiteSpace(nric) ||
-                string.IsNullOrWhiteSpace(admittedOnStr) ||
-                string.IsNullOrWhiteSpace(birthDateStr) ||
-                string.IsNullOrWhiteSpace(raceName) ||
-                string.IsNullOrWhiteSpace(branchName) ||
-                string.IsNullOrWhiteSpace(sourceName) ||
-                string.IsNullOrWhiteSpace(gender) ||
-                string.IsNullOrWhiteSpace(religionName) ||
-                string.IsNullOrWhiteSpace(maritalStatusName) ||
-                string.IsNullOrWhiteSpace(address) ||
+                string.IsNullOrWhiteSpace(nricRaw) ||
+                string.IsNullOrWhiteSpace(raceId) ||
+                string.IsNullOrWhiteSpace(sourceId) ||
+                string.IsNullOrWhiteSpace(religionId) ||
+                string.IsNullOrWhiteSpace(maritalStatusId) ||
+                string.IsNullOrWhiteSpace(occupationId) ||
+                string.IsNullOrWhiteSpace(resState) ||
+                string.IsNullOrWhiteSpace(resCity) ||
+                string.IsNullOrWhiteSpace(resPostcode) ||
+                string.IsNullOrWhiteSpace(addLine1) ||
                 string.IsNullOrWhiteSpace(emergencyName) ||
                 string.IsNullOrWhiteSpace(emergencyRel) ||
-                string.IsNullOrWhiteSpace(emergencyNum) ||
-                string.IsNullOrWhiteSpace(occupationName))
+                string.IsNullOrWhiteSpace(emergencyNum))
             {
                 return Ok(new { success = false, message = "Please fill in all mandatory fields." });
             }
 
-            if (!DateTime.TryParse(admittedOnStr, out var admittedOn))
+            // NRIC: must be exactly 12 digits
+            var nricDigits = new string(nricRaw.Where(char.IsDigit).ToArray());
+            if (nricDigits.Length != 12)
             {
-                return Ok(new { success = false, message = "Invalid Admitted On date." });
+                return Ok(new { success = false, message = "NRIC must be exactly 12 digits." });
             }
 
-            if (!DateTime.TryParse(birthDateStr, out var birthDate))
+            // Derive BirthDate (YYMMDD) and Gender (last digit)
+            if (!TryDeriveBirthDateFromNric(nricDigits, out var birthDate))
             {
-                return Ok(new { success = false, message = "Invalid Birth Date." });
+                return Ok(new { success = false, message = "Invalid NRIC (unable to derive Birth Date)." });
+            }
+
+            var gender = TryDeriveGenderFromNric(nricDigits);
+
+            if (string.IsNullOrWhiteSpace(gender))
+            {
+                return Ok(new { success = false, message = "Invalid NRIC (unable to derive Gender)." });
             }
 
             int age = CalculateAge(birthDate);
 
             // ----------- DISCHARGE FIELDS -----------
             bool isDischarged = model.IsDischarged;
-            string dischargeTypeId = model.DischargeTypeId?.Trim() ?? string.Empty;
-            string dischargeTypeName = model.DischargeTypeName?.Trim() ?? string.Empty;
-            string dischargeDateStr = model.DischargeDate?.Trim() ?? string.Empty;
-            string dischargeRemarks = model.DischargeRemarks?.Trim() ?? string.Empty;
+            string dischargeTypeId = (model.DischargeTypeId ?? "").Trim();
+            string dischargeDateStr = (model.DischargeDate ?? "").Trim();
+            string dischargeRemarks = (model.DischargeRemarks ?? "").Trim();
 
             DateTime? dischargeDate = null;
 
@@ -430,8 +550,8 @@ namespace CRC.Web.Controllers.Patient
                         "spPatient_Discharge_CheckMissingDocuments",
                         new[]
                         {
-                    new SqlParameter("@Patient_ID", model.PatientId!.Trim()),
-                    new SqlParameter("@DischargeType_ID", dischargeTypeId)
+                            new SqlParameter("@Patient_ID", model.PatientId!.Trim()),
+                            new SqlParameter("@DischargeType_ID", dischargeTypeId)
                         });
 
                     if (dtMissing.Rows.Count > 0)
@@ -453,27 +573,29 @@ namespace CRC.Web.Controllers.Patient
                 if (isNew)
                 {
                     var parameters = new List<SqlParameter>
-            {
-                new SqlParameter("@Patient_Name",                  name),
-                new SqlParameter("@Patient_Email",                 email),
-                new SqlParameter("@Patient_Phone",                 phone),
-                new SqlParameter("@Patient_NRIC",                  nric),
-                new SqlParameter("@Patient_AdmittedOn",            admittedOn),
-                new SqlParameter("@Patient_BirthDate",             birthDate),
-                new SqlParameter("@Patient_Age",                   age),
-                new SqlParameter("@Race_Name",                     raceName),
-                new SqlParameter("@Branch_Name",                   branchName),
-                new SqlParameter("@Source_Name",                   sourceName),
-                new SqlParameter("@Patient_Gender",                gender),
-                new SqlParameter("@Religion_Name",                 religionName),
-                new SqlParameter("@MaritalStatus_Name",            maritalStatusName),
-                new SqlParameter("@Patient_Address",               address),
-                new SqlParameter("@Patient_EmergencyName",         emergencyName),
-                new SqlParameter("@Patient_EmergencyRelationship", emergencyRel),
-                new SqlParameter("@Patient_EmergencyNumber",       emergencyNum),
-                new SqlParameter("@Occupation_Name",               occupationName)
-                // Discharge columns for new records will default to NULL in the table
-            };
+                    {
+                        new SqlParameter("@Patient_Name",                  name.ToUpperInvariant()),
+                        new SqlParameter("@Patient_Email",                 email),
+                        new SqlParameter("@Patient_Phone",                 phone),
+                        new SqlParameter("@Patient_NRIC",                  nricDigits),
+                        new SqlParameter("@Patient_BirthDate",             birthDate),
+                        new SqlParameter("@Patient_Age",                   age),
+                        new SqlParameter("@Race_ID",                       raceId),
+                        new SqlParameter("@Source_ID",                     sourceId),
+                        new SqlParameter("@Patient_Gender",                gender),
+                        new SqlParameter("@Religion_ID",                   religionId),
+                        new SqlParameter("@MaritalStatus_ID",              maritalStatusId),
+                        new SqlParameter("@Occupation_ID",                 occupationId),
+                        new SqlParameter("@Patient_ResState",              resState),
+                        new SqlParameter("@Patient_ResCity",               resCity),
+                        new SqlParameter("@Patient_ResPostcode",           resPostcode),
+                        new SqlParameter("@Patient_AddLine1",              addLine1),
+                        new SqlParameter("@Patient_AddLine2",              string.IsNullOrWhiteSpace(addLine2) ? (object)DBNull.Value : addLine2),
+                        new SqlParameter("@Patient_EmergencyName",         emergencyName.ToUpperInvariant()),
+                        new SqlParameter("@Patient_EmergencyRelationship", emergencyRel),
+                        new SqlParameter("@Patient_EmergencyNumber",       emergencyNum)
+                        // Discharge columns for new records will default to NULL
+                    };
 
                     var outParam = new SqlParameter("@NewPatient_ID", SqlDbType.VarChar, 100)
                     {
@@ -487,53 +609,79 @@ namespace CRC.Web.Controllers.Patient
 
                     return Ok(new { success = true, patientId = newId });
                 }
-                else
+
+                // ----------- UPDATE EXISTING PATIENT (including discharge info) -----------
+                string patientId = model.PatientId!.Trim();
+
+                var updateParams = new List<SqlParameter>
                 {
-                    // ----------- UPDATE EXISTING PATIENT (including discharge info) -----------
-                    string patientId = model.PatientId!.Trim();
+                    new SqlParameter("@Patient_ID",                    patientId),
+                    new SqlParameter("@Patient_Name",                  name.ToUpperInvariant()),
+                    new SqlParameter("@Patient_Email",                 email),
+                    new SqlParameter("@Patient_Phone",                 phone),
+                    new SqlParameter("@Patient_NRIC",                  nricDigits),
+                    new SqlParameter("@Patient_BirthDate",             birthDate),
+                    new SqlParameter("@Patient_Age",                   age),
+                    new SqlParameter("@Race_ID",                       raceId),
+                    new SqlParameter("@Source_ID",                     sourceId),
+                    new SqlParameter("@Patient_Gender",                gender),
+                    new SqlParameter("@Religion_ID",                   religionId),
+                    new SqlParameter("@MaritalStatus_ID",              maritalStatusId),
+                    new SqlParameter("@Occupation_ID",                 occupationId),
+                    new SqlParameter("@Patient_ResState",              resState),
+                    new SqlParameter("@Patient_ResCity",               resCity),
+                    new SqlParameter("@Patient_ResPostcode",           resPostcode),
+                    new SqlParameter("@Patient_AddLine1",              addLine1),
+                    new SqlParameter("@Patient_AddLine2",              string.IsNullOrWhiteSpace(addLine2) ? (object)DBNull.Value : addLine2),
+                    new SqlParameter("@Patient_EmergencyName",         emergencyName.ToUpperInvariant()),
+                    new SqlParameter("@Patient_EmergencyRelationship", emergencyRel),
+                    new SqlParameter("@Patient_EmergencyNumber",       emergencyNum),
 
-                    var parameters = new List<SqlParameter>
-            {
-                new SqlParameter("@Patient_ID",                    patientId),
-                new SqlParameter("@Patient_Name",                  name),
-                new SqlParameter("@Patient_Email",                 email),
-                new SqlParameter("@Patient_Phone",                 phone),
-                new SqlParameter("@Patient_NRIC",                  nric),
-                new SqlParameter("@Patient_AdmittedOn",            admittedOn),
-                new SqlParameter("@Patient_BirthDate",             birthDate),
-                new SqlParameter("@Patient_Age",                   age),
-                new SqlParameter("@Race_Name",                     raceName),
-                new SqlParameter("@Branch_Name",                   branchName),
-                new SqlParameter("@Source_Name",                   sourceName),
-                new SqlParameter("@Patient_Gender",                gender),
-                new SqlParameter("@Religion_Name",                 religionName),
-                new SqlParameter("@MaritalStatus_Name",            maritalStatusName),
-                new SqlParameter("@Patient_Address",               address),
-                new SqlParameter("@Patient_EmergencyName",         emergencyName),
-                new SqlParameter("@Patient_EmergencyRelationship", emergencyRel),
-                new SqlParameter("@Patient_EmergencyNumber",       emergencyNum),
-                new SqlParameter("@Occupation_Name",               occupationName),
+                    new SqlParameter("@DischargeType_ID", (object?)(isDischarged ? dischargeTypeId : null) ?? DBNull.Value),
+                    new SqlParameter("@Patient_DischargeDate", isDischarged && dischargeDate.HasValue ? (object)dischargeDate.Value : DBNull.Value),
+                    new SqlParameter("@Patient_DischargeRemarks", (object?)(isDischarged ? (string.IsNullOrWhiteSpace(dischargeRemarks) ? null : dischargeRemarks) : null) ?? DBNull.Value)
+                };
 
-                new SqlParameter("@DischargeType_Name",
-                    (object?) (isDischarged ? dischargeTypeName : null) ?? DBNull.Value),
-                new SqlParameter("@Patient_DischargeDate",
-                    isDischarged && dischargeDate.HasValue
-                        ? (object) dischargeDate.Value
-                        : DBNull.Value),
-                new SqlParameter("@Patient_DischargeRemarks",
-                    (object?) (isDischarged ? dischargeRemarks : null) ?? DBNull.Value)
-            };
+                await _db.ExecuteNonQueryAsync("spPatientBasic_Update", updateParams.ToArray());
 
-                    await _db.ExecuteNonQueryAsync("spPatientBasic_Update", parameters.ToArray());
-
-                    return Ok(new { success = true, patientId = patientId });
-                }
+                return Ok(new { success = true, patientId });
             }
-            catch (Exception)
+            catch
             {
                 return Ok(new { success = false, message = "An unexpected error occurred while saving patient details." });
             }
         }
+
+        private static bool TryDeriveBirthDateFromNric(string nric12Digits, out DateTime birthDate)
+        {
+            birthDate = default;
+
+            if (string.IsNullOrWhiteSpace(nric12Digits) || nric12Digits.Length != 12)
+                return false;
+
+            if (!int.TryParse(nric12Digits.Substring(0, 2), out var yy)) return false;
+            if (!int.TryParse(nric12Digits.Substring(2, 2), out var mm)) return false;
+            if (!int.TryParse(nric12Digits.Substring(4, 2), out var dd)) return false;
+
+            var currentYY = DateTime.Today.Year % 100;
+            var year = (yy <= currentYY) ? 2000 + yy : 1900 + yy;
+
+            var dateStr = $"{year:D4}-{mm:D2}-{dd:D2}";
+            return DateTime.TryParseExact(dateStr, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out birthDate);
+        }
+
+        private static string TryDeriveGenderFromNric(string nric12Digits)
+        {
+            if (string.IsNullOrWhiteSpace(nric12Digits) || nric12Digits.Length != 12)
+                return "";
+
+            var lastChar = nric12Digits[^1];
+            if (!char.IsDigit(lastChar)) return "";
+
+            var lastDigit = (int)char.GetNumericValue(lastChar);
+            return (lastDigit % 2 == 1) ? "MALE" : "FEMALE";
+        }
+
 
         //------------------------------------------------------
         //APPOINTMENTS
