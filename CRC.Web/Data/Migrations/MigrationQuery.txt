@@ -1,5 +1,5 @@
-BULK INSERT dbo.LU_RACE
-FROM 'C:\Personal Projects\CRC Web Portal Project\Migrations\Race.csv'
+BULK INSERT dbo.LU_DISCHARGETYPE
+FROM 'C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\Data\Migrations\LU_DISCHARGETYPE.csv'
 WITH (
     FORMAT = 'CSV',
     FIRSTROW = 1,
@@ -9,3 +9,5 @@ WITH (
     CODEPAGE = '65001',
     KEEPNULLS
 );
+
+INSERT INTO Users (User_ID, User_Name, Username, User_Email, Password_Hash, User_Type, Staff_ID, Created_At, Last_Login) VALUES (1, 'Muhammad Naufal bin Syed Nazir', 'NAUFAL', 'mn232098@gmail.com', 'AQAAAAIAAYagAAAAEKTz8boyxnShU6XvKX2nOeRO0ONKKSOsq+WtBgP9yszy11SltvZYr5JW/oxW2viiWw==', 1, NULL, '2025-01-01 00:00:00.000', '2026-01-25 03:27:14.103');
