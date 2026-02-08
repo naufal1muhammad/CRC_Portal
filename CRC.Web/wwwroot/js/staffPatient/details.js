@@ -96,6 +96,10 @@
             setValue("sp_patientEmergencyRelationship", p.emergencyRelationship);
             setValue("sp_patientEmergencyNumber", p.emergencyNumber);
 
+            setValue("sp_patientDischargeDate", p.dischargeDate);
+            setValue("sp_patientDischargeType", p.dischargeTypeName);
+            setValue("sp_patientDischargeRemarks", p.dischargeRemarks);
+
             setMsg("spBasicMsg", "", "text-muted");
         } catch (err) {
             console.error(err);
