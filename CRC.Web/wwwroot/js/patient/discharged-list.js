@@ -4,7 +4,7 @@
     let txtSearch;
     let dataTable = null;
 
-    function initDataTable() {
+    function initDataTable(emptyMessage) {
         // Destroy existing instance if any, then re-init
         if ($.fn.dataTable.isDataTable('#dischargedPatientsTable')) {
             $('#dischargedPatientsTable').DataTable().destroy();
@@ -14,7 +14,8 @@
             paging: true,
             lengthChange: true,
             pageLength: 10,
-            order: [] // no initial sort
+            order: [], // no initial sort
+            language: emptyMessage ? { emptyTable: emptyMessage } : undefined,
         });
     }
 
@@ -53,13 +54,9 @@
             const data = await response.json();
 
             if (!data || !Array.isArray(data) || data.length === 0) {
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="4" class="text-center text-muted">No discharged patients found.</td>
-                    </tr>
-                `;
+                tableBody.innerHTML = '';
                 // Still initialise DataTables so the UI (arrows, pager) appears
-                initDataTable();
+                initDataTable('No discharged patients found.');
                 return;
             }
 

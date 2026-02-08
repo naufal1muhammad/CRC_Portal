@@ -4,7 +4,7 @@
     let txtSearch;
     let dataTable = null;
 
-    function initDataTable() {
+    function initDataTable(emptyMessage) {
         // Destroy existing instance if any
         if ($.fn.dataTable.isDataTable('#activePatientsTable')) {
             $('#activePatientsTable').DataTable().destroy();
@@ -15,6 +15,7 @@
             lengthChange: true,
             pageLength: 10,
             order: [],
+            language: emptyMessage ? { emptyTable: emptyMessage } : undefined,
         });
     }
 
@@ -53,13 +54,9 @@
             const data = await response.json();
 
             if (!data || !Array.isArray(data) || data.length === 0) {
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="3" class="text-center text-muted">No active patients found.</td>
-                    </tr>
-                `;
+                tableBody.innerHTML = '';
                 // Initialise empty DataTable so search & paging still render
-                initDataTable();
+                initDataTable('No active patients found.');
                 return;
             }
 
