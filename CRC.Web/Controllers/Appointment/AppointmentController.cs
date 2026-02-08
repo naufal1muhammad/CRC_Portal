@@ -47,7 +47,7 @@ namespace CRC.Web.Controllers.Appointment
                     "spLU_PJ_AppType_List", empty);
 
                 var dtBranches = await _db.ExecuteDataTableAsync(
-                    "spPatientBasic_LookupBranches", empty);
+                    "spPatientAppointment_LookupBranches", empty);
 
                 var patients = dtPatients.Rows.Cast<DataRow>()
                     .Select(r => new

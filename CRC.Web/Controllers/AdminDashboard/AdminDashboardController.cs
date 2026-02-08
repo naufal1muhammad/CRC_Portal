@@ -29,7 +29,7 @@ namespace CRC.Web.Controllers.AdminDashboard
             try
             {
                 var dt = await _db.ExecuteDataTableAsync(
-                    "spPatientBasic_LookupBranches",
+                    "spPatientAppointment_LookupBranches",
                     Array.Empty<SqlParameter>());
 
                 var items = dt.Rows.Cast<DataRow>()
