@@ -170,8 +170,6 @@
     <Build Include="Stored Procedures\StaffDocument\spStaffDocument_StaffNames.sql" />
     <Build Include="Stored Procedures\PatientDocument\spDocuments_Search.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Branch_CountActive.sql" />
-    <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_CountActiveByBranch.sql" />
-    <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_CountDischargedByBranch.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByRace.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByAgeGroup.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByDischargeType.sql" />
