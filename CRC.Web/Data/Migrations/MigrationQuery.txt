@@ -1,0 +1,11 @@
+BULK INSERT dbo.LU_RACE
+FROM 'C:\Personal Projects\CRC Web Portal Project\Migrations\Race.csv'
+WITH (
+    FORMAT = 'CSV',
+    FIRSTROW = 1,
+    FIELDTERMINATOR = ',',
+    ROWTERMINATOR = '0x0a',
+    TABLOCK,
+    CODEPAGE = '65001',
+    KEEPNULLS
+);
