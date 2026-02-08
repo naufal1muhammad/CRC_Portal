@@ -84,24 +84,23 @@ namespace CRC.Web.Controllers.StaffPatient
                     email = row["Patient_Email"]?.ToString() ?? "",
                     phone = row["Patient_Phone"]?.ToString() ?? "",
                     nric = row["Patient_NRIC"]?.ToString() ?? "",
-
-                    admittedOn = ToDateInputString(row["Patient_AdmittedOn"]),
+                    age = row["Patient_Age"] == DBNull.Value ? "" : row["Patient_Age"]?.ToString() ?? "",
                     birthDate = ToDateInputString(row["Patient_BirthDate"]),
 
                     raceName = row["Race_Name"]?.ToString() ?? "",
-                    branchName = row["Branch_Name"]?.ToString() ?? "",
                     sourceName = row["Source_Name"]?.ToString() ?? "",
                     gender = row["Patient_Gender"]?.ToString() ?? "",
                     religionName = row["Religion_Name"]?.ToString() ?? "",
                     maritalStatusName = row["MaritalStatus_Name"]?.ToString() ?? "",
-                    address = row["Patient_Address"]?.ToString() ?? "",
+                    resState = row["Patient_ResState"]?.ToString() ?? "",
+                    resCity = row["Patient_ResCity"]?.ToString() ?? "",
+                    resPostcode = row["Patient_ResPostcode"]?.ToString() ?? "",
+                    addLine1 = row["Patient_AddLine1"]?.ToString() ?? "",
+                    addLine2 = row["Patient_AddLine2"]?.ToString() ?? "",
                     emergencyName = row["Patient_EmergencyName"]?.ToString() ?? "",
                     emergencyRelationship = row["Patient_EmergencyRelationship"]?.ToString() ?? "",
                     emergencyNumber = row["Patient_EmergencyNumber"]?.ToString() ?? "",
-                    occupationName = row["Occupation_Name"]?.ToString() ?? "",
-                    dischargeTypeName = row["DischargeType_Name"]?.ToString() ?? "",
-                    dischargeDate = ToDateInputString(row["Patient_DischargeDate"]),
-                    dischargeRemarks = row["Patient_DischargeRemarks"]?.ToString() ?? ""
+                    occupationName = row["Occupation_Name"]?.ToString() ?? ""
                 };
 
                 return Ok(new { success = true, patient });

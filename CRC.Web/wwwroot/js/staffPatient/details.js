@@ -71,33 +71,30 @@
             setText(el("spPatientHeaderMeta"), "ID: " + (p.patientId || patientId));
 
             // Fill inputs
-            setValue("sp_name", p.name);
-            setValue("sp_nric", p.nric);
-            setValue("sp_gender", p.gender);
+            setValue("sp_patientName", p.name);
+            setValue("sp_patientEmail", p.email);
+            setValue("sp_patientPhone", p.phone);
+            setValue("sp_patientNric", p.nric);
 
-            setValue("sp_email", p.email);
-            setValue("sp_phone", p.phone);
-            setValue("sp_branchName", p.branchName);
+            setValue("sp_patientBirthDate", p.birthDate);
+            setValue("sp_patientAge", p.age);
+            setValue("sp_patientGender", p.gender);
 
-            setValue("sp_admittedOn", p.admittedOn);
-            setValue("sp_birthDate", p.birthDate);
-            setValue("sp_raceName", p.raceName);
-            setValue("sp_religionName", p.religionName);
+            setValue("sp_patientRace", p.raceName);
+            setValue("sp_patientReligion", p.religionName);
+            setValue("sp_patientSource", p.sourceName);
+            setValue("sp_patientMaritalStatus", p.maritalStatusName);
+            setValue("sp_patientOccupation", p.occupationName);
 
-            setValue("sp_maritalStatusName", p.maritalStatusName);
-            setValue("sp_occupationName", p.occupationName);
-            setValue("sp_sourceName", p.sourceName);
+            setValue("sp_patientResState", p.resState);
+            setValue("sp_patientResCity", p.resCity);
+            setValue("sp_patientResPostcode", p.resPostcode);
+            setValue("sp_patientAddLine1", p.addLine1);
+            setValue("sp_patientAddLine2", p.addLine2);
 
-            setValue("sp_address", p.address);
-
-            setValue("sp_emergencyName", p.emergencyName);
-            setValue("sp_emergencyRelationship", p.emergencyRelationship);
-            setValue("sp_emergencyNumber", p.emergencyNumber);
-
-            // optional fields (your endpoint may or may not return them)
-            setValue("sp_dischargeTypeName", p.dischargeTypeName || "");
-            setValue("sp_dischargeDate", p.dischargeDate || "");
-            setValue("sp_dischargeRemarks", p.dischargeRemarks || "");
+            setValue("sp_patientEmergencyName", p.emergencyName);
+            setValue("sp_patientEmergencyRelationship", p.emergencyRelationship);
+            setValue("sp_patientEmergencyNumber", p.emergencyNumber);
 
             setMsg("spBasicMsg", "", "text-muted");
         } catch (err) {
