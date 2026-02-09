@@ -40,7 +40,6 @@ wwwroot\js\helpers\FormValidatorFalcon.js
 wwwroot\js\patient\active-list.js
 wwwroot\js\patient\discharged-list.js
 wwwroot\js\patient\edit-appointment.js
-wwwroot\js\patient\edit-basic.js
 wwwroot\js\patient\edit-discharge.js
 wwwroot\js\patient\edit-documents.js
 wwwroot\js\patient\edit-journey.js
@@ -8988,3 +8987,4 @@ wwwroot\lib\xlsx\package\types\tsconfig.json
 wwwroot\lib\xlsx\package\xlsx.js
 wwwroot\lib\xlsx\package\xlsx.mjs
 wwwroot\lib\xlsx\package\xlsxworker.js
+wwwroot\js\patient\edit-basic.js

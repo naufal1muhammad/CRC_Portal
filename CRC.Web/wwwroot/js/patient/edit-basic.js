@@ -57,44 +57,100 @@
             opt.textContent = item.name ?? '';
             select.appendChild(opt);
         });
+
+        refreshSelect2(select);
     }
 
-    // For location selects: option value = id, but we store "name" into PatientBasic
-    function setSelectOptionsWithDataName(select, items, placeholder) {
+    function setSelectDisabled(select, isDisabled) {
         if (!select) return;
-
-        resetSelect(select, placeholder);
-
-        items.forEach(item => {
-            const opt = document.createElement('option');
-            opt.value = (item.id ?? '').toString();
-            opt.textContent = item.name ?? '';
-            opt.setAttribute('data-name', item.name ?? '');
-            select.appendChild(opt);
-        });
+        select.disabled = !!isDisabled;
+        if (window.$ && $.fn.select2 && $(select).hasClass('select2-hidden-accessible')) {
+            $(select).prop('disabled', !!isDisabled).trigger('change.select2');
+        }
     }
 
-    function getSelectedDataName(select) {
-        if (!select) return '';
-        const idx = select.selectedIndex;
-        if (idx < 0) return '';
-        const opt = select.options[idx];
-        return (opt && opt.getAttribute('data-name')) ? opt.getAttribute('data-name') : (opt ? opt.textContent : '');
+    // When Select2 is applied, setting `select.value` alone does not update the UI.
+    // Select2 listens on `change.select2`, so we trigger that to refresh the displayed selection.
+    function refreshSelect2(select) {
+        if (!select) return;
+        if (window.$ && $.fn.select2 && $(select).hasClass('select2-hidden-accessible')) {
+            $(select).trigger('change.select2');
+        }
     }
 
-    function selectOptionByDataName(select, targetName) {
-        if (!select || !targetName) return '';
-        const t = targetName.trim().toLowerCase();
+    function selectOptionByText(select, text) {
+        if (!select || !text) return;
+        const target = text.trim().toLowerCase();
 
         for (let i = 0; i < select.options.length; i++) {
             const opt = select.options[i];
-            const dn = (opt.getAttribute('data-name') || opt.textContent || '').trim().toLowerCase();
-            if (dn === t) {
-                select.selectedIndex = i;
-                return opt.value || '';
+            if ((opt.textContent || '').trim().toLowerCase() === target) {
+                select.value = opt.value;
+                refreshSelect2(select);
+                return;
             }
         }
-        return '';
+    }
+
+    function getSelectedText(select) {
+        if (!select) return '';
+        if (!select.value) return '';
+        if (select.selectedIndex < 0) return '';
+        return select.options[select.selectedIndex].text || '';
+    }
+
+    function updateAddressLineInputsEnabled() {
+        const postcodeSelect = document.getElementById('PatientResPostcode');
+        const addLine1 = document.getElementById('PatientAddLine1');
+        const addLine2 = document.getElementById('PatientAddLine2');
+
+        const enabled = !!(postcodeSelect && postcodeSelect.value);
+        if (addLine1) addLine1.disabled = !enabled;
+        if (addLine2) addLine2.disabled = !enabled;
+    }
+
+    function applySelect2() {
+        if (!(window.$ && $.fn.select2)) return;
+
+        const select2Config = {
+            theme: 'bootstrap-5',
+            width: '100%',
+            allowClear: true
+        };
+
+        const stateSelect = $('#PatientResState');
+        const citySelect = $('#PatientResCity');
+        const postcodeSelect = $('#PatientResPostcode');
+
+        if (stateSelect.length) {
+            if (stateSelect.hasClass('select2-hidden-accessible')) {
+                stateSelect.select2('destroy');
+            }
+            stateSelect.select2({
+                ...select2Config,
+                placeholder: '-- Select State --'
+            });
+        }
+
+        if (citySelect.length) {
+            if (citySelect.hasClass('select2-hidden-accessible')) {
+                citySelect.select2('destroy');
+            }
+            citySelect.select2({
+                ...select2Config,
+                placeholder: '-- Select City --'
+            });
+        }
+
+        if (postcodeSelect.length) {
+            if (postcodeSelect.hasClass('select2-hidden-accessible')) {
+                postcodeSelect.select2('destroy');
+            }
+            postcodeSelect.select2({
+                ...select2Config,
+                placeholder: '-- Select Postcode --'
+            });
+        }
     }
 
     function calculateAgeFromDate(dob) {
@@ -197,6 +253,8 @@
 
     async function loadStates() {
         const stateSelect = document.getElementById('PatientResState');
+        const citySelect = document.getElementById('PatientResCity');
+        const postcodeSelect = document.getElementById('PatientResPostcode');
 
         try {
             const response = await fetch('/Patient/GetStates', {
@@ -206,26 +264,52 @@
 
             if (!response.ok) {
                 resetSelect(stateSelect, '-- Select State --');
+                setSelectDisabled(citySelect, true);
+                setSelectOptions(citySelect, [], '-- Select City --');
+                setSelectDisabled(postcodeSelect, true);
+                setSelectOptions(postcodeSelect, [], '-- Select Postcode --');
+                updateAddressLineInputsEnabled();
                 return;
             }
 
             const result = await response.json();
             if (!result.success) {
                 resetSelect(stateSelect, '-- Select State --');
+                setSelectDisabled(citySelect, true);
+                setSelectOptions(citySelect, [], '-- Select City --');
+                setSelectDisabled(postcodeSelect, true);
+                setSelectOptions(postcodeSelect, [], '-- Select Postcode --');
+                updateAddressLineInputsEnabled();
                 return;
             }
 
-            setSelectOptionsWithDataName(stateSelect, result.data || [], '-- Select State --');
+            setSelectOptions(stateSelect, result.data || [], '-- Select State --');
+            setSelectDisabled(citySelect, true);
+            setSelectOptions(citySelect, [], '-- Select City --');
+            setSelectDisabled(postcodeSelect, true);
+            setSelectOptions(postcodeSelect, [], '-- Select Postcode --');
+            updateAddressLineInputsEnabled();
             statesLoaded = true;
         } catch (err) {
             console.error(err);
             resetSelect(stateSelect, '-- Select State --');
+            setSelectDisabled(citySelect, true);
+            setSelectOptions(citySelect, [], '-- Select City --');
+            setSelectDisabled(postcodeSelect, true);
+            setSelectOptions(postcodeSelect, [], '-- Select Postcode --');
+            updateAddressLineInputsEnabled();
         }
     }
 
     async function loadCitiesByState(stateId) {
         const citySelect = document.getElementById('PatientResCity');
-        resetSelect(citySelect, '-- Select City --');
+        const postcodeSelect = document.getElementById('PatientResPostcode');
+
+        setSelectDisabled(citySelect, true);
+        setSelectOptions(citySelect, [], '-- Select City --');
+        setSelectDisabled(postcodeSelect, true);
+        setSelectOptions(postcodeSelect, [], '-- Select Postcode --');
+        updateAddressLineInputsEnabled();
 
         if (!stateId) return;
 
@@ -240,7 +324,8 @@
             const result = await response.json();
             if (!result.success) return;
 
-            setSelectOptionsWithDataName(citySelect, result.data || [], '-- Select City --');
+            setSelectOptions(citySelect, result.data || [], '-- Select City --');
+            setSelectDisabled(citySelect, false);
         } catch (err) {
             console.error(err);
         }
@@ -248,7 +333,9 @@
 
     async function loadPostcodesByCity(cityId) {
         const postcodeSelect = document.getElementById('PatientResPostcode');
-        resetSelect(postcodeSelect, '-- Select Postcode --');
+        setSelectDisabled(postcodeSelect, true);
+        setSelectOptions(postcodeSelect, [], '-- Select Postcode --');
+        updateAddressLineInputsEnabled();
 
         if (!cityId) return;
 
@@ -263,7 +350,8 @@
             const result = await response.json();
             if (!result.success) return;
 
-            setSelectOptionsWithDataName(postcodeSelect, result.data || [], '-- Select Postcode --');
+            setSelectOptions(postcodeSelect, result.data || [], '-- Select Postcode --');
+            setSelectDisabled(postcodeSelect, false);
         } catch (err) {
             console.error(err);
         }
@@ -293,48 +381,42 @@
         const citySelect = document.getElementById('PatientResCity');
         const postcodeSelect = document.getElementById('PatientResPostcode');
 
-        const cityContainer = document.getElementById('resCityContainer');
-        const postcodeContainer = document.getElementById('resPostcodeContainer');
-        const addLine1Container = document.getElementById('addLine1Container');
-        const addLine2Container = document.getElementById('addLine2Container');
+        // Reset downstream + disable until selected
+        setSelectDisabled(citySelect, true);
+        setSelectOptions(citySelect, [], '-- Select City --');
+        setSelectDisabled(postcodeSelect, true);
+        setSelectOptions(postcodeSelect, [], '-- Select Postcode --');
+        updateAddressLineInputsEnabled();
 
-        // Default hide
-        show(cityContainer, false);
-        show(postcodeContainer, false);
-        show(addLine1Container, false);
-        show(addLine2Container, false);
-
-        resetSelect(citySelect, '-- Select City --');
-        resetSelect(postcodeSelect, '-- Select Postcode --');
-
-        if (!patient || !patient.resState) return;
+        if (!patient) return;
 
         // Ensure states loaded
         if (!statesLoaded) {
             await loadStates();
         }
 
-        const stateId = selectOptionByDataName(stateSelect, patient.resState);
-        if (!stateId) return;
-
-        show(cityContainer, true);
-        await loadCitiesByState(stateId);
-
-        if (patient.resCity) {
-            const cityId = selectOptionByDataName(citySelect, patient.resCity);
-            if (cityId) {
-                show(postcodeContainer, true);
-                await loadPostcodesByCity(cityId);
-
-                if (patient.resPostcode) {
-                    const postcodeId = selectOptionByDataName(postcodeSelect, patient.resPostcode);
-                    if (postcodeId) {
-                        show(addLine1Container, true);
-                        show(addLine2Container, true);
-                    }
-                }
+        // State -> City -> Postcode
+        if (patient.resState) {
+            selectOptionByText(stateSelect, patient.resState);
+            const stateId = stateSelect?.value || '';
+            if (stateId) {
+                await loadCitiesByState(stateId);
             }
         }
+
+        if (patient.resCity) {
+            selectOptionByText(citySelect, patient.resCity);
+            const cityId = citySelect?.value || '';
+            if (cityId) {
+                await loadPostcodesByCity(cityId);
+            }
+        }
+
+        if (patient.resPostcode) {
+            selectOptionByText(postcodeSelect, patient.resPostcode);
+        }
+
+        updateAddressLineInputsEnabled();
     }
 
     async function loadPatientBasic(patientId) {
@@ -445,9 +527,9 @@
         const citySelect = document.getElementById('PatientResCity');
         const postcodeSelect = document.getElementById('PatientResPostcode');
 
-        const resState = (getSelectedDataName(stateSelect) || '').trim();
-        const resCity = (getSelectedDataName(citySelect) || '').trim();
-        const resPostcode = (getSelectedDataName(postcodeSelect) || '').trim();
+        const resState = (getSelectedText(stateSelect) || '').trim();
+        const resCity = (getSelectedText(citySelect) || '').trim();
+        const resPostcode = (getSelectedText(postcodeSelect) || '').trim();
 
         const addLine1 = (document.getElementById('PatientAddLine1').value || '').trim();
         const addLine2 = (document.getElementById('PatientAddLine2').value || '').trim();
@@ -608,64 +690,16 @@
 
     async function onStateChanged() {
         const stateSelect = document.getElementById('PatientResState');
-        const citySelect = document.getElementById('PatientResCity');
-        const postcodeSelect = document.getElementById('PatientResPostcode');
-
-        const cityContainer = document.getElementById('resCityContainer');
-        const postcodeContainer = document.getElementById('resPostcodeContainer');
-        const addLine1Container = document.getElementById('addLine1Container');
-        const addLine2Container = document.getElementById('addLine2Container');
-
-        // Reset downstream
-        show(cityContainer, false);
-        show(postcodeContainer, false);
-        show(addLine1Container, false);
-        show(addLine2Container, false);
-
-        resetSelect(citySelect, '-- Select City --');
-        resetSelect(postcodeSelect, '-- Select Postcode --');
-
-        const stateId = stateSelect ? stateSelect.value : '';
-        if (!stateId) return;
-
-        show(cityContainer, true);
-        await loadCitiesByState(stateId);
+        await loadCitiesByState(stateSelect ? stateSelect.value : '');
     }
 
     async function onCityChanged() {
         const citySelect = document.getElementById('PatientResCity');
-        const postcodeSelect = document.getElementById('PatientResPostcode');
-
-        const postcodeContainer = document.getElementById('resPostcodeContainer');
-        const addLine1Container = document.getElementById('addLine1Container');
-        const addLine2Container = document.getElementById('addLine2Container');
-
-        show(postcodeContainer, false);
-        show(addLine1Container, false);
-        show(addLine2Container, false);
-
-        resetSelect(postcodeSelect, '-- Select Postcode --');
-
-        const cityId = citySelect ? citySelect.value : '';
-        if (!cityId) return;
-
-        show(postcodeContainer, true);
-        await loadPostcodesByCity(cityId);
+        await loadPostcodesByCity(citySelect ? citySelect.value : '');
     }
 
     function onPostcodeChanged() {
-        const postcodeSelect = document.getElementById('PatientResPostcode');
-        const addLine1Container = document.getElementById('addLine1Container');
-        const addLine2Container = document.getElementById('addLine2Container');
-
-        show(addLine1Container, false);
-        show(addLine2Container, false);
-
-        const postcodeId = postcodeSelect ? postcodeSelect.value : '';
-        if (!postcodeId) return;
-
-        show(addLine1Container, true);
-        show(addLine2Container, true);
+        updateAddressLineInputsEnabled();
     }
 
     document.addEventListener('DOMContentLoaded', async function () {
@@ -681,6 +715,7 @@
 
         await loadLookups();
         await loadStates();
+        applySelect2();
         await loadPatientBasic(patientId);
         updateDependentTabs();
 
@@ -690,15 +725,30 @@
             nricInput.addEventListener('change', applyDerivedFieldsFromNric);
         }
 
-        if (stateSelect) {
-            stateSelect.addEventListener('change', onStateChanged);
+        // Address: State -> City -> Postcode (Select2 where available)
+        if (window.$ && $.fn.select2) {
+            $('#PatientResState')
+                .off('change.patientbasic')
+                .on('change.patientbasic', async function () {
+                    await loadCitiesByState(this.value);
+                });
+
+            $('#PatientResCity')
+                .off('change.patientbasic')
+                .on('change.patientbasic', async function () {
+                    await loadPostcodesByCity(this.value);
+                });
+
+            $('#PatientResPostcode')
+                .off('change.patientbasic')
+                .on('change.patientbasic', onPostcodeChanged);
+        } else {
+            if (stateSelect) stateSelect.addEventListener('change', onStateChanged);
+            if (citySelect) citySelect.addEventListener('change', onCityChanged);
+            if (postcodeSelect) postcodeSelect.addEventListener('change', onPostcodeChanged);
         }
-        if (citySelect) {
-            citySelect.addEventListener('change', onCityChanged);
-        }
-        if (postcodeSelect) {
-            postcodeSelect.addEventListener('change', onPostcodeChanged);
-        }
+
+        updateAddressLineInputsEnabled();
 
         if (btnSave) {
             btnSave.addEventListener('click', saveBasic);
