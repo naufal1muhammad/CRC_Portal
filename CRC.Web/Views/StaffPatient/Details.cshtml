@@ -35,16 +35,14 @@
              TAB 1: BASIC DETAILS
         ========================== -->
         <div class="tab-pane fade show active" id="tab-basic" role="tabpanel" aria-labelledby="tab-basic-tab">
-            <div class="card shadow-sm">
+            <div class="text-muted small mb-3" id="spBasicMsg"></div>
+
+            <!-- Basic Details (readonly) -->
+            <div class="card bg-light border-0 shadow-sm mb-3">
                 <div class="card-body">
-                    <div class="text-muted small mb-3" id="spBasicMsg"></div>
+                    <h5 class="card-title mb-3">Basic</h5>
 
-                    <!-- Basic Details (readonly) -->
                     <div class="row g-3">
-                        <div class="col-12">
-                            <h6 class="text-muted text-uppercase mb-2">Basic</h6>
-                        </div>
-
                         <div class="col-lg-6">
                             <div class="mb-2">
                                 <label class="form-label">Name</label>
@@ -113,15 +111,15 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    <hr class="my-3" />
+            <!-- Residential -->
+            <div class="card bg-light border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Residential</h5>
 
-                    <!-- Residential -->
                     <div class="row g-3">
-                        <div class="col-12">
-                            <h6 class="text-muted text-uppercase mb-2">Residential</h6>
-                        </div>
-
                         <div class="col-md-4">
                             <label class="form-label">State</label>
                             <input id="sp_patientResState" class="form-control form-control-sm" type="text" readonly />
@@ -147,15 +145,15 @@
                             <input id="sp_patientAddLine2" class="form-control form-control-sm" type="text" readonly />
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    <hr class="my-3" />
+            <!-- Emergency Contact -->
+            <div class="card bg-light border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Emergency Contact</h5>
 
-                    <!-- Emergency Contact -->
                     <div class="row g-3">
-                        <div class="col-12">
-                            <h6 class="text-muted text-uppercase mb-2">Emergency Contact</h6>
-                        </div>
-
                         <div class="col-md-4">
                             <label class="form-label">Name</label>
                             <input id="sp_patientEmergencyName" class="form-control form-control-sm" type="text" readonly />
@@ -171,15 +169,15 @@
                             <input id="sp_patientEmergencyNumber" class="form-control form-control-sm" type="text" readonly />
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    <hr class="my-3" />
+            <!-- Discharge -->
+            <div class="card bg-light border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Discharge</h5>
 
-                    <!-- Discharge -->
                     <div class="row g-3">
-                        <div class="col-12">
-                            <h6 class="text-muted text-uppercase mb-2">Discharge</h6>
-                        </div>
-
                         <div class="col-md-4">
                             <label class="form-label">Discharge Date</label>
                             <input id="sp_patientDischargeDate" class="form-control form-control-sm" type="date" readonly />
@@ -195,13 +193,13 @@
                             <textarea id="sp_patientDischargeRemarks" class="form-control form-control-sm" rows="2" readonly></textarea>
                         </div>
                     </div>
-
-                    <div class="alert alert-secondary mt-3 mb-0">
-                        <small class="text-muted">
-                            Note: Basic Details are read-only for Staff.
-                        </small>
-                    </div>
                 </div>
+            </div>
+
+            <div class="alert alert-secondary mt-3 mb-0">
+                <small class="text-muted">
+                    Note: Basic Details are read-only for Staff.
+                </small>
             </div>
         </div>
 
