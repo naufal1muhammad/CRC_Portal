@@ -15,6 +15,22 @@
         }
     }
 
+    function setDependentTabsDisabled(disabled) {
+        const tabIds = ['tab-appointment', 'tab-journey', 'tab-documents', 'tab-discharge-tab'];
+        tabIds.forEach(id => {
+            const tab = document.getElementById(id);
+            if (!tab) return;
+            tab.disabled = disabled;
+            tab.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+            tab.classList.toggle('disabled', disabled);
+        });
+    }
+
+    function updateDependentTabs() {
+        const hasPatient = !!getRootPatientId();
+        setDependentTabsDisabled(!hasPatient);
+    }
+
     function show(el, visible) {
         if (!el) return;
         el.style.display = visible ? '' : 'none';
@@ -565,6 +581,8 @@
             const btnAddJourney = document.getElementById('btnAddJourney');
             if (btnAddJourney) btnAddJourney.disabled = false;
 
+            updateDependentTabs();
+
             // Refresh documents tab if available
             if (window.PatientDocumentsTab && typeof window.PatientDocumentsTab.reload === 'function') {
                 window.PatientDocumentsTab.reload();
@@ -664,6 +682,7 @@
         await loadLookups();
         await loadStates();
         await loadPatientBasic(patientId);
+        updateDependentTabs();
 
         // Wire events
         if (nricInput) {
