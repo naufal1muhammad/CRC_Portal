@@ -30,11 +30,7 @@
         if (!container) return;
 
         if (!patientSaved) {
-            container.innerHTML = `
-                <p class="text-muted mb-0">
-                    Please save basic details first.
-                </p>
-            `;
+            container.innerHTML = '';
             return;
         }
 
@@ -205,7 +201,6 @@
     async function uploadDocumentsForCard(card) {
         const patientId = getPatientId();
         if (!patientId) {
-            showMessage('Please save basic details first.', true);
             return;
         }
 
