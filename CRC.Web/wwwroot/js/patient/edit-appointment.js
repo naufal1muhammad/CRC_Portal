@@ -4,8 +4,6 @@
 
     let currentAppointmentId = 0;
     let modalInstance = null;
-    const saveBasicMessage = 'Please save basic details first.';
-
     function getPatientId() {
         const root = document.querySelector('[data-patient-id]');
         return root ? (root.getAttribute('data-patient-id') || '') : '';
@@ -26,11 +24,6 @@
         if (el) el.textContent = text || '';
     }
 
-    function setTabMessage(text) {
-        const el = qs('appointmentMessage');
-        if (el) el.textContent = text || '';
-    }
-
     function updateTabState() {
         const patientId = getPatientId();
         const btnAdd = qs('btnAddAppointment');
@@ -38,12 +31,6 @@
 
         if (btnAdd) {
             btnAdd.disabled = !hasPatient;
-        }
-
-        if (!hasPatient) {
-            setTabMessage(saveBasicMessage);
-        } else {
-            setTabMessage('');
         }
     }
 

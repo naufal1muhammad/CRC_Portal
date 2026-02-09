@@ -315,7 +315,7 @@
     async function loadTimeline() {
         const patientId = getPatientId();
         if (!patientId) {
-            setMsg("Please save basic details first.", "text-muted");
+            setMsg("", "text-muted");
             renderTimeline([]);
             return;
         }
