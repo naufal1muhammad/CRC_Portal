@@ -39,7 +39,8 @@
         try {
             const response = await fetch('/Patient/GetActivePatients', {
                 method: 'GET',
-                headers: { 'Accept': 'application/json' }
+                headers: { 'Accept': 'application/json' },
+                cache: 'no-store'
             });
 
             if (!response.ok) {
@@ -104,6 +105,17 @@
         }
     }
 
+    function removePatientRow(patientId) {
+        if (!tableBody || !dataTable) return;
+
+        const escapedId = window.CSS && CSS.escape ? CSS.escape(patientId) : patientId;
+        const row = tableBody.querySelector(`tr[data-id="${escapedId}"]`);
+
+        if (row) {
+            dataTable.row(row).remove().draw(false);
+        }
+    }
+
     async function deletePatient(patientId) {
         if (!patientId) return;
 
@@ -128,6 +140,7 @@
                 return;
             }
 
+            removePatientRow(patientId);
             await loadActivePatients();
         } catch (err) {
             console.error('Error deleting patient', err);
