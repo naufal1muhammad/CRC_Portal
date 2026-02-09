@@ -3,8 +3,13 @@
     let staffLoaded = false;
     let staffCache = [];
 
+    let usersCache = [];
+
     let usersTableBody = null;
     let usersDataTable = null;
+
+    let addUserModalEl = null;
+    let addUserModal = null;
 
     const ENDPOINTS = {
         staffList: '/Staff/GetStaffList',
@@ -13,6 +18,23 @@
     };
 
     function el(id) { return document.getElementById(id); }
+
+    function showToast(text, ok) {
+        if (!text) return;
+        const T = window.Toastify;
+        if (typeof T !== 'function') return;
+
+        T({
+            text,
+            duration: 3500,
+            gravity: 'top',
+            position: 'right',
+            close: true,
+            style: {
+                background: ok ? '#198754' : '#dc3545'
+            }
+        }).showToast();
+    }
 
     function setMessage(text, ok) {
         const msg = el('registerMessage');
@@ -97,16 +119,56 @@
 
         usersDataTable = jq('#usersTable').DataTable({
             paging: true,
-            lengthChange: true,
             pageLength: 10,
-            order: [[0, 'desc']]
+            order: [[0, 'desc']],
+            searching: true,
+            // Hide the built-in search box; we provide our own input in the card header.
+            dom: "rt<'row mt-3 align-items-center'<'col-md-6'i><'col-md-6 text-end'p>>"
+        });
+
+        // Re-apply the current search text after (re)initializing the DataTable.
+        const q = el('usersSearch')?.value || '';
+        if (q) usersDataTable.search(q).draw();
+    }
+
+    function applyUsersSearch(query) {
+        const q = (query || '').toString().toLowerCase().trim();
+
+        // DataTables path
+        if (usersDataTable && typeof usersDataTable.search === 'function') {
+            usersDataTable.search(q).draw();
+            return;
+        }
+
+        // Fallback (no DataTables)
+        const rows = usersTableBody ? usersTableBody.querySelectorAll('tr') : [];
+        rows.forEach(tr => {
+            const text = (tr.textContent || '').toLowerCase();
+            tr.style.display = !q || text.includes(q) ? '' : 'none';
+        });
+    }
+
+    function bindUsersSearchInput() {
+        const input = el('usersSearch');
+        if (!input) return;
+        input.addEventListener('input', function () {
+            applyUsersSearch(input.value);
         });
     }
 
     // -----------------------------
     // STAFF dropdown
     // -----------------------------
-    function setStaffOptions(selectEl, staffList) {
+    function getUsedStaffIdSet() {
+        const set = new Set();
+        (usersCache || []).forEach(u => {
+            const sid = (u && u.staffId ? (u.staffId + '').trim() : '');
+            if (sid) set.add(sid);
+        });
+        return set;
+    }
+
+    function setStaffOptions(selectEl, staffList, usedStaffIds) {
         if (!selectEl) return;
 
         selectEl.innerHTML = '';
@@ -115,6 +177,8 @@
         ph.value = '';
         ph.textContent = '-- Select Staff --';
         selectEl.appendChild(ph);
+
+        const used = usedStaffIds instanceof Set ? usedStaffIds : new Set();
 
         (staffList || []).forEach(s => {
             const staffId = (s.staffId || '').toString().trim();
@@ -125,7 +189,15 @@
             opt.value = staffId;
 
             const branch = (s.branchName || '').toString().trim();
-            opt.textContent = branch ? `${name} (${branch})` : name;
+            const baseText = branch ? `${name} (${branch})` : name;
+
+            // Prevent linking one Staff ID to multiple user accounts (UX improvement).
+            if (used.has(staffId)) {
+                opt.disabled = true;
+                opt.textContent = baseText + ' (Already linked)';
+            } else {
+                opt.textContent = baseText;
+            }
 
             opt.dataset.staffName = name;
             selectEl.appendChild(opt);
@@ -152,11 +224,11 @@
                 branchName: x.branchName
             }));
 
-            setStaffOptions(el('StaffId'), staffCache);
+            setStaffOptions(el('StaffId'), staffCache, getUsedStaffIdSet());
             staffLoaded = true;
         } catch (err) {
             console.error('Error loading staff list', err);
-            setStaffOptions(el('StaffId'), []);
+            setStaffOptions(el('StaffId'), [], new Set());
             staffLoaded = false;
             setMessage('Error loading staff list.', false);
         }
@@ -171,8 +243,19 @@
 
         if (enabled) {
             group.classList.remove('d-none');
-            loadStaffList();
+            // (Re)load staff list if needed, and always re-apply "already linked" disabling
+            // based on the latest users list.
+            if (staffLoaded) {
+                setStaffOptions(ddl, staffCache, getUsedStaffIdSet());
+            } else {
+                loadStaffList();
+            }
+
             nameInput.readOnly = true;
+
+            // Reset selections when switching to STAFF to avoid linking wrong staff.
+            ddl.value = '';
+            nameInput.value = '';
 
             const selectedOpt = ddl.options[ddl.selectedIndex];
             const staffName = selectedOpt?.dataset?.staffName || '';
@@ -210,6 +293,7 @@
             jq('#usersTable').DataTable().destroy();
         }
         usersDataTable = null;
+        usersCache = [];
 
         // show loading row
         usersTableBody.innerHTML = `
@@ -258,8 +342,10 @@
             }
 
             const users = result.users || [];
+            usersCache = Array.isArray(users) ? users : [];
 
             if (!Array.isArray(users) || users.length === 0) {
+                usersCache = [];
                 usersTableBody.innerHTML = `
                 <tr>
                     <td colspan="8" class="text-center text-muted">No users found.</td>
@@ -305,6 +391,40 @@
     // -----------------------------
     // Register
     // -----------------------------
+    function resetRegisterForm() {
+        clearMessage();
+
+        const nameEl = el('Name');
+        const userEl = el('Username');
+        const emailEl = el('Email');
+        const passEl = el('Password');
+        const typeEl = el('UserType');
+        const staffEl = el('StaffId');
+
+        if (nameEl) nameEl.value = '';
+        if (userEl) userEl.value = '';
+        if (emailEl) emailEl.value = '';
+        if (passEl) passEl.value = '';
+
+        if (typeEl) typeEl.value = '2'; // default ADMIN
+
+        if (staffEl) staffEl.value = '';
+
+        // Ensure UI matches default type
+        onUserTypeChanged();
+    }
+
+    function openAddUserModal() {
+        if (!addUserModalEl || !addUserModal) return;
+        resetRegisterForm();
+        addUserModal.show();
+
+        // focus first input
+        setTimeout(() => {
+            el('Username')?.focus();
+        }, 150);
+    }
+
     function buildPayload() {
         const name = ((el('Name')?.value || '') + '').trim();
         const username = ((el('Username')?.value || '') + '').trim();
@@ -348,16 +468,25 @@
             const result = await readJsonSafe(res);
 
             if (!res.ok) {
-                setMessage(result?.message || 'Server error registering user.', false);
+                const m = result?.message || 'Server error registering user.';
+                setMessage(m, false);
+                showToast(m, false);
                 return;
             }
 
             if (!result.success) {
-                setMessage(result.message || 'Failed to register user.', false);
+                const m = result.message || 'Failed to register user.';
+                setMessage(m, false);
+                showToast(m, false);
                 return;
             }
 
-            setMessage(result.message || 'User registered successfully.', true);
+            const okMsg = result.message || 'User registered successfully.';
+            setMessage(okMsg, true);
+            showToast(okMsg, true);
+
+            // Close modal on success and refresh table
+            if (addUserModal) addUserModal.hide();
 
             const pw = el('Password');
             if (pw) pw.value = '';
@@ -365,7 +494,9 @@
             await loadUsers();
         } catch (err) {
             console.error('Register error', err);
-            setMessage(err.message || 'An unexpected error occurred.', false);
+            const m = err.message || 'An unexpected error occurred.';
+            setMessage(m, false);
+            showToast(m, false);
         }
     }
 
@@ -375,13 +506,28 @@
     document.addEventListener('DOMContentLoaded', function () {
         usersTableBody = document.querySelector('#usersTable tbody');
 
+        // Bootstrap modal instance
+        addUserModalEl = el('addUserModal');
+        if (addUserModalEl && window.bootstrap && typeof window.bootstrap.Modal === 'function') {
+            addUserModal = new window.bootstrap.Modal(addUserModalEl);
+
+            // Cleanup when closed
+            addUserModalEl.addEventListener('hidden.bs.modal', () => {
+                clearMessage();
+            });
+        }
+
         const userTypeEl = el('UserType');
         const staffEl = el('StaffId');
         const btnReg = el('btnRegister');
+        const btnAdd = el('btnAddUser');
+        const searchEl = el('usersSearch');
 
         if (userTypeEl) userTypeEl.addEventListener('change', onUserTypeChanged);
         if (staffEl) staffEl.addEventListener('change', onStaffChanged);
         if (btnReg) btnReg.addEventListener('click', registerUser);
+        if (btnAdd) btnAdd.addEventListener('click', openAddUserModal);
+        if (searchEl) searchEl.addEventListener('input', (e) => applyUsersSearch(e.target.value));
 
         onUserTypeChanged();
         loadUsers();
