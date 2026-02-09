@@ -40,6 +40,7 @@ wwwroot\js\helpers\FormValidatorFalcon.js
 wwwroot\js\patient\active-list.js
 wwwroot\js\patient\discharged-list.js
 wwwroot\js\patient\edit-appointment.js
+wwwroot\js\patient\edit-basic.js
 wwwroot\js\patient\edit-discharge.js
 wwwroot\js\patient\edit-documents.js
 wwwroot\js\patient\edit-journey.js
@@ -8987,4 +8988,7 @@ wwwroot\lib\xlsx\package\types\tsconfig.json
 wwwroot\lib\xlsx\package\xlsx.js
 wwwroot\lib\xlsx\package\xlsx.mjs
 wwwroot\lib\xlsx\package\xlsxworker.js
-wwwroot\js\patient\edit-basic.js
+wwwroot\uploads\staff\573837a32b6c4e778f28e72d79239596_MMC REGISTRATION CERTIFICATE.pdf
+wwwroot\uploads\staff\61d09cdec1c34fe9b82fe8edea759224_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
+wwwroot\uploads\staff\bb8159dc004f47399be2965ee02d21a7_PERSONAL IDENTIFICATION.pdf
+wwwroot\uploads\staff\dc2113655b61436fb03bd71a57bcf45b_ANNUAL PRACTICING CERTIFICATE.pdf
