@@ -4,7 +4,6 @@
 
     let currentAppointmentId = 0;
     let modalInstance = null;
-
     function getPatientId() {
         const root = document.querySelector('[data-patient-id]');
         return root ? (root.getAttribute('data-patient-id') || '') : '';
@@ -23,6 +22,16 @@
     function setMsg(text) {
         const el = qs('appointmentModalMessage');
         if (el) el.textContent = text || '';
+    }
+
+    function updateTabState() {
+        const patientId = getPatientId();
+        const btnAdd = qs('btnAddAppointment');
+        const hasPatient = !!patientId;
+
+        if (btnAdd) {
+            btnAdd.disabled = !hasPatient;
+        }
     }
 
     function getModal() {
@@ -93,7 +102,10 @@
 
     async function loadAppointments() {
         const patientId = getPatientId();
-        if (!patientId) return;
+        if (!patientId) {
+            updateTabState();
+            return;
+        }
 
         const res = await fetch(`/Patient/GetAppointments?patientId=${encodeURIComponent(patientId)}`, {
             headers: { 'Accept': 'application/json' }
@@ -254,6 +266,10 @@
     }
 
     function openAddModal() {
+        if (!getPatientId()) {
+            updateTabState();
+            return;
+        }
         currentAppointmentId = 0;
         setMsg('');
 
@@ -398,6 +414,7 @@
 
     async function init() {
         try {
+            updateTabState();
             await loadLookups();
             await loadAppointments();
             bindEvents();
@@ -407,4 +424,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('patient:saved', async () => {
+        updateTabState();
+        await loadAppointments();
+    });
 })();

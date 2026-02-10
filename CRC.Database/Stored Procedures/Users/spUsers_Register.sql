@@ -34,6 +34,14 @@ BEGIN
             RAISERROR('Invalid Staff_ID. Staff not found.', 16, 1);
             RETURN;
         END
+
+        -- NEW CONSTRAINT:
+        -- One Staff_ID can only be linked to one user account.
+        IF EXISTS (SELECT 1 FROM dbo.Users WHERE Staff_ID = @StaffIdFinal)
+        BEGIN
+            RAISERROR('This Staff_ID is already linked to an existing user account.', 16, 1);
+            RETURN;
+        END
     END
 
    INSERT INTO [dbo].[Users]

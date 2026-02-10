@@ -315,7 +315,7 @@
     async function loadTimeline() {
         const patientId = getPatientId();
         if (!patientId) {
-            setMsg("Save Basic Details first before viewing journeys.", "text-muted");
+            setMsg("", "text-muted");
             renderTimeline([]);
             return;
         }

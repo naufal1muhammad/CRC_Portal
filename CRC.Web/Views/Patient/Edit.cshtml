@@ -98,125 +98,163 @@
              role="tabpanel"
              aria-labelledby="tab-basic-details">
             <div id="basicDetailsContent">
-                <input type="hidden" id="PatientIdHidden" value="@patientId" />
+            <input type="hidden" id="PatientIdHidden" value="@patientId" />
 
-                <div class="row g-3">
-                    <!-- Left column -->
-                    <div class="col-lg-6">
+            <!-- BASIC SECTION -->
+            <div class="card bg-light border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Basic</h5>
 
-                        <div class="mb-2">
-                            <label for="PatientName" class="form-label">Name <span class="text-danger">*</span></label>
-                            <input id="PatientName" type="text" class="form-control form-control-sm" style="text-transform: uppercase;" />
+                    <div class="row g-3">
+                        <div class="col-lg-6">
+                            <div class="mb-2">
+                                <label for="PatientName" class="form-label">Name <span class="text-danger">*</span></label>
+                                <input id="PatientName" type="text" class="form-control form-control-sm" style="text-transform: uppercase;" />
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="PatientEmail" class="form-label">Email <span class="text-danger">*</span></label>
+                                <input id="PatientEmail" type="email" class="form-control form-control-sm" />
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="PatientPhone" class="form-label">Phone <span class="text-danger">*</span></label>
+                                <input id="PatientPhone" type="text" class="form-control form-control-sm" />
+                            </div>
+
+                            <div class="mb-2">
+                                <label for="PatientNRIC" class="form-label">NRIC <span class="text-danger">*</span></label>
+                                <input id="PatientNRIC" type="text" class="form-control form-control-sm" maxlength="12" placeholder="(e.g. 991026105805)" />
+                            </div>
                         </div>
 
-                        <div class="mb-2">
-                            <label for="PatientEmail" class="form-label">Email <span class="text-danger">*</span></label>
-                            <input id="PatientEmail" type="email" class="form-control form-control-sm" />
-                        </div>
+                        <div class="col-lg-6">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label for="PatientBirthDate" class="form-label">Birth Date <span class="text-danger">*</span></label>
+                                    <input id="PatientBirthDate" type="date" class="form-control form-control-sm" readonly />
+                                </div>
 
-                        <div class="mb-2">
-                            <label for="PatientPhone" class="form-label">Phone Number <span class="text-danger">*</span></label>
-                            <input id="PatientPhone" type="text" class="form-control form-control-sm" />
-                        </div>
+                                <div class="col-md-4">
+                                    <label for="PatientAge" class="form-label">Age <span class="text-danger">*</span></label>
+                                    <input id="PatientAge" type="number" class="form-control form-control-sm" readonly />
+                                </div>
 
-                        <div class="mb-2">
-                            <label for="PatientNRIC" class="form-label">NRIC Number <span class="text-danger">*</span></label>
-                            <input id="PatientNRIC" type="text" class="form-control form-control-sm" />
-                        </div>
+                                <div class="col-md-4">
+                                    <label for="PatientGender" class="form-label">Gender <span class="text-danger">*</span></label>
+                                    <select id="PatientGender" class="form-select form-select-sm" disabled>
+                                        <option value="">--</option>
+                                        <option value="MALE">MALE</option>
+                                        <option value="FEMALE">FEMALE</option>
+                                    </select>
+                                </div>
+                            </div>
 
-                        <div class="mb-2">
-                            <label for="PatientAdmittedOn" class="form-label">Admitted On (mm/dd/yyyy) <span class="text-danger">*</span></label>
-                            <input id="PatientAdmittedOn" type="date" class="form-control form-control-sm" />
-                        </div>
+                            <div class="row g-3 mt-0">
+                                <div class="col-md-6">
+                                    <label for="PatientRace" class="form-label">Race <span class="text-danger">*</span></label>
+                                    <select id="PatientRace" class="form-select form-select-sm">
+                                        <option value="">-- Select Race --</option>
+                                    </select>
+                                </div>
 
-                        <div class="mb-2">
-                            <label for="PatientBirthDate" class="form-label">Birth Date (mm/dd/yyyy) <span class="text-danger">*</span></label>
-                            <input id="PatientBirthDate" type="date" class="form-control form-control-sm" />
-                        </div>
+                                <div class="col-md-6">
+                                    <label for="PatientReligion" class="form-label">Religion <span class="text-danger">*</span></label>
+                                    <select id="PatientReligion" class="form-select form-select-sm">
+                                        <option value="">-- Select Religion --</option>
+                                    </select>
+                                </div>
 
-                        <div class="mb-2">
-                            <label for="PatientAge" class="form-label">Age <span class="text-danger">*</span></label>
-                            <input id="PatientAge" type="number" class="form-control form-control-sm" readonly />
-                            <div class="form-text">Automatically calculated from Birth Date.</div>
-                        </div>
+                                <div class="col-md-6">
+                                    <label for="PatientSource" class="form-label">Source <span class="text-danger">*</span></label>
+                                    <select id="PatientSource" class="form-select form-select-sm">
+                                        <option value="">-- Select Source --</option>
+                                    </select>
+                                </div>
 
-                        <div class="mb-2">
-                            <label for="PatientGender" class="form-label">Gender <span class="text-danger">*</span></label>
-                            <select id="PatientGender" class="form-select form-select-sm">
-                                <option value="">-- Select Gender --</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
+                                <div class="col-md-6">
+                                    <label for="PatientMaritalStatus" class="form-label">Marital Status <span class="text-danger">*</span></label>
+                                    <select id="PatientMaritalStatus" class="form-select form-select-sm">
+                                        <option value="">-- Select Marital Status --</option>
+                                    </select>
+                                </div>
 
-                        <div class="mb-2">
-                            <label for="PatientRace" class="form-label">Race <span class="text-danger">*</span></label>
-                            <select id="PatientRace" class="form-select form-select-sm">
-                                <option value="">-- Select Race --</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-2">
-                            <label for="PatientSource" class="form-label">Source <span class="text-danger">*</span></label>
-                            <select id="PatientSource" class="form-select form-select-sm">
-                                <option value="">-- Select Source --</option>
-                            </select>
+                                <div class="col-md-12">
+                                    <label for="PatientOccupation" class="form-label">Occupation <span class="text-danger">*</span></label>
+                                    <select id="PatientOccupation" class="form-select form-select-sm">
+                                        <option value="">-- Select Occupation --</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    <!-- Right column -->
-                    <div class="col-lg-6">
+            <!-- RESIDENTIAL SECTION -->
+            <div class="card bg-light border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Residential</h5>
 
-                        <div class="mb-2">
-                            <label for="PatientBranch" class="form-label">Branch <span class="text-danger">*</span></label>
-                            <select id="PatientBranch" class="form-select form-select-sm">
-                                <option value="">-- Select Branch --</option>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label for="PatientResState" class="form-label">State <span class="text-danger">*</span></label>
+                            <select id="PatientResState" class="form-select form-select-sm select2">
+                                <option value="">-- Select State --</option>
                             </select>
                         </div>
 
-                        <div class="mb-2">
-                            <label for="PatientReligion" class="form-label">Religion <span class="text-danger">*</span></label>
-                            <select id="PatientReligion" class="form-select form-select-sm">
-                                <option value="">-- Select Religion --</option>
+                        <div class="col-md-4">
+                            <label for="PatientResCity" class="form-label">City <span class="text-danger">*</span></label>
+                            <select id="PatientResCity" class="form-select form-select-sm select2" disabled>
+                                <option value="">-- Select City --</option>
                             </select>
                         </div>
 
-                        <div class="mb-2">
-                            <label for="PatientMaritalStatus" class="form-label">Marital Status <span class="text-danger">*</span></label>
-                            <select id="PatientMaritalStatus" class="form-select form-select-sm">
-                                <option value="">-- Select Marital Status --</option>
+                        <div class="col-md-4">
+                            <label for="PatientResPostcode" class="form-label">Postcode <span class="text-danger">*</span></label>
+                            <select id="PatientResPostcode" class="form-select form-select-sm select2" disabled>
+                                <option value="">-- Select Postcode --</option>
                             </select>
                         </div>
 
-                        <div class="mb-2">
-                            <label for="PatientOccupation" class="form-label">Occupation <span class="text-danger">*</span></label>
-                            <select id="PatientOccupation" class="form-select form-select-sm">
-                                <option value="">-- Select Occupation --</option>
-                            </select>
+                        <div class="col-md-6">
+                            <label for="PatientAddLine1" class="form-label">Address Line 1 <span class="text-danger">*</span></label>
+                            <textarea id="PatientAddLine1" class="form-control form-control-sm" rows="2" disabled></textarea>
                         </div>
 
-                        <div class="mb-2">
-                            <label for="PatientAddress" class="form-label">Address <span class="text-danger">*</span></label>
-                            <textarea id="PatientAddress" rows="3" class="form-control form-control-sm"></textarea>
+                        <div class="col-md-6">
+                            <label for="PatientAddLine2" class="form-label">Address Line 2</label>
+                            <textarea id="PatientAddLine2" class="form-control form-control-sm" rows="2" disabled></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EMERGENCY CONTACT SECTION -->
+            <div class="card bg-light border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Emergency Contact</h5>
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label for="PatientEmergencyName" class="form-label">Name <span class="text-danger">*</span></label>
+                            <input id="PatientEmergencyName" type="text" class="form-control form-control-sm" style="text-transform: uppercase;" />
                         </div>
 
-                        <div class="mb-2">
-                            <label for="PatientEmergencyName" class="form-label">Emergency Contact Name <span class="text-danger">*</span></label>
-                            <input id="PatientEmergencyName" type="text" class="form-control form-control-sm" />
-                        </div>
-
-                        <div class="mb-2">
-                            <label for="PatientEmergencyRelationship" class="form-label">Emergency Contact Relationship <span class="text-danger">*</span></label>
+                        <div class="col-md-4">
+                            <label for="PatientEmergencyRelationship" class="form-label">Relationship <span class="text-danger">*</span></label>
                             <input id="PatientEmergencyRelationship" type="text" class="form-control form-control-sm" />
                         </div>
 
-                        <div class="mb-2">
-                            <label for="PatientEmergencyNumber" class="form-label">Emergency Contact Number <span class="text-danger">*</span></label>
+                        <div class="col-md-4">
+                            <label for="PatientEmergencyNumber" class="form-label">Phone <span class="text-danger">*</span></label>
                             <input id="PatientEmergencyNumber" type="text" class="form-control form-control-sm" />
                         </div>
                     </div>
                 </div>
+            </div>
+
             </div>
         </div>
 

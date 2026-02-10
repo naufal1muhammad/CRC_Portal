@@ -4,7 +4,7 @@
     let txtSearch;
     let dataTable = null;
 
-    function initDataTable() {
+    function initDataTable(emptyMessage) {
         // Destroy existing instance if any
         if ($.fn.dataTable.isDataTable('#activePatientsTable')) {
             $('#activePatientsTable').DataTable().destroy();
@@ -15,6 +15,7 @@
             lengthChange: true,
             pageLength: 10,
             order: [],
+            language: emptyMessage ? { emptyTable: emptyMessage } : undefined,
         });
     }
 
@@ -31,20 +32,21 @@
         // Show loading row
         tableBody.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center text-muted">Loading...</td>
+                <td colspan="3" class="text-center text-muted">Loading...</td>
             </tr>
         `;
 
         try {
             const response = await fetch('/Patient/GetActivePatients', {
                 method: 'GET',
-                headers: { 'Accept': 'application/json' }
+                headers: { 'Accept': 'application/json' },
+                cache: 'no-store'
             });
 
             if (!response.ok) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="5" class="text-center text-danger">Error loading patients.</td>
+                        <td colspan="3" class="text-center text-danger">Error loading patients.</td>
                     </tr>
                 `;
                 return;
@@ -53,17 +55,13 @@
             const data = await response.json();
 
             if (!data || !Array.isArray(data) || data.length === 0) {
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="5" class="text-center text-muted">No active patients found.</td>
-                    </tr>
-                `;
+                tableBody.innerHTML = '';
                 // Initialise empty DataTable so search & paging still render
-                initDataTable();
+                initDataTable('No active patients found.');
                 return;
             }
 
-            // Build rows with the *new* 5 columns
+            // Build rows with the current columns
             tableBody.innerHTML = '';
 
             data.forEach(p => {
@@ -73,8 +71,6 @@
                 tr.innerHTML = `
                     <td>${p.patientId || ''}</td>
                     <td>${p.name || ''}</td>
-                    <td>${p.branchName || ''}</td>
-                    <td>${p.admittedOn || ''}</td>
                     <td>
                         <button type="button"
                                 class="btn btn-sm btn-secondary btn-patient-edit"
@@ -103,9 +99,20 @@
             console.error('Error loading active patients', err);
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="5" class="text-center text-danger">Error loading patients.</td>
+                    <td colspan="3" class="text-center text-danger">Error loading patients.</td>
                 </tr>
             `;
+        }
+    }
+
+    function removePatientRow(patientId) {
+        if (!tableBody || !dataTable) return;
+
+        const escapedId = window.CSS && CSS.escape ? CSS.escape(patientId) : patientId;
+        const row = tableBody.querySelector(`tr[data-id="${escapedId}"]`);
+
+        if (row) {
+            dataTable.row(row).remove().draw(false);
         }
     }
 
@@ -133,6 +140,7 @@
                 return;
             }
 
+            removePatientRow(patientId);
             await loadActivePatients();
         } catch (err) {
             console.error('Error deleting patient', err);

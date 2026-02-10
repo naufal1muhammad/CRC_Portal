@@ -165,17 +165,14 @@
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_LookupPatientNames.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_LookupStaffNames.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_LookupStatuses.sql" />
-    <Build Include="Stored Procedures\PatientBasic\spPatientBasic_LookupBranches.sql" />
+    <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_LookupBranches.sql" />
     <Build Include="Stored Procedures\PatientDocument\spPatientDocument_PatientNames.sql" />
     <Build Include="Stored Procedures\StaffDocument\spStaffDocument_StaffNames.sql" />
     <Build Include="Stored Procedures\PatientDocument\spDocuments_Search.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Branch_CountActive.sql" />
-    <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_CountActiveByBranch.sql" />
-    <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_CountDischargedByBranch.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByRace.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByAgeGroup.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByDischargeType.sql" />
-    <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_AdmitDischargeLast12Months.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_UpdateStatus.sql" />
     <Build Include="dbo\Tables\PatientJourneyAudit.sql" />
     <Build Include="Stored Procedures\PatientJourney\spPatientJourney_TimelineByPatient.sql" />
@@ -201,6 +198,8 @@
     <Build Include="Stored Procedures\StaffSlots\spStaffSlots_Delete.sql" />
     <Build Include="Stored Procedures\StaffSlots\spStaffSlots_CreateRange.sql" />
     <Build Include="Stored Procedures\StaffSlots\spStaffSlots_List.sql" />
+    <Build Include="Stored Procedures\StaffSlots\spStaffSlots_ClearAppointment.sql" />
+    <Build Include="Stored Procedures\StaffSlots\spStaffSlots_AssignAppointment.sql" />
     <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_TodayAppointments.sql" />
     <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_ThisWeekAppointments.sql" />
     <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_ThisMonthAppointments.sql" />

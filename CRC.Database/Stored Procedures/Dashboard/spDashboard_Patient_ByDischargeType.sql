@@ -4,11 +4,12 @@ BEGIN
     SET NOCOUNT ON;
 
     SELECT
-        DischargeType_Name,
+        COALESCE(NULLIF(LTRIM(RTRIM(dt.DischargeType_Name)), ''), 'Unknown') AS DischargeType_Name,
         COUNT(*) AS PatientCount
-    FROM [dbo].[PatientBasic]
-    WHERE DischargeType_Name IS NOT NULL
-    GROUP BY DischargeType_Name
+    FROM dbo.PatientBasic pb
+    LEFT JOIN dbo.LU_DISCHARGETYPE dt ON dt.DischargeType_ID = pb.DischargeType_ID
+    WHERE pb.DischargeType_ID IS NOT NULL
+    GROUP BY COALESCE(NULLIF(LTRIM(RTRIM(dt.DischargeType_Name)), ''), 'Unknown')
     ORDER BY PatientCount DESC;
 END;
 GO

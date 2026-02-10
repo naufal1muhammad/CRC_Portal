@@ -1,25 +1,29 @@
 ﻿CREATE PROCEDURE [dbo].[spPatientBasic_Insert]
 (
-    @Patient_Name                  VARCHAR(100),
-    @Patient_Email                 VARCHAR(100),
-    @Patient_Phone                 VARCHAR(100),
-    @Patient_NRIC                  VARCHAR(100),
-    @Patient_AdmittedOn            DATETIME,
-    @Patient_BirthDate             DATETIME,
-    @Patient_Age                   INT,
-    @Race_Name                     VARCHAR(100),
-    @Branch_Name                   VARCHAR(100),
-    @Source_Name                   VARCHAR(100),
-    @Patient_Gender                VARCHAR(100),
-    @Religion_Name                 VARCHAR(100),
-    @MaritalStatus_Name            VARCHAR(100),
-    @Patient_Address               VARCHAR(100),
-    @Patient_EmergencyName         VARCHAR(100),
-    @Patient_EmergencyRelationship VARCHAR(100),
-    @Patient_EmergencyNumber       VARCHAR(100),
-    @Occupation_Name               VARCHAR(100),
+    @Patient_Name                    VARCHAR(100),
+    @Patient_Email                   VARCHAR(100),
+    @Patient_Phone                   VARCHAR(100),
+    @Patient_NRIC                    VARCHAR(100),
+    @Patient_BirthDate               DATETIME,
+    @Patient_Age                     INT,
+    @Race_ID                         VARCHAR(100),
+    @Source_ID                       VARCHAR(100),
+    @Patient_Gender                  VARCHAR(100),
+    @Religion_ID                     VARCHAR(100),
+    @MaritalStatus_ID                VARCHAR(100),
+    @Occupation_ID                   VARCHAR(100),
 
-    @NewPatient_ID                 VARCHAR(100) OUTPUT
+    @Patient_ResState                VARCHAR(100),
+    @Patient_ResCity                 VARCHAR(100),
+    @Patient_ResPostcode             VARCHAR(100),
+    @Patient_AddLine1                VARCHAR(MAX),
+    @Patient_AddLine2                VARCHAR(MAX) = NULL,
+
+    @Patient_EmergencyName           VARCHAR(100),
+    @Patient_EmergencyRelationship   VARCHAR(100),
+    @Patient_EmergencyNumber         VARCHAR(100),
+
+    @NewPatient_ID                   VARCHAR(100) OUTPUT
 )
 AS
 BEGIN
@@ -38,6 +42,9 @@ BEGIN
 
     SET @NewPatient_ID = 'PAT-' + RIGHT('000000' + CAST(@NextNum AS VARCHAR(6)), 6);
 
+    DECLARE @AddLine2Clean VARCHAR(MAX) =
+        NULLIF(LTRIM(RTRIM(ISNULL(@Patient_AddLine2, ''))), '');
+
     INSERT INTO [dbo].[PatientBasic]
     (
         [Patient_ID],
@@ -45,21 +52,23 @@ BEGIN
         [Patient_Email],
         [Patient_Phone],
         [Patient_NRIC],
-        [Patient_AdmittedOn],
         [Patient_BirthDate],
         [Patient_Age],
-        [Race_Name],
-        [Branch_Name],
-        [Source_Name],
+        [Race_ID],
+        [Source_ID],
         [Patient_Gender],
-        [Religion_Name],
-        [MaritalStatus_Name],
-        [Patient_Address],
+        [Religion_ID],
+        [MaritalStatus_ID],
+        [Occupation_ID],
+        [Patient_ResState],
+        [Patient_ResCity],
+        [Patient_ResPostcode],
+        [Patient_AddLine1],
+        [Patient_AddLine2],
         [Patient_EmergencyName],
         [Patient_EmergencyRelationship],
         [Patient_EmergencyNumber],
-        [Occupation_Name],
-        [DischargeType_Name],
+        [DischargeType_ID],
         [Patient_DischargeDate],
         [Patient_DischargeRemarks]
     )
@@ -70,21 +79,23 @@ BEGIN
         @Patient_Email,
         @Patient_Phone,
         @Patient_NRIC,
-        @Patient_AdmittedOn,
         @Patient_BirthDate,
         @Patient_Age,
-        @Race_Name,
-        @Branch_Name,
-        @Source_Name,
+        @Race_ID,
+        @Source_ID,
         @Patient_Gender,
-        @Religion_Name,
-        @MaritalStatus_Name,
-        @Patient_Address,
+        @Religion_ID,
+        @MaritalStatus_ID,
+        @Occupation_ID,
+        @Patient_ResState,
+        @Patient_ResCity,
+        @Patient_ResPostcode,
+        @Patient_AddLine1,
+        @AddLine2Clean,
         @Patient_EmergencyName,
         @Patient_EmergencyRelationship,
         @Patient_EmergencyNumber,
-        @Occupation_Name,
-        NULL,   -- DischargeType_Name
+        NULL,   -- DischargeType_ID
         NULL,   -- Patient_DischargeDate
         NULL    -- Patient_DischargeRemarks
     );

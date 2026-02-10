@@ -4,16 +4,11 @@ BEGIN
     SET NOCOUNT ON;
 
     SELECT
-        [Patient_ID],
-        [Patient_Name],
-        [Patient_Email],
-        [Patient_Phone],
-        [Branch_Name],
-        [Patient_AdmittedOn],
-        [DischargeType_Name],
-        [Patient_DischargeDate]
-    FROM [dbo].[PatientBasic]
-    WHERE [DischargeType_Name] IS NOT NULL   -- Discharged
-    ORDER BY [Patient_DischargeDate] DESC, [Patient_ID] DESC;
+        pb.[Patient_ID],
+        pb.[Patient_Name],
+        pb.[Patient_DischargeDate]
+    FROM dbo.PatientBasic pb
+    WHERE pb.[DischargeType_ID] IS NOT NULL  -- Discharged
+    ORDER BY pb.[Patient_DischargeDate] DESC, pb.[Patient_ID] DESC;
 END;
 GO

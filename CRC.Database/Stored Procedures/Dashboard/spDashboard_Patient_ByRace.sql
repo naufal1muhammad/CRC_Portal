@@ -4,16 +4,11 @@ BEGIN
     SET NOCOUNT ON;
 
     SELECT
-        CASE 
-            WHEN ISNULL(Race_Name, '') = '' THEN 'Unknown'
-            ELSE Race_Name
-        END AS Race_Name,
+        COALESCE(NULLIF(LTRIM(RTRIM(r.Race_Name)), ''), 'Unknown') AS Race_Name,
         COUNT(*) AS PatientCount
-    FROM [dbo].[PatientBasic]
-    GROUP BY CASE 
-                 WHEN ISNULL(Race_Name, '') = '' THEN 'Unknown'
-                 ELSE Race_Name
-             END
+    FROM dbo.PatientBasic pb
+    LEFT JOIN dbo.LU_RACE r ON r.Race_ID = pb.Race_ID
+    GROUP BY COALESCE(NULLIF(LTRIM(RTRIM(r.Race_Name)), ''), 'Unknown')
     ORDER BY PatientCount DESC;
 END;
 GO

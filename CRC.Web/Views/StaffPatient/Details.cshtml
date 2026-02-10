@@ -28,6 +28,13 @@
                 Patient Journey
             </button>
         </li>
+
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-documents-tab" data-bs-toggle="tab" data-bs-target="#tab-documents"
+                    type="button" role="tab" aria-controls="tab-documents" aria-selected="false">
+                Documents
+            </button>
+        </li>
     </ul>
 
     <div class="tab-content" id="spTabsContent">
@@ -35,106 +42,171 @@
              TAB 1: BASIC DETAILS
         ========================== -->
         <div class="tab-pane fade show active" id="tab-basic" role="tabpanel" aria-labelledby="tab-basic-tab">
-            <div class="card shadow-sm">
-                <div class="card-body">
-                    <div class="text-muted small mb-3" id="spBasicMsg"></div>
+            <div class="text-muted small mb-3" id="spBasicMsg"></div>
 
-                    <!-- Basic Details (readonly) -->
+            <!-- Basic Details (readonly) -->
+            <div class="card bg-light border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Basic</h5>
+
                     <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Patient Name</label>
-                            <input id="sp_name" class="form-control" type="text" readonly />
+                        <div class="col-lg-6">
+                            <div class="mb-2">
+                                <label class="form-label">Name</label>
+                                <input id="sp_patientName" class="form-control form-control-sm" type="text" readonly />
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label">Email</label>
+                                <input id="sp_patientEmail" class="form-control form-control-sm" type="email" readonly />
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label">Phone</label>
+                                <input id="sp_patientPhone" class="form-control form-control-sm" type="text" readonly />
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label">NRIC</label>
+                                <input id="sp_patientNric" class="form-control form-control-sm" type="text" readonly />
+                            </div>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">NRIC</label>
-                            <input id="sp_nric" class="form-control" type="text" readonly />
+
+                        <div class="col-lg-6">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Birth Date</label>
+                                    <input id="sp_patientBirthDate" class="form-control form-control-sm" type="date" readonly />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label">Age</label>
+                                    <input id="sp_patientAge" class="form-control form-control-sm" type="number" readonly />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label">Gender</label>
+                                    <input id="sp_patientGender" class="form-control form-control-sm" type="text" readonly />
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mt-0">
+                                <div class="col-md-6">
+                                    <label class="form-label">Race</label>
+                                    <input id="sp_patientRace" class="form-control form-control-sm" type="text" readonly />
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">Religion</label>
+                                    <input id="sp_patientReligion" class="form-control form-control-sm" type="text" readonly />
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">Source</label>
+                                    <input id="sp_patientSource" class="form-control form-control-sm" type="text" readonly />
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">Marital Status</label>
+                                    <input id="sp_patientMaritalStatus" class="form-control form-control-sm" type="text" readonly />
+                                </div>
+
+                                <div class="col-md-12">
+                                    <label class="form-label">Occupation</label>
+                                    <input id="sp_patientOccupation" class="form-control form-control-sm" type="text" readonly />
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Gender</label>
-                            <input id="sp_gender" class="form-control" type="text" readonly />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Residential -->
+            <div class="card bg-light border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Residential</h5>
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">State</label>
+                            <input id="sp_patientResState" class="form-control form-control-sm" type="text" readonly />
                         </div>
 
                         <div class="col-md-4">
-                            <label class="form-label">Email</label>
-                            <input id="sp_email" class="form-control" type="text" readonly />
+                            <label class="form-label">City</label>
+                            <input id="sp_patientResCity" class="form-control form-control-sm" type="text" readonly />
                         </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Postcode</label>
+                            <input id="sp_patientResPostcode" class="form-control form-control-sm" type="text" readonly />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Address Line 1</label>
+                            <input id="sp_patientAddLine1" class="form-control form-control-sm" type="text" readonly />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Address Line 2</label>
+                            <input id="sp_patientAddLine2" class="form-control form-control-sm" type="text" readonly />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Emergency Contact -->
+            <div class="card bg-light border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Emergency Contact</h5>
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Name</label>
+                            <input id="sp_patientEmergencyName" class="form-control form-control-sm" type="text" readonly />
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Relationship</label>
+                            <input id="sp_patientEmergencyRelationship" class="form-control form-control-sm" type="text" readonly />
+                        </div>
+
                         <div class="col-md-4">
                             <label class="form-label">Phone</label>
-                            <input id="sp_phone" class="form-control" type="text" readonly />
+                            <input id="sp_patientEmergencyNumber" class="form-control form-control-sm" type="text" readonly />
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Branch</label>
-                            <input id="sp_branchName" class="form-control" type="text" readonly />
-                        </div>
+                    </div>
+                </div>
+            </div>
 
-                        <div class="col-md-3">
-                            <label class="form-label">Admitted On</label>
-                            <input id="sp_admittedOn" class="form-control" type="date" readonly />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Birth Date</label>
-                            <input id="sp_birthDate" class="form-control" type="date" readonly />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Race</label>
-                            <input id="sp_raceName" class="form-control" type="text" readonly />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Religion</label>
-                            <input id="sp_religionName" class="form-control" type="text" readonly />
-                        </div>
+            <!-- Discharge -->
+            <div class="card bg-light border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Discharge</h5>
 
-                        <div class="col-md-3">
-                            <label class="form-label">Marital Status</label>
-                            <input id="sp_maritalStatusName" class="form-control" type="text" readonly />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Occupation</label>
-                            <input id="sp_occupationName" class="form-control" type="text" readonly />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Source</label>
-                            <input id="sp_sourceName" class="form-control" type="text" readonly />
-                        </div>
-
-                        <div class="col-12">
-                            <label class="form-label">Address</label>
-                            <textarea id="sp_address" class="form-control" rows="2" readonly></textarea>
-                        </div>
-
+                    <div class="row g-3">
                         <div class="col-md-4">
-                            <label class="form-label">Emergency Contact Name</label>
-                            <input id="sp_emergencyName" class="form-control" type="text" readonly />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Emergency Relationship</label>
-                            <input id="sp_emergencyRelationship" class="form-control" type="text" readonly />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Emergency Number</label>
-                            <input id="sp_emergencyNumber" class="form-control" type="text" readonly />
+                            <label class="form-label">Discharge Date</label>
+                            <input id="sp_patientDischargeDate" class="form-control form-control-sm" type="date" readonly />
                         </div>
 
                         <div class="col-md-4">
                             <label class="form-label">Discharge Type</label>
-                            <input id="sp_dischargeTypeName" class="form-control" type="text" readonly />
+                            <input id="sp_patientDischargeType" class="form-control form-control-sm" type="text" readonly />
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Discharge Date (mm/dd/yyyy)</label>
-                            <input id="sp_dischargeDate" class="form-control" type="date" readonly />
-                        </div>
+
                         <div class="col-md-4">
                             <label class="form-label">Discharge Remarks</label>
-                            <input id="sp_dischargeRemarks" class="form-control" type="text" readonly />
+                            <textarea id="sp_patientDischargeRemarks" class="form-control form-control-sm" rows="2" readonly></textarea>
                         </div>
                     </div>
-
-                    <div class="alert alert-secondary mt-3 mb-0">
-                        <small class="text-muted">
-                            Note: Basic Details are read-only for Staff.
-                        </small>
-                    </div>
                 </div>
+            </div>
+
+            <div class="alert alert-secondary mt-3 mb-0">
+                <small class="text-muted">
+                    Note: Basic Details are read-only for Staff.
+                </small>
             </div>
         </div>
 
@@ -160,6 +232,23 @@
                     <div id="journeyTimeline" class="position-relative">
                         <!-- JS will render timeline here -->
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- =========================
+             TAB 3: DOCUMENTS
+        ========================== -->
+        <div class="tab-pane fade" id="tab-documents" role="tabpanel" aria-labelledby="tab-documents-tab">
+            <div id="documentsContent">
+                <div id="documentsMessage" class="text-danger small mb-2"></div>
+
+                <p class="text-muted small mb-2">
+                    Upload documents by type. Uploads are saved immediately and do not depend on the main Save button.
+                </p>
+
+                <div id="patientDocumentsContainer">
+                    <p class="text-muted mb-0">Loading document types...</p>
                 </div>
             </div>
         </div>
@@ -229,5 +318,6 @@
 @section Scripts {
     <script src="~/js/staffPatient/details.js" asp-append-version="true"></script>
     <script src="~/js/staffPatient/journey.js" asp-append-version="true"></script>
+    <script src="~/js/staffPatient/documents.js" asp-append-version="true"></script>
     @* Template JS is loaded dynamically by journey.js based on selected Journey Type *@
 }

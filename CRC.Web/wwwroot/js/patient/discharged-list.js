@@ -4,7 +4,7 @@
     let txtSearch;
     let dataTable = null;
 
-    function initDataTable() {
+    function initDataTable(emptyMessage) {
         // Destroy existing instance if any, then re-init
         if ($.fn.dataTable.isDataTable('#dischargedPatientsTable')) {
             $('#dischargedPatientsTable').DataTable().destroy();
@@ -14,7 +14,8 @@
             paging: true,
             lengthChange: true,
             pageLength: 10,
-            order: [] // no initial sort
+            order: [], // no initial sort
+            language: emptyMessage ? { emptyTable: emptyMessage } : undefined,
         });
     }
 
@@ -31,20 +32,21 @@
 
         tableBody.innerHTML = `
             <tr>
-                <td colspan="6" class="text-center text-muted">Loading...</td>
+                <td colspan="4" class="text-center text-muted">Loading...</td>
             </tr>
         `;
 
         try {
             const response = await fetch('/Patient/GetDischargedPatients', {
                 method: 'GET',
-                headers: { 'Accept': 'application/json' }
+                headers: { 'Accept': 'application/json' },
+                cache: 'no-store'
             });
 
             if (!response.ok) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="6" class="text-center text-danger">Error loading patients.</td>
+                        <td colspan="4" class="text-center text-danger">Error loading patients.</td>
                     </tr>
                 `;
                 return;
@@ -53,13 +55,9 @@
             const data = await response.json();
 
             if (!data || !Array.isArray(data) || data.length === 0) {
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="6" class="text-center text-muted">No discharged patients found.</td>
-                    </tr>
-                `;
+                tableBody.innerHTML = '';
                 // Still initialise DataTables so the UI (arrows, pager) appears
-                initDataTable();
+                initDataTable('No discharged patients found.');
                 return;
             }
 
@@ -72,8 +70,6 @@
                 tr.innerHTML = `
                     <td>${p.patientId || ''}</td>
                     <td>${p.name || ''}</td>
-                    <td>${p.branchName || ''}</td>
-                    <td>${p.dischargeTypeName || ''}</td>
                     <td>${p.dischargeDate || ''}</td>
                     <td>
                         <button type="button"
@@ -101,9 +97,20 @@
             console.error('Error loading discharged patients', err);
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="text-center text-danger">Error loading patients.</td>
+                    <td colspan="4" class="text-center text-danger">Error loading patients.</td>
                 </tr>
             `;
+        }
+    }
+
+    function removePatientRow(patientId) {
+        if (!tableBody || !dataTable) return;
+
+        const escapedId = window.CSS && CSS.escape ? CSS.escape(patientId) : patientId;
+        const row = tableBody.querySelector(`tr[data-id="${escapedId}"]`);
+
+        if (row) {
+            dataTable.row(row).remove().draw(false);
         }
     }
 
@@ -131,6 +138,7 @@
                 return;
             }
 
+            removePatientRow(patientId);
             await loadDischargedPatients();
         } catch (err) {
             console.error('Error deleting patient', err);

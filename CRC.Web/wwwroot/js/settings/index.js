@@ -305,7 +305,7 @@
 
         try {
             // 1) Get all patient document types
-            const typesResponse = await fetch('/Patient/GetPatientDocumentTypes', {
+            const typesResponse = await fetch('/StaffPatient/GetPatientDocumentTypes', {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
             });

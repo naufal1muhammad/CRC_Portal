@@ -5,6 +5,27 @@
         selType,
         txtRemarks,
         msg;
+    function getPatientId() {
+        const root = document.querySelector('[data-patient-id]');
+        return root ? (root.getAttribute('data-patient-id') || '') : '';
+    }
+
+    function updateTabState() {
+        const hasPatient = !!getPatientId();
+
+        if (!hasPatient) {
+            if (chkDischarged) {
+                chkDischarged.checked = false;
+                chkDischarged.disabled = true;
+            }
+            setFieldsEnabled(false);
+            return;
+        }
+
+        if (chkDischarged) {
+            chkDischarged.disabled = false;
+        }
+    }
 
     function setFieldsEnabled(enabled) {
         if (txtDate) {
@@ -183,6 +204,7 @@ async function loadDischargeTypesIntoTab() {
 
         // default state: disabled
         setFieldsEnabled(false);
+        updateTabState();
 
         if (chkDischarged) {
             chkDischarged.addEventListener('change', function() {
@@ -190,5 +212,9 @@ async function loadDischargeTypesIntoTab() {
                 setFieldsEnabled(enabled);
             });
         }
+    });
+
+    document.addEventListener('patient:saved', function() {
+        updateTabState();
     });
 })();
