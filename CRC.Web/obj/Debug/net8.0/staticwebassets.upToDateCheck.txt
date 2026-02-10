@@ -2,6 +2,7 @@ wwwroot\css\site.css
 wwwroot\images\cancer-icon.png
 wwwroot\images\lindung-icon.png
 wwwroot\images\lindung-logo.png
+wwwroot\js\account\register.js
 wwwroot\js\adminDashboard\index.js
 wwwroot\js\appointment\index.js
 wwwroot\js\branch\index.js
@@ -8991,4 +8992,3 @@ wwwroot\uploads\staff\573837a32b6c4e778f28e72d79239596_MMC REGISTRATION CERTIFIC
 wwwroot\uploads\staff\61d09cdec1c34fe9b82fe8edea759224_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\bb8159dc004f47399be2965ee02d21a7_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\staff\dc2113655b61436fb03bd71a57bcf45b_ANNUAL PRACTICING CERTIFICATE.pdf
-wwwroot\js\account\register.js
