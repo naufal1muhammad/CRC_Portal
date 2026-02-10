@@ -1,5 +1,5 @@
 ﻿// @ts-nocheck
-(function() {
+(function () {
     let container;
     let msg;
 
@@ -157,7 +157,7 @@
 
         try {
             // 1) get types
-            const typesResponse = await fetch('/Patient/GetPatientDocumentTypes', {
+            const typesResponse = await fetch('/StaffPatient/GetPatientDocumentTypes', {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
             });
@@ -178,7 +178,7 @@
             // 2) if patient saved, load existing docs
             let existingDocs = [];
             if (patientSaved) {
-                const docsResponse = await fetch('/Patient/GetPatientDocuments?patientId=' + encodeURIComponent(patientId), {
+                const docsResponse = await fetch('/StaffPatient/GetPatientDocuments?patientId=' + encodeURIComponent(patientId), {
                     method: 'GET',
                     headers: { 'Accept': 'application/json' }
                 });
@@ -228,7 +228,7 @@
         }
 
         try {
-            const response = await fetch('/Patient/UploadPatientDocuments', {
+            const response = await fetch('/StaffPatient/UploadPatientDocuments', {
                 method: 'POST',
                 body: formData
             });
@@ -262,7 +262,7 @@
         if (!confirm('Are you sure you want to delete this document?')) return;
 
         try {
-            const response = await fetch('/Patient/DeletePatientDocument', {
+            const response = await fetch('/StaffPatient/DeletePatientDocument', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -291,7 +291,7 @@
     }
 
     function attachHandlers() {
-        document.addEventListener('click', function(e) {
+        document.addEventListener('click', function (e) {
             const uploadBtn = e.target.closest('.btn-pat-doc-upload');
             if (uploadBtn) {
                 const card = uploadBtn.closest('.card');
@@ -311,7 +311,7 @@
         });
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         container = document.getElementById('patientDocumentsContainer');
         msg = document.getElementById('documentsMessage');
 
@@ -321,7 +321,7 @@
 
     // 🔹 Public API for other tabs
     window.PatientDocumentsTab = {
-        reload: function() {
+        reload: function () {
             loadTypesAndDocs();
         }
     };
