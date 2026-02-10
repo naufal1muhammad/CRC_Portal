@@ -5,6 +5,6 @@ BEGIN
 
     SELECT [PjAppType_ID], [PjAppType_Name]
     FROM [dbo].[LU_PJ_APP_TYPE]
-    ORDER BY [PjAppType_Name];
+    ORDER BY [PjAppType_ID];
 END;
 GO

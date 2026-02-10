@@ -2,7 +2,6 @@ wwwroot\css\site.css
 wwwroot\images\cancer-icon.png
 wwwroot\images\lindung-icon.png
 wwwroot\images\lindung-logo.png
-wwwroot\js\account\register.js
 wwwroot\js\adminDashboard\index.js
 wwwroot\js\appointment\index.js
 wwwroot\js\branch\index.js
@@ -23,7 +22,6 @@ wwwroot\js\common\form.js
 wwwroot\js\common\logger.js
 wwwroot\js\common\modalFalcon.js
 wwwroot\js\common\toast.js
-wwwroot\js\dashboard\index.js
 wwwroot\js\documents\index.js
 wwwroot\js\functions\ConfirmationModal.js
 wwwroot\js\functions\ConfirmationModalFalcon.js
@@ -37,15 +35,8 @@ wwwroot\js\functions\SrollTop.js
 wwwroot\js\functions\UrlVariable.js
 wwwroot\js\helpers\FormValidator.js
 wwwroot\js\helpers\FormValidatorFalcon.js
-wwwroot\js\patient\active-list.js
-wwwroot\js\patient\discharged-list.js
-wwwroot\js\patient\edit-appointment.js
-wwwroot\js\patient\edit-basic.js
-wwwroot\js\patient\edit-discharge.js
-wwwroot\js\patient\edit-journey.js
 wwwroot\js\site.js
 wwwroot\js\staffDashboard\index.js
-wwwroot\js\staffPatient\details.js
 wwwroot\js\staffPatient\journey.js
 wwwroot\js\staffPatient\templates\patientAssessment.js
 wwwroot\js\staffPatient\templates\patientColonoscopy.js
@@ -8986,10 +8977,22 @@ wwwroot\lib\xlsx\package\types\tsconfig.json
 wwwroot\lib\xlsx\package\xlsx.js
 wwwroot\lib\xlsx\package\xlsx.mjs
 wwwroot\lib\xlsx\package\xlsxworker.js
+wwwroot\js\account\register.js
+wwwroot\js\dashboard\index.js
+wwwroot\js\patient\active-list.js
+wwwroot\js\patient\discharged-list.js
+wwwroot\js\patient\edit-appointment.js
+wwwroot\js\patient\edit-basic.js
+wwwroot\js\patient\edit-discharge.js
+wwwroot\js\patient\edit-documents.js
+wwwroot\js\patient\edit-journey.js
+wwwroot\js\settings\index.js
+wwwroot\js\staffPatient\details.js
+wwwroot\js\staffPatient\documents.js
+wwwroot\uploads\patient\012037f9314e4f1b9e6d12cc6b682464_PERSONAL IDENTIFICATION.pdf
+wwwroot\uploads\patient\ae2e750472124601b6eaaab1390fff98_COLONOSCOPY FINDING FORM.pdf
+wwwroot\uploads\patient\bd75c7c62c464889aa1957ba5591eed3_COLONOSCOPY CONSENT FORM.pdf
 wwwroot\uploads\staff\573837a32b6c4e778f28e72d79239596_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\61d09cdec1c34fe9b82fe8edea759224_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\bb8159dc004f47399be2965ee02d21a7_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\staff\dc2113655b61436fb03bd71a57bcf45b_ANNUAL PRACTICING CERTIFICATE.pdf
-wwwroot\js\patient\edit-documents.js
-wwwroot\js\settings\index.js
-wwwroot\js\staffPatient\documents.js
