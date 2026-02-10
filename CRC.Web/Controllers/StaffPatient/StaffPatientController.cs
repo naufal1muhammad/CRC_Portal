@@ -9,10 +9,12 @@ namespace CRC.Web.Controllers.StaffPatient
     public class StaffPatientController : Controller
     {
         private readonly DatabaseHelper _db;
+        private readonly IWebHostEnvironment _env;
 
-        public StaffPatientController(DatabaseHelper db)
+        public StaffPatientController(DatabaseHelper db, IWebHostEnvironment env)
         {
             _db = db;
+            _env = env;
         }
 
         [Authorize(Policy = "StaffOnly")]
@@ -846,6 +848,181 @@ namespace CRC.Web.Controllers.StaffPatient
             catch
             {
                 return Ok(new { success = false, message = "Error saving follow up." });
+            }
+        }
+
+        //------------------------------------------------------
+        //DOCUMENTS
+        //------------------------------------------------------
+
+        [Authorize(Policy = "AdminOrSuperOrStaff")]
+        [HttpGet]
+        public async Task<IActionResult> GetPatientDocumentTypes()
+        {
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spLU_PatientDocumentType_List",
+                    Array.Empty<SqlParameter>()
+                );
+
+                var types = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        documentTypeId = r["PatientDocumentType_ID"]?.ToString(),
+                        documentTypeName = r["PatientDocumentType_Name"]?.ToString()
+                    })
+                    .ToList();
+
+                return Ok(new { success = true, data = types });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error loading patient document types." });
+            }
+        }
+
+        [Authorize(Policy = "AdminOrSuperOrStaff")]
+        [HttpGet]
+        public async Task<IActionResult> GetPatientDocuments(string patientId)
+        {
+            if (string.IsNullOrWhiteSpace(patientId))
+            {
+                return Ok(new { success = true, data = Array.Empty<object>() });
+            }
+
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spPatientDocument_List",
+                    new[] { new SqlParameter("@Patient_ID", patientId) }
+                );
+
+                var list = dt.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        documentId = Convert.ToInt32(r["PatientDocument_ID"]),
+                        patientId = r["Patient_ID"]?.ToString(),
+                        patientName = r["Patient_Name"]?.ToString(),
+                        docTypeId = r["PatientDocumentType_ID"]?.ToString(),
+                        docTypeName = r["PatientDocumentType_Name"]?.ToString(),
+                        fileName = r["FileName"]?.ToString(),
+                        filePath = r["FilePath"]?.ToString(),
+                        uploadedOn = r["UploadedOn"]?.ToString()
+                    })
+                    .ToList();
+
+                return Ok(new { success = true, data = list });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error loading patient documents." });
+            }
+        }
+
+        [Authorize(Policy = "AdminOrSuperOrStaff")]
+        [HttpPost]
+        public async Task<IActionResult> UploadPatientDocuments(
+    string patientId,
+    string patientName,
+    List<IFormFile> files,
+    List<string> docTypeIds,
+    List<string> docTypeNames)
+        {
+            if (string.IsNullOrWhiteSpace(patientId))
+            {
+                return BadRequest(new { success = false, message = "Patient ID is required." });
+            }
+
+            if (files == null || files.Count == 0)
+            {
+                return Ok(new { success = false, message = "No files uploaded." });
+            }
+
+            try
+            {
+                var uploadRoot = Path.Combine(_env.WebRootPath, "uploads", "patient");
+                if (!Directory.Exists(uploadRoot))
+                {
+                    Directory.CreateDirectory(uploadRoot);
+                }
+
+                for (int i = 0; i < files.Count; i++)
+                {
+                    var file = files[i];
+                    if (file == null || file.Length == 0) continue;
+
+                    var docTypeId = (docTypeIds != null && i < docTypeIds.Count)
+                        ? docTypeIds[i]
+                        : string.Empty;
+
+                    var docTypeName = (docTypeNames != null && i < docTypeNames.Count)
+                        ? docTypeNames[i]
+                        : string.Empty;
+
+                    // sanitize & create unique filename
+                    var safeFileName = Path.GetFileName(file.FileName);
+                    var uniqueName = $"{Guid.NewGuid():N}_{safeFileName}";
+                    var physicalPath = Path.Combine(uploadRoot, uniqueName);
+
+                    await using (var stream = System.IO.File.Create(physicalPath))
+                    {
+                        await file.CopyToAsync(stream);
+                    }
+
+                    var relativePath = $"/uploads/patient/{uniqueName}";
+                    var contentType = file.ContentType ?? "application/octet-stream";
+
+                    var parameters = new[]
+                    {
+                new SqlParameter("@Patient_ID",             patientId),
+                new SqlParameter("@Patient_Name",           patientName ?? string.Empty),
+                new SqlParameter("@PatientDocumentType_ID", (object)docTypeId ?? DBNull.Value),
+                new SqlParameter("@PatientDocumentType_Name", (object)docTypeName ?? DBNull.Value),
+                new SqlParameter("@FileName",               safeFileName),
+                new SqlParameter("@FilePath",               relativePath),
+                new SqlParameter("@ContentType",            contentType)
+            };
+
+                    await _db.ExecuteNonQueryAsync("spPatientDocument_Insert", parameters);
+                }
+
+                return Ok(new { success = true });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error uploading patient documents." });
+            }
+        }
+
+        public class DeletePatientDocumentRequest
+        {
+            public int DocumentId { get; set; }
+        }
+
+        [Authorize(Policy = "AdminOrSuperOrStaff")]
+        [HttpPost]
+        public async Task<IActionResult> DeletePatientDocument([FromBody] DeletePatientDocumentRequest model)
+        {
+            if (model == null || model.DocumentId <= 0)
+            {
+                return Ok(new { success = false, message = "Invalid document ID." });
+            }
+
+            try
+            {
+                var parameters = new[]
+                {
+            new SqlParameter("@PatientDocument_ID", model.DocumentId)
+        };
+
+                await _db.ExecuteNonQueryAsync("spPatientDocument_Delete", parameters);
+
+                return Ok(new { success = true });
+            }
+            catch (Exception)
+            {
+                return Ok(new { success = false, message = "Error deleting patient document." });
             }
         }
     }
