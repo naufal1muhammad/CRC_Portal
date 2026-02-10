@@ -198,6 +198,8 @@
     <Build Include="Stored Procedures\StaffSlots\spStaffSlots_Delete.sql" />
     <Build Include="Stored Procedures\StaffSlots\spStaffSlots_CreateRange.sql" />
     <Build Include="Stored Procedures\StaffSlots\spStaffSlots_List.sql" />
+    <Build Include="Stored Procedures\StaffSlots\spStaffSlots_ClearAppointment.sql" />
+    <Build Include="Stored Procedures\StaffSlots\spStaffSlots_AssignAppointment.sql" />
     <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_TodayAppointments.sql" />
     <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_ThisWeekAppointments.sql" />
     <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_ThisMonthAppointments.sql" />

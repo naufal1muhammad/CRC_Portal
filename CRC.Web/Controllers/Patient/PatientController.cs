@@ -925,22 +925,6 @@ namespace CRC.Web.Controllers.Patient
                 return Ok(new { success = false, message = "Invalid attendance status." });
             }
 
-            // Helpers for IN (...) parameterization
-            static (string InClause, SqlParameter[] Parameters) BuildInClause(string paramPrefix, IReadOnlyList<int> ids)
-            {
-                var p = new List<SqlParameter>();
-                var names = new List<string>();
-
-                for (int i = 0; i < ids.Count; i++)
-                {
-                    var name = $"@{paramPrefix}{i}";
-                    names.Add(name);
-                    p.Add(new SqlParameter(name, SqlDbType.Int) { Value = ids[i] });
-                }
-
-                return (string.Join(",", names), p.ToArray());
-            }
-
             try
             {
                 using var conn = _db.CreateConnection();
@@ -948,30 +932,38 @@ namespace CRC.Web.Controllers.Patient
 
                 using var tx = conn.BeginTransaction();
 
-                // Load selected slots (typed TIME values) inside the same TX
-                var (inClause, inParams) = BuildInClause("sid", slotIds);
-
-                var sqlSlots =
-                    $"SELECT StaffSlot_ID, Staff_ID, SlotDate, SlotStartTime, SlotEndTime, PatientAppointment_ID " +
-                    $"FROM dbo.StaffSlots WHERE StaffSlot_ID IN ({inClause})";
-
                 var slots = new List<SlotInfo>();
 
-                using (var cmdSlots = new SqlCommand(sqlSlots, conn, tx))
+                // Load staff slots through existing StaffSlots sproc and then keep selected IDs
+                using (var cmdSlots = new SqlCommand("spStaffSlots_List", conn, tx)
                 {
-                    cmdSlots.Parameters.AddRange(inParams);
+                    CommandType = CommandType.StoredProcedure
+                })
+                {
+                    cmdSlots.Parameters.AddRange(new[]
+                    {
+                        new SqlParameter("@Staff_ID", staffId),
+                        new SqlParameter("@FromDate", SqlDbType.Date) { Value = apptDate.Date },
+                        new SqlParameter("@ToDate", SqlDbType.Date) { Value = apptDate.Date }
+                    });
 
                     using var reader = await cmdSlots.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
+                        var staffSlotId = reader.GetInt32(0);
+                        if (!slotIds.Contains(staffSlotId))
+                        {
+                            continue;
+                        }
+
                         slots.Add(new SlotInfo
                         {
-                            StaffSlotId = reader.GetInt32(0),
-                            StaffId = reader.GetString(1),
-                            SlotDate = reader.GetDateTime(2),
-                            SlotStartTime = (TimeSpan)reader.GetValue(3),
-                            SlotEndTime = (TimeSpan)reader.GetValue(4),
-                            PatientAppointmentId = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5)
+                            StaffSlotId = staffSlotId,
+                            StaffId = staffId,
+                            SlotDate = reader.GetDateTime(1),
+                            SlotStartTime = TimeSpan.Parse(reader.GetString(2), CultureInfo.InvariantCulture),
+                            SlotEndTime = TimeSpan.Parse(reader.GetString(3), CultureInfo.InvariantCulture),
+                            PatientAppointmentId = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4)
                         });
                     }
                 }
@@ -1078,9 +1070,10 @@ namespace CRC.Web.Controllers.Patient
                     await cmd.ExecuteNonQueryAsync();
 
                     // Release previous slots (if any)
-                    using (var cmdClear = new SqlCommand(
-                               "UPDATE dbo.StaffSlots SET PatientAppointment_ID = NULL WHERE PatientAppointment_ID = @ApptId",
-                               conn, tx))
+                    using (var cmdClear = new SqlCommand("spStaffSlots_ClearAppointment", conn, tx)
+                    {
+                        CommandType = CommandType.StoredProcedure
+                    })
                     {
                         cmdClear.Parameters.Add(new SqlParameter("@ApptId", SqlDbType.Int) { Value = appointmentId });
                         await cmdClear.ExecuteNonQueryAsync();
@@ -1088,13 +1081,16 @@ namespace CRC.Web.Controllers.Patient
                 }
 
                 // Assign selected slots to the appointment
-                var (inClause2, inParams2) = BuildInClause("sid2", slotIds);
-                var sqlAssign = $"UPDATE dbo.StaffSlots SET PatientAppointment_ID = @ApptId WHERE StaffSlot_ID IN ({inClause2})";
-
-                using (var cmdAssign = new SqlCommand(sqlAssign, conn, tx))
+                using (var cmdAssign = new SqlCommand("spStaffSlots_AssignAppointment", conn, tx)
+                {
+                    CommandType = CommandType.StoredProcedure
+                })
                 {
                     cmdAssign.Parameters.Add(new SqlParameter("@ApptId", SqlDbType.Int) { Value = finalAppointmentId });
-                    cmdAssign.Parameters.AddRange(inParams2);
+                    cmdAssign.Parameters.Add(new SqlParameter("@StaffSlotIds", SqlDbType.VarChar, -1)
+                    {
+                        Value = string.Join(",", slotIds)
+                    });
                     await cmdAssign.ExecuteNonQueryAsync();
                 }
 
