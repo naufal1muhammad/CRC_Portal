@@ -191,7 +191,7 @@ namespace CRC.Web.Controllers.StaffPatient
                         // Leave as DateTime? and let UI render it (you already format it).
                         journeyDate = Dt(r["PatientJourney_Date"]),
 
-                        // ✅ audit timestamps stored in UTC
+                        // audit timestamps stored in UTC
                         createdAt = Utc(r["CreatedAt"]),
                         createdByStaffName = r["CreatedByStaffName"]?.ToString() ?? "",
 
