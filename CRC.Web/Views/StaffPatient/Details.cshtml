@@ -28,6 +28,13 @@
                 Patient Journey
             </button>
         </li>
+
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-documents-tab" data-bs-toggle="tab" data-bs-target="#tab-documents"
+                    type="button" role="tab" aria-controls="tab-documents" aria-selected="false">
+                Documents
+            </button>
+        </li>
     </ul>
 
     <div class="tab-content" id="spTabsContent">
@@ -225,6 +232,23 @@
                     <div id="journeyTimeline" class="position-relative">
                         <!-- JS will render timeline here -->
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- =========================
+             TAB 3: DOCUMENTS
+        ========================== -->
+        <div class="tab-pane fade" id="tab-documents" role="tabpanel" aria-labelledby="tab-documents-tab">
+            <div id="documentsContent">
+                <div id="documentsMessage" class="text-danger small mb-2"></div>
+
+                <p class="text-muted small mb-2">
+                    Upload documents by type. Uploads are saved immediately and do not depend on the main Save button.
+                </p>
+
+                <div id="patientDocumentsContainer">
+                    <p class="text-muted mb-0">Loading document types...</p>
                 </div>
             </div>
         </div>
