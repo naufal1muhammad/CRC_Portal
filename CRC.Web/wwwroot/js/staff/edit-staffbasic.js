@@ -924,6 +924,9 @@
         await loadStaffBasic(staffId);
         updateStaffTypeEditable(staffId);
 
+        const genderSelect = document.getElementById('StaffGender');
+        setSelectDisabled(genderSelect, true);
+
         const nricInput = document.getElementById('StaffNRIC');
         if (nricInput) {
             nricInput.addEventListener('input', function () {
