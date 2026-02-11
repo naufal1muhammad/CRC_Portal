@@ -12,7 +12,7 @@
     <!-- ===============================================-->
     <!--    Favicons-->
     <!-- ===============================================-->
-    <link rel="icon" type="image/png" sizes="32x32" href="~/images/lindung-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="~/images/nucentra-icon.png" />
     <meta name="theme-color" content="#ffffff">
     <script src="~/lib/falcon/public/assets/js/config.js"></script>
     <script src="~/lib/falcon/public/vendors/simplebar/simplebar.min.js"></script>
@@ -65,12 +65,14 @@
 
     @await RenderSectionAsync("Stylesheets", required: false)
 </head>
-<body class="secondary-color">
-    <div class="container d-flex align-items-center justify-content-center" style="min-height: 100vh;">
-        <div class="w-100" style="max-width: 420px;">
-            <div class="card shadow-sm border-0">
+<body class="login-bg">
+    <div class="container-fluid d-flex justify-content-end align-items-start min-vh-100 p-4 p-md-5 login-wrap">
+        <div class="w-100" style="max-width: 600px;">
+            <div class="card shadow-sm border-0 login-card">
                 <div class="card-body p-4 primary-color">
-                    <img class="d-block mx-auto mb-4" src="~/images/nucentra-logo.png" alt="CRC Logo" height="80" width="250" />
+                    <img class="d-block mx-auto mb-4"
+                         src="~/images/nucentra-logo.png"
+                         alt="Nucentra Logo" height="115" width="400" />
 
                     @RenderBody()
                 </div>

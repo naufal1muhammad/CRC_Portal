@@ -12,12 +12,33 @@
   box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
 }
 
-.primary-color {
-    background-color: #f5f2fc;
+/*LOGIN SECTION*/
+/* Background image */
+.login-bg {
+    min-height: 100vh;
+    background-image: url('/images/login-bg.png'); /* <-- your attached image */
+    background-repeat: no-repeat;
+    background-position: left center; /* keeps the purple curves visible */
+    background-size: cover;
 }
 
-.secondary-color {
-    background-color: #826ccb;
+/* Optional: make card readable on top of background */
+.login-card {
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+/* On small screens, center it again */
+@media (max-width: 768px) {
+    .login-wrap {
+        justify-content: center !important;
+        align-items: center !important;
+    }
+}
+/**/
+.primary-color {
+    background-color: #f5f2fc;
 }
 
 /* Generic small-ish chart */
