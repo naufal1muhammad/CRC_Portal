@@ -13,13 +13,12 @@ BEGIN
         UNION
 
         SELECT
-            NULLIF(LTRIM(RTRIM(ISNULL([StaffDocumentType_ID], ''))), '')   AS [StaffDocumentType_ID],
-            NULLIF(LTRIM(RTRIM(ISNULL([StaffDocumentType_Name], ''))), '') AS [StaffDocumentType_Name]
-        FROM [dbo].[StaffDocument]
+            NULLIF(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], ''))), '') AS [StaffDocumentType_ID],
+            NULL AS [StaffDocumentType_Name]
+        FROM [dbo].[StaffDocument] d
     )
     SELECT DISTINCT
         [StaffDocumentType_ID],
-        -- Fallback to ID if Name is missing (keeps the dropdown usable for older/bad data)
         COALESCE([StaffDocumentType_Name], [StaffDocumentType_ID]) AS [StaffDocumentType_Name]
     FROM src
     WHERE COALESCE([StaffDocumentType_Name], [StaffDocumentType_ID]) IS NOT NULL

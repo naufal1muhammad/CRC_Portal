@@ -47,38 +47,28 @@ BEGIN
     BEGIN
         SELECT
             d.[Staff_ID] AS [Id],
-            d.[Staff_Name] AS [Name],
-            COALESCE(NULLIF(LTRIM(RTRIM(d.[StaffDocumentType_Name])), ''), NULLIF(LTRIM(RTRIM(d.[StaffDocumentType_ID])), '')) AS [DocumentType],
+            s.[Staff_Name] AS [Name],
+            COALESCE(NULLIF(LTRIM(RTRIM(t.[StaffDocumentType_Name])), ''), NULLIF(LTRIM(RTRIM(d.[StaffDocumentType_ID])), '')) AS [DocumentType],
             d.[FileName] AS [FileName],
             d.[FilePath] AS [FilePath],
             CONVERT(VARCHAR(100), d.[UploadedOn], 120) AS [UploadedOn]
         FROM [dbo].[StaffDocument] d
+        LEFT JOIN [dbo].[Staff] s
+            ON UPPER(LTRIM(RTRIM(ISNULL(s.[Staff_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(d.[Staff_ID], ''))))
+        LEFT JOIN [dbo].[LU_STAFFDOCUMENTTYPE] t
+            ON UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], ''))))
         WHERE
-            (@IndividualNameU IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(d.[Staff_Name], '')))) = @IndividualNameU)
+            (@IndividualNameU IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(s.[Staff_Name], '')))) = @IndividualNameU)
             AND (
                 @DocumentTypeU IS NULL
-                OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_Name], '')))) = @DocumentTypeU
+                OR UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_Name], '')))) = @DocumentTypeU
+                OR UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_ID], '')))) = @DocumentTypeU
                 OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], '')))) = @DocumentTypeU
-                OR EXISTS
-                (
-                    SELECT 1
-                    FROM [dbo].[LU_STAFFDOCUMENTTYPE] t
-                    WHERE
-                        (
-                            UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_Name], '')))) = @DocumentTypeU
-                            OR UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_ID], '')))) = @DocumentTypeU
-                        )
-                        AND
-                        (
-                            UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_ID], ''))))
-                            OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_Name], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_Name], ''))))
-                        )
-                )
             )
         ORDER BY
             d.[UploadedOn] DESC,
-            d.[Staff_Name],
-            d.[StaffDocumentType_Name];
+            s.[Staff_Name],
+            t.[StaffDocumentType_Name];
     END
     ELSE
     BEGIN
