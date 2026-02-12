@@ -167,7 +167,9 @@
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_LookupStatuses.sql" />
     <Build Include="Stored Procedures\PatientAppointment\spPatientAppointment_LookupBranches.sql" />
     <Build Include="Stored Procedures\PatientDocument\spPatientDocument_PatientNames.sql" />
+    <Build Include="Stored Procedures\PatientDocument\spPatientDocument_LookupDocuments.sql" />
     <Build Include="Stored Procedures\StaffDocument\spStaffDocument_StaffNames.sql" />
+    <Build Include="Stored Procedures\StaffDocument\spStaffDocument_LookupDocuments.sql" />
     <Build Include="Stored Procedures\PatientDocument\spDocuments_Search.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Branch_CountActive.sql" />
     <Build Include="Stored Procedures\Dashboard\spDashboard_Patient_ByRace.sql" />
