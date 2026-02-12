@@ -1,10 +1,17 @@
-﻿CREATE PROCEDURE [dbo].[spPatientDocument_LookupDocuments]
+CREATE PROCEDURE [dbo].[spPatientDocument_LookupDocuments]
 AS
 BEGIN
     SET NOCOUNT ON;
 
     ;WITH src AS
     (
+        SELECT
+            NULLIF(LTRIM(RTRIM(ISNULL([PatientDocumentType_ID], ''))), '')   AS [PatientDocumentType_ID],
+            NULLIF(LTRIM(RTRIM(ISNULL([PatientDocumentType_Name], ''))), '') AS [PatientDocumentType_Name]
+        FROM [dbo].[LU_PATDOCUMENTTYPE]
+
+        UNION
+
         SELECT
             NULLIF(LTRIM(RTRIM(ISNULL([PatientDocumentType_ID], ''))), '')   AS [PatientDocumentType_ID],
             NULLIF(LTRIM(RTRIM(ISNULL([PatientDocumentType_Name], ''))), '') AS [PatientDocumentType_Name]
