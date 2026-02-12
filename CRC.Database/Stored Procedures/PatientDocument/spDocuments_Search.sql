@@ -24,8 +24,8 @@ BEGIN
             d.[UploadedOn]               AS [UploadedOn]
         FROM [dbo].[PatientDocument] d
         WHERE
-            (@IndividualName IS NULL OR d.[Patient_Name] = @IndividualName)
-            AND (@DocumentType IS NULL OR d.[PatientDocumentType_Name] = @DocumentType)
+            (@IndividualName IS NULL OR LTRIM(RTRIM(ISNULL(d.[Patient_Name], ''))) = @IndividualName)
+            AND (@DocumentType IS NULL OR LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_Name], ''))) = @DocumentType)
         ORDER BY
             d.[UploadedOn] DESC,
             d.[Patient_Name],
@@ -42,8 +42,8 @@ BEGIN
             d.[UploadedOn]               AS [UploadedOn]
         FROM [dbo].[StaffDocument] d
         WHERE
-            (@IndividualName IS NULL OR d.[Staff_Name] = @IndividualName)
-            AND (@DocumentType IS NULL OR d.[StaffDocumentType_Name] = @DocumentType)
+            (@IndividualName IS NULL OR LTRIM(RTRIM(ISNULL(d.[Staff_Name], ''))) = @IndividualName)
+            AND (@DocumentType IS NULL OR LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_Name], ''))) = @DocumentType)
         ORDER BY
             d.[UploadedOn] DESC,
             d.[Staff_Name],
