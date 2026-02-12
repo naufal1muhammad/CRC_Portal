@@ -40,7 +40,7 @@ namespace CRC.Web.Controllers.Documents
                     empty
                 );
 
-                // 2) Patient doc types (only values that actually exist in uploaded documents)
+                // 2) Patient doc types
                 var dtPatTypes = await _db.ExecuteDataTableAsync(
                     "spPatientDocument_LookupDocuments",
                     empty
@@ -52,7 +52,7 @@ namespace CRC.Web.Controllers.Documents
                     empty
                 );
 
-                // 4) Staff doc types (only values that actually exist in uploaded documents)
+                // 4) Staff doc types
                 var dtStaffTypes = await _db.ExecuteDataTableAsync(
                     "spStaffDocument_LookupDocuments",
                     empty

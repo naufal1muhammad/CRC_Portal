@@ -9,41 +9,55 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    -- Normalise mode to guard against case-sensitive collations & trailing spaces.
+    SET @Mode = UPPER(LTRIM(RTRIM(ISNULL(@Mode, ''))));
+
     -- Normalise blanks => NULL
     SET @IndividualName = NULLIF(LTRIM(RTRIM(@IndividualName)), '');
     SET @DocumentType   = NULLIF(LTRIM(RTRIM(@DocumentType)),   '');
 
-    IF (@Mode = 'Patient')
+    DECLARE @IndividualNameU VARCHAR(200) = CASE WHEN @IndividualName IS NULL THEN NULL ELSE UPPER(@IndividualName) END;
+    DECLARE @DocumentTypeU   VARCHAR(200) = CASE WHEN @DocumentType IS NULL THEN NULL ELSE UPPER(@DocumentType) END;
+
+    IF (@Mode = 'PATIENT')
     BEGIN
         SELECT
-            d.[Patient_ID]               AS [Id],
-            d.[Patient_Name]             AS [Name],
-            d.[PatientDocumentType_Name] AS [DocumentType],
-            d.[FileName]                 AS [FileName],
-            d.[FilePath]                 AS [FilePath],
-            d.[UploadedOn]               AS [UploadedOn]
+            d.[Patient_ID] AS [Id],
+            d.[Patient_Name] AS [Name],
+            COALESCE(NULLIF(LTRIM(RTRIM(d.[PatientDocumentType_Name])), ''), NULLIF(LTRIM(RTRIM(d.[PatientDocumentType_ID])), '')) AS [DocumentType],
+            d.[FileName] AS [FileName],
+            d.[FilePath] AS [FilePath],
+            d.[UploadedOn] AS [UploadedOn]
         FROM [dbo].[PatientDocument] d
         WHERE
-            (@IndividualName IS NULL OR LTRIM(RTRIM(ISNULL(d.[Patient_Name], ''))) = @IndividualName)
-            AND (@DocumentType IS NULL OR LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_Name], ''))) = @DocumentType)
+            (@IndividualNameU IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(d.[Patient_Name], '')))) = @IndividualNameU)
+            AND (
+                @DocumentTypeU IS NULL
+                OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_Name], '')))) = @DocumentTypeU
+                OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_ID], '')))) = @DocumentTypeU
+            )
         ORDER BY
-            d.[UploadedOn] DESC,
+            TRY_CONVERT(DATETIME, d.[UploadedOn], 120) DESC,
             d.[Patient_Name],
             d.[PatientDocumentType_Name];
     END
-    ELSE IF (@Mode = 'Staff')
+    ELSE IF (@Mode = 'STAFF')
     BEGIN
         SELECT
-            d.[Staff_ID]                 AS [Id],
-            d.[Staff_Name]               AS [Name],
-            d.[StaffDocumentType_Name]   AS [DocumentType],
-            d.[FileName]                 AS [FileName],
-            d.[FilePath]                 AS [FilePath],
-            d.[UploadedOn]               AS [UploadedOn]
+            d.[Staff_ID] AS [Id],
+            d.[Staff_Name] AS [Name],
+            COALESCE(NULLIF(LTRIM(RTRIM(d.[StaffDocumentType_Name])), ''), NULLIF(LTRIM(RTRIM(d.[StaffDocumentType_ID])), '')) AS [DocumentType],
+            d.[FileName] AS [FileName],
+            d.[FilePath] AS [FilePath],
+            CONVERT(VARCHAR(100), d.[UploadedOn], 120) AS [UploadedOn]
         FROM [dbo].[StaffDocument] d
         WHERE
-            (@IndividualName IS NULL OR LTRIM(RTRIM(ISNULL(d.[Staff_Name], ''))) = @IndividualName)
-            AND (@DocumentType IS NULL OR LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_Name], ''))) = @DocumentType)
+            (@IndividualNameU IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(d.[Staff_Name], '')))) = @IndividualNameU)
+            AND (
+                @DocumentTypeU IS NULL
+                OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_Name], '')))) = @DocumentTypeU
+                OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], '')))) = @DocumentTypeU
+            )
         ORDER BY
             d.[UploadedOn] DESC,
             d.[Staff_Name],

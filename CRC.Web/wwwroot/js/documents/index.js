@@ -1,5 +1,5 @@
 ﻿// @ts-nocheck
-(function() {
+(function () {
     let modePatientRadio;
     let modeStaffRadio;
     let selName;
@@ -66,6 +66,16 @@
     function refreshFiltersForMode() {
         const mode = getCurrentMode();
 
+        // If select2 is applied, destroy first so that new <option> items are reflected correctly.
+        if (window.$ && $.fn.select2) {
+            try {
+                $('#docIndividualName').select2('destroy');
+                $('#docDocumentType').select2('destroy');
+            } catch (e) {
+                // ignore if not initialised
+            }
+        }
+
         if (mode === 'Patient') {
             setSelectOptions(selName, patientNames, '-- All Patients --');
             setSelectOptions(selDocType, patientDocTypes, '-- All Doc Types --');
@@ -74,13 +84,12 @@
             setSelectOptions(selDocType, staffDocTypes, '-- All Doc Types --');
         }
 
+
         if (selName) selName.value = '';
         if (selDocType) selDocType.value = '';
 
-        if (window.$ && $.fn.select2) {
-            $('#docIndividualName').val('').trigger('change');
-            $('#docDocumentType').val('').trigger('change');
-        }
+        // Re-apply select2 (if available) after repopulating options
+        applySelect2();
     }
 
     async function loadLookups() {
@@ -231,8 +240,8 @@
     async function performSearch() {
         const mode = getCurrentMode();
 
-        const nameVal = selName ? (selName.value || '') : '';
-        const docTypeVal = selDocType ? (selDocType.value || '') : '';
+        const nameVal = selName ? (selName.value || '').trim() : '';
+        const docTypeVal = selDocType ? (selDocType.value || '').trim() : '';
 
         if (msg) {
             msg.textContent = '';
@@ -323,7 +332,7 @@
 
     function wireEvents() {
         if (modePatientRadio) {
-            modePatientRadio.addEventListener('change', function() {
+            modePatientRadio.addEventListener('change', function () {
                 if (modePatientRadio.checked) {
                     refreshFiltersForMode();
                 }
@@ -331,7 +340,7 @@
         }
 
         if (modeStaffRadio) {
-            modeStaffRadio.addEventListener('change', function() {
+            modeStaffRadio.addEventListener('change', function () {
                 if (modeStaffRadio.checked) {
                     refreshFiltersForMode();
                 }
@@ -339,19 +348,19 @@
         }
 
         if (btnSearch) {
-            btnSearch.addEventListener('click', function() {
+            btnSearch.addEventListener('click', function () {
                 performSearch();
             });
         }
 
         if (btnClear) {
-            btnClear.addEventListener('click', function() {
+            btnClear.addEventListener('click', function () {
                 clearFilters();
             });
         }
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         modePatientRadio = document.getElementById('docModePatient');
         modeStaffRadio = document.getElementById('docModeStaff');
         selName = document.getElementById('docIndividualName');
