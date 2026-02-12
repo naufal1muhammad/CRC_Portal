@@ -12,11 +12,13 @@ BEGIN
         a.Audit_Action,
         a.Audit_At,
         a.Staff_ID,
-        a.Staff_Name,
+        s.Staff_Name,
         a.Audit_Note
     FROM dbo.PatientJourneyAudit a
     INNER JOIN dbo.PatientJourney pj
         ON pj.PatientJourney_ID = a.PatientJourney_ID
+    LEFT JOIN dbo.Staff s
+        ON s.Staff_ID = a.Staff_ID
     WHERE pj.Patient_ID = @Patient_ID
     ORDER BY
         a.PatientJourney_ID ASC,

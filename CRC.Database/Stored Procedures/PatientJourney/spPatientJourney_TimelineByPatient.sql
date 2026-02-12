@@ -26,8 +26,10 @@ BEGIN
         SELECT TOP 1
             a.Audit_At,
             a.Staff_ID,
-            a.Staff_Name
+            s.Staff_Name
         FROM dbo.PatientJourneyAudit a
+        LEFT JOIN dbo.Staff s
+            ON s.Staff_ID = a.Staff_ID
         WHERE a.PatientJourney_ID = pj.PatientJourney_ID
           AND a.Audit_Action = 'CREATED'
         ORDER BY a.Audit_At ASC
@@ -37,8 +39,10 @@ BEGIN
         SELECT TOP 1
             a.Audit_At,
             a.Staff_ID,
-            a.Staff_Name
+            s.Staff_Name
         FROM dbo.PatientJourneyAudit a
+        LEFT JOIN dbo.Staff s
+            ON s.Staff_ID = a.Staff_ID
         WHERE a.PatientJourney_ID = pj.PatientJourney_ID
           AND a.Audit_Action IN ('UPDATED','EDITED')
         ORDER BY a.Audit_At DESC
