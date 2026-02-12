@@ -3,26 +3,26 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    ;WITH src AS
+    ;WITH docTypes AS
     (
-        SELECT
-            NULLIF(LTRIM(RTRIM(ISNULL([PatientDocumentType_ID], ''))), '')   AS [PatientDocumentType_ID],
-            NULLIF(LTRIM(RTRIM(ISNULL([PatientDocumentType_Name], ''))), '') AS [PatientDocumentType_Name]
-        FROM [dbo].[LU_PATDOCUMENTTYPE]
+        SELECT DISTINCT
+            NULLIF(LTRIM(RTRIM(ISNULL(pd.[PatientDocumentType_ID], ''))), '') AS [PatientDocumentType_ID]
+        FROM [dbo].[PatientDocument] pd
+        WHERE NULLIF(LTRIM(RTRIM(ISNULL(pd.[PatientDocumentType_ID], ''))), '') IS NOT NULL
 
         UNION
 
-        SELECT
-            NULLIF(LTRIM(RTRIM(ISNULL([PatientDocumentType_ID], ''))), '')   AS [PatientDocumentType_ID],
-            NULLIF(LTRIM(RTRIM(ISNULL([PatientDocumentType_Name], ''))), '') AS [PatientDocumentType_Name]
-        FROM [dbo].[PatientDocument]
+        SELECT DISTINCT
+            NULLIF(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_ID], ''))), '') AS [PatientDocumentType_ID]
+        FROM [dbo].[LU_PATDOCUMENTTYPE] t
+        WHERE NULLIF(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_ID], ''))), '') IS NOT NULL
     )
-    SELECT DISTINCT
-        [PatientDocumentType_ID],
-        -- Fallback to ID if Name is missing (keeps the dropdown usable for older/bad data)
-        COALESCE([PatientDocumentType_Name], [PatientDocumentType_ID]) AS [PatientDocumentType_Name]
-    FROM src
-    WHERE COALESCE([PatientDocumentType_Name], [PatientDocumentType_ID]) IS NOT NULL
-    ORDER BY COALESCE([PatientDocumentType_Name], [PatientDocumentType_ID]);
+    SELECT
+        dt.[PatientDocumentType_ID],
+        COALESCE(NULLIF(LTRIM(RTRIM(t.[PatientDocumentType_Name])), ''), dt.[PatientDocumentType_ID]) AS [PatientDocumentType_Name]
+    FROM docTypes dt
+    LEFT JOIN [dbo].[LU_PATDOCUMENTTYPE] t
+        ON UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_ID], '')))) = UPPER(dt.[PatientDocumentType_ID])
+    ORDER BY COALESCE(NULLIF(LTRIM(RTRIM(t.[PatientDocumentType_Name])), ''), dt.[PatientDocumentType_ID]);
 END;
 GO

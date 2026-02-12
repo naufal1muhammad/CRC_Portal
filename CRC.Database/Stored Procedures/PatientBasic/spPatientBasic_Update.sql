@@ -1,4 +1,4 @@
-﻿CREATE PROCEDURE [dbo].[spPatientBasic_Update]
+CREATE PROCEDURE [dbo].[spPatientBasic_Update]
 (
     @Patient_ID                    VARCHAR(100),
 
@@ -84,12 +84,7 @@ BEGIN
     FROM [dbo].[PatientFollowUp] pf
     WHERE pf.[Patient_ID] = @Patient_ID;
 
-    -- PatientDocument: Patient_ID, Patient_Name
-    UPDATE pd
-    SET
-        pd.[Patient_Name] = @Patient_Name
-    FROM [dbo].[PatientDocument] pd
-    WHERE pd.[Patient_ID] = @Patient_ID;
+    -- PatientDocument: no name field is stored; name is resolved from PatientBasic
 
     -- PatientColonoscopy: Patient_ID, Patient_Name
     UPDATE pc

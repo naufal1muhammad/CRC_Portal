@@ -20,38 +20,28 @@ BEGIN
     BEGIN
         SELECT
             d.[Patient_ID] AS [Id],
-            d.[Patient_Name] AS [Name],
-            COALESCE(NULLIF(LTRIM(RTRIM(d.[PatientDocumentType_Name])), ''), NULLIF(LTRIM(RTRIM(d.[PatientDocumentType_ID])), '')) AS [DocumentType],
+            pb.[Patient_Name] AS [Name],
+            COALESCE(NULLIF(LTRIM(RTRIM(t.[PatientDocumentType_Name])), ''), NULLIF(LTRIM(RTRIM(d.[PatientDocumentType_ID])), '')) AS [DocumentType],
             d.[FileName] AS [FileName],
             d.[FilePath] AS [FilePath],
             d.[UploadedOn] AS [UploadedOn]
         FROM [dbo].[PatientDocument] d
+        LEFT JOIN [dbo].[PatientBasic] pb
+            ON pb.[Patient_ID] = d.[Patient_ID]
+        LEFT JOIN [dbo].[LU_PATDOCUMENTTYPE] t
+            ON UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_ID], ''))))
         WHERE
-            (@IndividualNameU IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(d.[Patient_Name], '')))) = @IndividualNameU)
+            (@IndividualNameU IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(pb.[Patient_Name], '')))) = @IndividualNameU)
             AND (
                 @DocumentTypeU IS NULL
-                OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_Name], '')))) = @DocumentTypeU
+                OR UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_Name], '')))) = @DocumentTypeU
+                OR UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_ID], '')))) = @DocumentTypeU
                 OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_ID], '')))) = @DocumentTypeU
-                OR EXISTS
-                (
-                    SELECT 1
-                    FROM [dbo].[LU_PATDOCUMENTTYPE] t
-                    WHERE
-                        (
-                            UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_Name], '')))) = @DocumentTypeU
-                            OR UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_ID], '')))) = @DocumentTypeU
-                        )
-                        AND
-                        (
-                            UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_ID], ''))))
-                            OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_Name], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_Name], ''))))
-                        )
-                )
             )
         ORDER BY
             TRY_CONVERT(DATETIME, d.[UploadedOn], 120) DESC,
-            d.[Patient_Name],
-            d.[PatientDocumentType_Name];
+            pb.[Patient_Name],
+            t.[PatientDocumentType_Name];
     END
     ELSE IF (@Mode = 'STAFF')
     BEGIN
