@@ -40,9 +40,9 @@ namespace CRC.Web.Controllers.Documents
                     empty
                 );
 
-                // 2) Patient doc types
+                // 2) Patient doc types (only values that actually exist in uploaded documents)
                 var dtPatTypes = await _db.ExecuteDataTableAsync(
-                    "spLU_PatientDocumentType_List",
+                    "spPatientDocument_LookupDocuments",
                     empty
                 );
 
@@ -52,9 +52,9 @@ namespace CRC.Web.Controllers.Documents
                     empty
                 );
 
-                // 4) Staff doc types
+                // 4) Staff doc types (only values that actually exist in uploaded documents)
                 var dtStaffTypes = await _db.ExecuteDataTableAsync(
-                    "spLU_STAFFDOCUMENTTYPE_List",
+                    "spStaffDocument_LookupDocuments",
                     empty
                 );
 
@@ -150,10 +150,10 @@ namespace CRC.Web.Controllers.Documents
             {
                 var parameters = new[]
                 {
-            new SqlParameter("@Mode", mode),
-            new SqlParameter("@IndividualName", (object)individual ?? DBNull.Value),
-            new SqlParameter("@DocumentType", (object)docType ?? DBNull.Value)
-        };
+                    new SqlParameter("@Mode", mode),
+                    new SqlParameter("@IndividualName", string.IsNullOrWhiteSpace(individual) ? DBNull.Value : individual),
+                    new SqlParameter("@DocumentType", string.IsNullOrWhiteSpace(docType) ? DBNull.Value : docType)
+                };
 
                 var dt = await _db.ExecuteDataTableAsync("spDocuments_Search", parameters);
 
