@@ -68,16 +68,6 @@ namespace CRC.Web.Controllers.Documents
                     .OrderBy(x => x.name)
                     .ToList();
 
-                var patientDocTypes = dtPatTypes.Rows.Cast<DataRow>()
-                    .Select(r => new
-                    {
-                        name = r["PatientDocumentType_Name"]?.ToString() ?? string.Empty
-                    })
-                    .Where(x => !string.IsNullOrWhiteSpace(x.name))
-                    .Distinct()
-                    .OrderBy(x => x.name)
-                    .ToList();
-
                 var staffNames = dtStaffNames.Rows.Cast<DataRow>()
                     .Select(r => new
                     {
@@ -88,15 +78,38 @@ namespace CRC.Web.Controllers.Documents
                     .OrderBy(x => x.name)
                     .ToList();
 
-                var staffDocTypes = dtStaffTypes.Rows.Cast<DataRow>()
+                var patientDocTypes = dtPatTypes.Rows.Cast<DataRow>()
                     .Select(r => new
                     {
-                        name = r["StaffDocumentType_Name"]?.ToString() ?? string.Empty
+                        id = (r["PatientDocumentType_ID"]?.ToString() ?? string.Empty).Trim(),
+                        name = (r["PatientDocumentType_Name"]?.ToString() ?? string.Empty).Trim()
                     })
-                    .Where(x => !string.IsNullOrWhiteSpace(x.name))
+                    .Where(x => !(string.IsNullOrWhiteSpace(x.id) && string.IsNullOrWhiteSpace(x.name)))
+                    .Select(x => new
+                    {
+                        id = string.IsNullOrWhiteSpace(x.id) ? x.name : x.id,
+                        name = string.IsNullOrWhiteSpace(x.name) ? x.id : x.name
+                    })
                     .Distinct()
                     .OrderBy(x => x.name)
                     .ToList();
+
+                var staffDocTypes = dtStaffTypes.Rows.Cast<DataRow>()
+                    .Select(r => new
+                    {
+                        id = (r["StaffDocumentType_ID"]?.ToString() ?? string.Empty).Trim(),
+                        name = (r["StaffDocumentType_Name"]?.ToString() ?? string.Empty).Trim()
+                    })
+                    .Where(x => !(string.IsNullOrWhiteSpace(x.id) && string.IsNullOrWhiteSpace(x.name)))
+                    .Select(x => new
+                    {
+                        id = string.IsNullOrWhiteSpace(x.id) ? x.name : x.id,
+                        name = string.IsNullOrWhiteSpace(x.name) ? x.id : x.name
+                    })
+                    .Distinct()
+                    .OrderBy(x => x.name)
+                    .ToList();
+
 
                 return Ok(new
                 {

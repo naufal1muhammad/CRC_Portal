@@ -34,12 +34,14 @@
         select.appendChild(optAll);
 
         (items || []).forEach(item => {
-            const name = item.name || '';
-            if (!name) return;
+            const value = (item && (item.id || item.value || item.name) || '').toString();
+            const label = (item && (item.name || item.label || item.id) || '').toString();
+            if (!value && !label) return;
 
             const opt = document.createElement('option');
-            opt.value = name;
-            opt.textContent = name;
+            // Prefer stable IDs for filtering when provided
+            opt.value = value || label;
+            opt.textContent = label || value;
             select.appendChild(opt);
         });
     }

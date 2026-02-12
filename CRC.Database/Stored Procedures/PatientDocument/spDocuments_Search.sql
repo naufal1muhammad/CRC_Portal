@@ -1,4 +1,3 @@
--- This stored procedure is used to query the search function under Documents page, which queries two tables, PatientDocument and StaffDocument.
 CREATE PROCEDURE [dbo].[spDocuments_Search]
 (
     @Mode           VARCHAR(10),      -- 'Patient' or 'Staff'
@@ -9,10 +8,8 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Normalise mode to guard against case-sensitive collations & trailing spaces.
     SET @Mode = UPPER(LTRIM(RTRIM(ISNULL(@Mode, ''))));
 
-    -- Normalise blanks => NULL
     SET @IndividualName = NULLIF(LTRIM(RTRIM(@IndividualName)), '');
     SET @DocumentType   = NULLIF(LTRIM(RTRIM(@DocumentType)),   '');
 
@@ -48,8 +45,6 @@ BEGIN
                         (
                             UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_ID], ''))))
                             OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_Name], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_Name], ''))))
-                            OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_Name], ''))))
-                            OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_Name], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_ID], ''))))
                         )
                 )
             )
@@ -87,8 +82,6 @@ BEGIN
                         (
                             UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_ID], ''))))
                             OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_Name], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_Name], ''))))
-                            OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_Name], ''))))
-                            OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_Name], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_ID], ''))))
                         )
                 )
             )
@@ -99,7 +92,6 @@ BEGIN
     END
     ELSE
     BEGIN
-        -- Invalid mode: return empty set
         SELECT
             CAST(NULL AS VARCHAR(100)) AS [Id],
             CAST(NULL AS VARCHAR(200)) AS [Name],
