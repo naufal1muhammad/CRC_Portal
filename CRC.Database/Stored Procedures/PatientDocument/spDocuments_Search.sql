@@ -1,4 +1,4 @@
-﻿-- This stored procedure is used to query the search function under Documents page, which queries two tables, PatientDocument and StaffDocument.
+-- This stored procedure is used to query the search function under Documents page, which queries two tables, PatientDocument and StaffDocument.
 CREATE PROCEDURE [dbo].[spDocuments_Search]
 (
     @Mode           VARCHAR(10),      -- 'Patient' or 'Staff'
@@ -35,6 +35,23 @@ BEGIN
                 @DocumentTypeU IS NULL
                 OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_Name], '')))) = @DocumentTypeU
                 OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_ID], '')))) = @DocumentTypeU
+                OR EXISTS
+                (
+                    SELECT 1
+                    FROM [dbo].[LU_PATDOCUMENTTYPE] t
+                    WHERE
+                        (
+                            UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_Name], '')))) = @DocumentTypeU
+                            OR UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_ID], '')))) = @DocumentTypeU
+                        )
+                        AND
+                        (
+                            UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_ID], ''))))
+                            OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_Name], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_Name], ''))))
+                            OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_Name], ''))))
+                            OR UPPER(LTRIM(RTRIM(ISNULL(d.[PatientDocumentType_Name], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[PatientDocumentType_ID], ''))))
+                        )
+                )
             )
         ORDER BY
             TRY_CONVERT(DATETIME, d.[UploadedOn], 120) DESC,
@@ -57,6 +74,23 @@ BEGIN
                 @DocumentTypeU IS NULL
                 OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_Name], '')))) = @DocumentTypeU
                 OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], '')))) = @DocumentTypeU
+                OR EXISTS
+                (
+                    SELECT 1
+                    FROM [dbo].[LU_STAFFDOCUMENTTYPE] t
+                    WHERE
+                        (
+                            UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_Name], '')))) = @DocumentTypeU
+                            OR UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_ID], '')))) = @DocumentTypeU
+                        )
+                        AND
+                        (
+                            UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_ID], ''))))
+                            OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_Name], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_Name], ''))))
+                            OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_Name], ''))))
+                            OR UPPER(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_Name], '')))) = UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_ID], ''))))
+                        )
+                )
             )
         ORDER BY
             d.[UploadedOn] DESC,
