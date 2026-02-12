@@ -73,8 +73,11 @@ namespace CRC.Web.Controllers.Appointment
                 var types = dtTypes.Rows.Cast<DataRow>()
                     .Select(r => new
                     {
+                        id = r["PjAppType_ID"]?.ToString(),
                         name = r["PjAppType_Name"]?.ToString()
                     })
+                    .Where(x => !string.IsNullOrWhiteSpace(x.id))
+                    .OrderBy(x => x.name)
                     .ToList();
 
                 var branches = dtBranches.Rows.Cast<DataRow>()

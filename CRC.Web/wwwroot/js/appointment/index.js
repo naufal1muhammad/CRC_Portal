@@ -1,5 +1,5 @@
 ﻿// @ts-nocheck
-(function() {
+(function () {
     let dt = null;
     let msgEl;
 
@@ -28,11 +28,14 @@
         selectEl.appendChild(placeholder);
 
         (items || []).forEach(i => {
-            const value = i.name || '';
+            const value = (i?.id ?? i?.value ?? i?.name ?? '').toString();
             if (!value) return;
+
+            const text = (i?.name ?? i?.text ?? i?.label ?? value).toString();
+
             const opt = document.createElement('option');
             opt.value = value;
-            opt.textContent = value;
+            opt.textContent = text;
             selectEl.appendChild(opt);
         });
     }
@@ -108,34 +111,34 @@
     }
 
     function escapeHtml(str) {
-  return (str ?? '').toString().replace(/[&<>"']/g, s => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[s]));
-}
+        return (str ?? '').toString().replace(/[&<>"']/g, s => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[s]));
+    }
 
-function getNextStatus(current) {
-  const v = (current || '').toString().trim().toLowerCase();
-  if (v === 'scheduled') return 'Attended';
-  if (v === 'attended') return 'Not Attended';
-  if (v === 'not attended') return 'Scheduled';
-  return 'Attended';
-}
+    function getNextStatus(current) {
+        const v = (current || '').toString().trim().toLowerCase();
+        if (v === 'scheduled') return 'Attended';
+        if (v === 'attended') return 'Not Attended';
+        if (v === 'not attended') return 'Scheduled';
+        return 'Attended';
+    }
 
-async function updateAttendanceStatus(appointmentId, newStatus) {
-  const response = await fetch('/Appointment/UpdateAppointmentStatus', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
-    body: JSON.stringify({ patientAppointmentId: appointmentId, status: newStatus })
-  });
+    async function updateAttendanceStatus(appointmentId, newStatus) {
+        const response = await fetch('/Appointment/UpdateAppointmentStatus', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ patientAppointmentId: appointmentId, status: newStatus })
+        });
 
-  if (!response.ok) throw new Error('Server error updating status.');
+        if (!response.ok) throw new Error('Server error updating status.');
 
-  const result = await response.json();
-  if (!result.success) throw new Error(result.message || 'Failed to update status.');
-}
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message || 'Failed to update status.');
+    }
 
 
     function initOrUpdateDataTable(rows) {
@@ -153,35 +156,35 @@ async function updateAttendanceStatus(appointmentId, newStatus) {
             columns: [
                 { data: 'patientId', title: 'Patient ID' },
                 {
-  data: 'patientName',
-  title: 'Patient Name',
-  render: function (data, type, row) {
-    if (type !== 'display') return data || '';
-    const id = row.patientId || '';
-    const name = escapeHtml(data || '');
-    // If you created a proxy endpoint in Step 2, use it here instead
-    // e.g. `/Appointment/OpenPatient?patientId=...`
-    return `<a href="/Patient/Edit/${encodeURIComponent(id)}" class="text-decoration-none">${name}</a>`;
-  }
-},
+                    data: 'patientName',
+                    title: 'Patient Name',
+                    render: function (data, type, row) {
+                        if (type !== 'display') return data || '';
+                        const id = row.patientId || '';
+                        const name = escapeHtml(data || '');
+                        // If you created a proxy endpoint in Step 2, use it here instead
+                        // e.g. `/Appointment/OpenPatient?patientId=...`
+                        return `<a href="/Patient/Edit/${encodeURIComponent(id)}" class="text-decoration-none">${name}</a>`;
+                    }
+                },
                 { data: 'patientPhone', title: 'Phone' },
                 { data: 'patientEmail', title: 'Email' },
                 { data: 'appointmentType', title: 'Appointment Type' },
                 {
-  data: 'status',
-  title: 'Attendance Status',
-  render: function (data, type, row) {
-    if (type !== 'display') return data || '';
+                    data: 'status',
+                    title: 'Attendance Status',
+                    render: function (data, type, row) {
+                        if (type !== 'display') return data || '';
 
-    const raw = (data || '').toString();
-    const val = raw.trim().toLowerCase();
+                        const raw = (data || '').toString();
+                        const val = raw.trim().toLowerCase();
 
-    let badgeClass = 'badge rounded-pill bg-warning';
-    if (val === 'attended') badgeClass = 'badge rounded-pill bg-success';
-    else if (val === 'not attended') badgeClass = 'badge rounded-pill bg-danger';
-    else badgeClass = 'badge rounded-pill bg-warning';
+                        let badgeClass = 'badge rounded-pill bg-warning';
+                        if (val === 'attended') badgeClass = 'badge rounded-pill bg-success';
+                        else if (val === 'not attended') badgeClass = 'badge rounded-pill bg-danger';
+                        else badgeClass = 'badge rounded-pill bg-warning';
 
-    return `
+                        return `
       <a href="#"
          class="${badgeClass} js-status-toggle"
          title="Click to toggle"
@@ -189,8 +192,8 @@ async function updateAttendanceStatus(appointmentId, newStatus) {
         ${escapeHtml(raw)}
       </a>
     `;
-  }
-},
+                    }
+                },
                 { data: 'staffName', title: 'Assigned Staff' },
                 { data: 'branchName', title: 'Branch' },
                 { data: 'appointmentDateTime', title: 'Date & Time' }
@@ -204,34 +207,34 @@ async function updateAttendanceStatus(appointmentId, newStatus) {
             }
         });
         $('#appointmentsTable').off('click', '.js-status-toggle');
-$('#appointmentsTable').on('click', '.js-status-toggle', async function (e) {
-  e.preventDefault();
-  e.stopPropagation();
+        $('#appointmentsTable').on('click', '.js-status-toggle', async function (e) {
+            e.preventDefault();
+            e.stopPropagation();
 
-  if (!dt) return;
+            if (!dt) return;
 
-  let $tr = $(this).closest('tr');
-  if ($tr.hasClass('child')) $tr = $tr.prev(); // responsive fix
+            let $tr = $(this).closest('tr');
+            if ($tr.hasClass('child')) $tr = $tr.prev(); // responsive fix
 
-  const rowApi = dt.row($tr);
-  const rowData = rowApi.data();
-  if (!rowData) return;
+            const rowApi = dt.row($tr);
+            const rowData = rowApi.data();
+            if (!rowData) return;
 
-  const apptId = rowData.patientAppointmentId || rowData.appointmentId || 0;
-  if (!apptId) return;
+            const apptId = rowData.patientAppointmentId || rowData.appointmentId || 0;
+            if (!apptId) return;
 
-  const next = getNextStatus(rowData.status);
+            const next = getNextStatus(rowData.status);
 
-  try {
-    await updateAttendanceStatus(apptId, next);
+            try {
+                await updateAttendanceStatus(apptId, next);
 
-    // update UI immediately
-    rowData.status = next;
-    rowApi.data(rowData).invalidate().draw(false);
-  } catch (err) {
-    alert(err.message || 'Failed to update status.');
-  }
-});
+                // update UI immediately
+                rowData.status = next;
+                rowApi.data(rowData).invalidate().draw(false);
+            } catch (err) {
+                alert(err.message || 'Failed to update status.');
+            }
+        });
     }
 
     async function searchAppointments() {
@@ -284,49 +287,49 @@ $('#appointmentsTable').on('click', '.js-status-toggle', async function (e) {
     }
 
     function clearAppointmentFilters() {
-    // Text / date filters
-    const fromDate = document.getElementById('filterFromDate');
-    const toDate = document.getElementById('filterToDate');
+        // Text / date filters
+        const fromDate = document.getElementById('filterFromDate');
+        const toDate = document.getElementById('filterToDate');
 
-    if (fromDate) fromDate.value = '';
-    if (toDate) toDate.value = '';
+        if (fromDate) fromDate.value = '';
+        if (toDate) toDate.value = '';
 
-    // Select filters
-    const selectIds = [
-        'filterPatientName',
-        'filterStaffName',
-        'filterStatus',
-        'filterAppointmentType',
-        'filterBranch'
-    ];
+        // Select filters
+        const selectIds = [
+            'filterPatientName',
+            'filterStaffName',
+            'filterStatus',
+            'filterAppointmentType',
+            'filterBranch'
+        ];
 
-    selectIds.forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
+        selectIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
 
-        el.value = '';
+            el.value = '';
 
-        // If using Select2, also reset its UI
-        if (window.jQuery && $.fn.select2 && $(el).hasClass('select2')) {
-            $(el).val('').trigger('change');
+            // If using Select2, also reset its UI
+            if (window.jQuery && $.fn.select2 && $(el).hasClass('select2')) {
+                $(el).val('').trigger('change');
+            }
+        });
+
+        // Clear message
+        msgEl = document.getElementById('appointmentsMessage');
+        if (msgEl) {
+            msgEl.textContent = '';
+            msgEl.classList.remove('text-danger', 'text-success', 'text-muted');
         }
-    });
 
-    // Clear message
-    msgEl = document.getElementById('appointmentsMessage');
-    if (msgEl) {
-        msgEl.textContent = '';
-        msgEl.classList.remove('text-danger', 'text-success', 'text-muted');
+        // Clear the DataTable rows (so page becomes "empty" again)
+        if (dt) {
+            dt.clear();
+            dt.draw();
+        }
     }
 
-    // Clear the DataTable rows (so page becomes "empty" again)
-    if (dt) {
-        dt.clear();
-        dt.draw();
-    }
-}
-
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         msgEl = document.getElementById('appointmentsMessage');
 
         loadLookups();
@@ -337,8 +340,8 @@ $('#appointmentsTable').on('click', '.js-status-toggle', async function (e) {
         }
 
         const btnClear = document.getElementById('btnClearAppointments');
-    if (btnClear) {
-        btnClear.addEventListener('click', clearAppointmentFilters);
-    }
+        if (btnClear) {
+            btnClear.addEventListener('click', clearAppointmentFilters);
+        }
     });
 })();
