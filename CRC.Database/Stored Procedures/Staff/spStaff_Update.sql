@@ -51,12 +51,5 @@ BEGIN
         pja.[Staff_Name] = @Staff_Name
     FROM [dbo].[PatientJourneyAudit] pja
     WHERE pja.[Staff_ID] = @Staff_ID;
-
-    -- StaffDocument: Staff_ID, Staff_Name
-    UPDATE sd
-    SET
-        sd.[Staff_Name] = @Staff_Name
-    FROM [dbo].[StaffDocument] sd
-    WHERE sd.[Staff_ID] = @Staff_ID;
 END;
 GO
