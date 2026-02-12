@@ -40,16 +40,5 @@ BEGIN
         [Staff_Base]        = @Staff_Base,
         [Staff_Type]        = @Staff_Type
     WHERE [Staff_ID] = @Staff_ID;
-
-    ---------------------------------
-    -- 2) Cascade updates to children
-    ---------------------------------
-
-    -- PatientJourneyAudit: Staff_ID, Staff_Name
-    UPDATE pja
-    SET
-        pja.[Staff_Name] = @Staff_Name
-    FROM [dbo].[PatientJourneyAudit] pja
-    WHERE pja.[Staff_ID] = @Staff_ID;
 END;
 GO

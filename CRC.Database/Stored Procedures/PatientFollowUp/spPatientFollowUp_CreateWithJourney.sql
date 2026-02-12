@@ -26,7 +26,7 @@ BEGIN
         IF (@Patient_Name IS NULL OR LTRIM(RTRIM(@Patient_Name)) = '')
             RAISERROR('Patient not found.', 16, 1);
 
-        -- Match Assessment: Staff validation + Staff_Name
+        -- Match Assessment: Staff validation
         DECLARE @Staff_Name VARCHAR(100);
         SELECT @Staff_Name = s.Staff_Name
         FROM dbo.Staff s
@@ -77,13 +77,12 @@ BEGIN
             @DischargeSummary_Status
         );
 
-        -- Match Assessment: Audit columns + Staff_Name
+        -- Match Assessment: Audit columns
         INSERT INTO dbo.PatientJourneyAudit
         (
             PatientJourney_ID,
             Audit_Action,
             Staff_ID,
-            Staff_Name,
             Audit_Note
         )
         VALUES
@@ -91,7 +90,6 @@ BEGIN
             @PatientJourney_ID,
             'CREATED',
             @Staff_ID,
-            @Staff_Name,
             @Audit_Note
         );
 

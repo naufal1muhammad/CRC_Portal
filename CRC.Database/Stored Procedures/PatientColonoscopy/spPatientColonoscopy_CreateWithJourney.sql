@@ -164,7 +164,6 @@ BEGIN
             PatientJourney_ID,
             Audit_Action,
             Staff_ID,
-            Staff_Name,
             Audit_Note
         )
         VALUES
@@ -172,7 +171,6 @@ BEGIN
             @PatientJourney_ID,
             'CREATED',
             @Staff_ID,
-            @Staff_Name,
             @Audit_Note
         );
 

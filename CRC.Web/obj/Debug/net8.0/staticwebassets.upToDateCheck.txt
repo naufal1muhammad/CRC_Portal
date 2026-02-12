@@ -24,6 +24,7 @@ wwwroot\js\common\logger.js
 wwwroot\js\common\modalFalcon.js
 wwwroot\js\common\toast.js
 wwwroot\js\dashboard\index.js
+wwwroot\js\documents\index.js
 wwwroot\js\functions\ConfirmationModal.js
 wwwroot\js\functions\ConfirmationModalFalcon.js
 wwwroot\js\functions\Crud.js
@@ -8989,6 +8990,8 @@ wwwroot\lib\xlsx\package\xlsx.js
 wwwroot\lib\xlsx\package\xlsx.mjs
 wwwroot\lib\xlsx\package\xlsxworker.js
 wwwroot\uploads\patient\012037f9314e4f1b9e6d12cc6b682464_PERSONAL IDENTIFICATION.pdf
+wwwroot\uploads\patient\28a98915ad114f60a3b0aee3dbdc0620_ADVISE FORM.pdf
+wwwroot\uploads\patient\5d35708da931410caa96ae195fff7e27_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\patient\95fd73702f9d4d99bca61d18e640377e_iFOBT RESULTS.pdf
 wwwroot\uploads\patient\9ee7fc45dd10495186c6e760248010c4_HISTORY AND EXAMINATION FORM.pdf
 wwwroot\uploads\patient\ae2e750472124601b6eaaab1390fff98_COLONOSCOPY FINDING FORM.pdf
@@ -8997,4 +9000,3 @@ wwwroot\uploads\staff\573837a32b6c4e778f28e72d79239596_MMC REGISTRATION CERTIFIC
 wwwroot\uploads\staff\61d09cdec1c34fe9b82fe8edea759224_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\bb8159dc004f47399be2965ee02d21a7_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\staff\dc2113655b61436fb03bd71a57bcf45b_ANNUAL PRACTICING CERTIFICATE.pdf
-wwwroot\js\documents\index.js
