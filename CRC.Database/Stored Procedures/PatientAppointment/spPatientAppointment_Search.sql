@@ -18,7 +18,8 @@ BEGIN
         pb.[Patient_Name],
         pb.[Patient_Phone],
         pb.[Patient_Email],
-        t.[PjAppType_Name],
+        -- Prefer lookup name; fall back to stored value in PatientAppointment in case legacy rows store the name instead of the ID
+        COALESCE(t.[PjAppType_Name], pa.[PjAppType_ID]) AS [PjAppType_Name],
         pa.[PatientAppointment_Status],
         s.[Staff_Name],
         b.[Branch_Name],
@@ -38,7 +39,14 @@ BEGIN
         (@PatientName IS NULL OR pb.[Patient_Name] = @PatientName)
         AND (@StaffName IS NULL OR s.[Staff_Name] = @StaffName)
         AND (@Status IS NULL OR pa.[PatientAppointment_Status] = @Status)
-        AND (@PjAppTypeName IS NULL OR t.[PjAppType_Name] = @PjAppTypeName)
+        -- Appointment Type filter: support filtering by either type NAME (UI dropdown) or type ID (stored value)
+        -- This also makes the search resilient if older rows stored the name in PatientAppointment.PjAppType_ID.
+        AND (
+            @PjAppTypeName IS NULL
+            OR LTRIM(RTRIM(t.[PjAppType_Name])) = LTRIM(RTRIM(@PjAppTypeName))
+            OR LTRIM(RTRIM(t.[PjAppType_ID])) = LTRIM(RTRIM(@PjAppTypeName))
+            OR LTRIM(RTRIM(pa.[PjAppType_ID])) = LTRIM(RTRIM(@PjAppTypeName))
+        )
         AND (@BranchName IS NULL OR b.[Branch_Name] = @BranchName)
         AND (@FromDate IS NULL OR pa.[PatientAppointment_Date] >= @FromDate)
         AND (@ToDate IS NULL OR pa.[PatientAppointment_Date] < DATEADD(DAY, 1, @ToDate))
