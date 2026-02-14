@@ -2,7 +2,7 @@
 (
     [AuditTrail_Id]        INT IDENTITY(1,1) NOT NULL CONSTRAINT [PK_AuditTrails] PRIMARY KEY,
     [AuditTrail_EventUTC]  DATETIME2(0) NOT NULL CONSTRAINT [DF_AuditTrails_EventUTC] DEFAULT SYSUTCDATETIME(),
-    [User_Id]              INT NOT NULL,
+    [User_Id]              INT NULL,
 
     [AuditTrail_Action]    VARCHAR(20) NOT NULL,
     [AuditTrail_Category]  VARCHAR(50) NOT NULL,

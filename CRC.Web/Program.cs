@@ -8,6 +8,7 @@ builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add(new AuthorizeFilter());
 });
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CRC.Web.Data.DatabaseHelper>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>

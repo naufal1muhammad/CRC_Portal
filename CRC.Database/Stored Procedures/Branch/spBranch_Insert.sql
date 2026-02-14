@@ -4,7 +4,8 @@
     @Branch_State      VARCHAR(100),
     @Branch_Status     BIT,
     @Organization_ID   VARCHAR(100),
-    @Organization_Name VARCHAR(100)
+    @Organization_Name VARCHAR(100),
+    @User_ID           INT = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -80,6 +81,24 @@ BEGIN
         @Branch_Status,
         @Organization_ID,
         @Organization_Name
+    );
+
+    -- -----------------------------
+    -- Audit trail
+    -- -----------------------------
+    INSERT INTO [dbo].[AuditTrails]
+    (
+        [User_Id],
+        [AuditTrail_Action],
+        [AuditTrail_Category],
+        [AuditTrail_Summary]
+    )
+    VALUES
+    (
+        ISNULL(@User_ID, 0),
+        'INSERT',
+        'Branch',
+        CONCAT('Created Branch: Branch_ID=', @Branch_ID, '; Name=', @Branch_Name, '; Org_ID=', @Organization_ID)
     );
 
     -- Return the new Branch_ID (so C# can know it if needed)
