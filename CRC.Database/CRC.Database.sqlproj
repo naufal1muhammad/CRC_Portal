@@ -205,5 +205,6 @@
     <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_TodayAppointments.sql" />
     <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_ThisWeekAppointments.sql" />
     <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_ThisMonthAppointments.sql" />
+    <Build Include="dbo\Tables\AuditTrails.sql" />
   </ItemGroup>
 </Project>
