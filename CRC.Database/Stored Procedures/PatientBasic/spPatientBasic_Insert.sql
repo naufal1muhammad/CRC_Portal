@@ -1,4 +1,4 @@
-﻿CREATE PROCEDURE [dbo].[spPatientBasic_Insert]
+CREATE PROCEDURE [dbo].[spPatientBasic_Insert]
 (
     @Patient_Name                    VARCHAR(100),
     @Patient_Email                   VARCHAR(100),
@@ -23,7 +23,8 @@
     @Patient_EmergencyRelationship   VARCHAR(100),
     @Patient_EmergencyNumber         VARCHAR(100),
 
-    @NewPatient_ID                   VARCHAR(100) OUTPUT
+    @NewPatient_ID                   VARCHAR(100) OUTPUT,
+    @User_ID                         INT = NULL
 )
 AS
 BEGIN
@@ -98,6 +99,30 @@ BEGIN
         NULL,   -- DischargeType_ID
         NULL,   -- Patient_DischargeDate
         NULL    -- Patient_DischargeRemarks
+    );
+
+    -- -----------------------------
+    -- Audit trail
+    -- -----------------------------
+    INSERT INTO [dbo].[AuditTrails]
+    (
+        [User_Id],
+        [AuditTrail_Action],
+        [AuditTrail_Category],
+        [AuditTrail_Summary]
+    )
+    VALUES
+    (
+        ISNULL(@User_ID, 0),
+        'INSERT',
+        'PatientBasic',
+        CONCAT(
+            'Created Patient: Patient_ID=', @NewPatient_ID,
+            '; Name=', @Patient_Name,
+            '; NRIC=', @Patient_NRIC,
+            '; Phone=', @Patient_Phone,
+            '; Email=', @Patient_Email
+        )
     );
 END;
 GO

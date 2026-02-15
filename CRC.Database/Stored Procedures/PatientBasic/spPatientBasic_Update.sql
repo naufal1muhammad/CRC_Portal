@@ -27,7 +27,8 @@ CREATE PROCEDURE [dbo].[spPatientBasic_Update]
 
     @DischargeType_ID              VARCHAR(100) = NULL,
     @Patient_DischargeDate         DATETIME     = NULL,
-    @Patient_DischargeRemarks      VARCHAR(MAX) = NULL
+    @Patient_DischargeRemarks      VARCHAR(MAX) = NULL,
+    @User_ID                       INT = NULL
 )
 AS
 BEGIN
@@ -66,6 +67,8 @@ BEGIN
         [Patient_DischargeRemarks]      = @Patient_DischargeRemarks
     WHERE [Patient_ID] = @Patient_ID;
 
+    DECLARE @RowsAffected INT = @@ROWCOUNT;
+
     ---------------------------------
     -- 2) Cascade updates to children
     ---------------------------------
@@ -100,5 +103,32 @@ BEGIN
     FROM [dbo].[PatientAssessment] pas
     WHERE pas.[Patient_ID] = @Patient_ID;
 
+    IF @RowsAffected > 0
+    BEGIN
+        -- -----------------------------
+        -- Audit trail
+        -- -----------------------------
+        INSERT INTO [dbo].[AuditTrails]
+        (
+            [User_Id],
+            [AuditTrail_Action],
+            [AuditTrail_Category],
+            [AuditTrail_Summary]
+        )
+        VALUES
+        (
+            ISNULL(@User_ID, 0),
+            'UPDATE',
+            'PatientBasic',
+            CONCAT(
+                'Updated Patient: Patient_ID=', @Patient_ID,
+                '; Name=', @Patient_Name,
+                '; NRIC=', @Patient_NRIC,
+                '; Phone=', @Patient_Phone,
+                '; Email=', @Patient_Email,
+                '; DischargeType_ID=', ISNULL(@DischargeType_ID, '')
+            )
+        );
+    END
 END;
 GO
