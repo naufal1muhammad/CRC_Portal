@@ -1,9 +1,10 @@
-﻿CREATE PROCEDURE [dbo].[spStaffSlots_CreateRange]
+CREATE PROCEDURE [dbo].[spStaffSlots_CreateRange]
     @Staff_ID   VARCHAR(100),
     @FromDate   DATE,
     @ToDate     DATE,
     @StartTime  TIME(0),
-    @EndTime    TIME(0)
+    @EndTime    TIME(0),
+    @User_ID    INT = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -77,6 +78,32 @@ BEGIN
 
     DECLARE @CreatedCount INT = (SELECT COUNT(*) FROM @MergeOutput WHERE [Action] = 'INSERT');
     DECLARE @SkippedExistingCount INT = @AttemptedCount - @CreatedCount;
+
+    -- -----------------------------
+    -- Audit trail
+    -- -----------------------------
+    INSERT INTO [dbo].[AuditTrails]
+    (
+        [User_Id],
+        [AuditTrail_Action],
+        [AuditTrail_Category],
+        [AuditTrail_Summary]
+    )
+    VALUES
+    (
+        ISNULL(@User_ID, 0),
+        'INSERT',
+        'StaffSlots',
+        CONCAT(
+            'Created staff slots range: Staff_ID=', @Staff_ID,
+            '; FromDate=', CONVERT(VARCHAR(10), @FromDate, 120),
+            '; ToDate=', CONVERT(VARCHAR(10), @ToDate, 120),
+            '; StartTime=', CONVERT(VARCHAR(8), @StartTime, 108),
+            '; EndTime=', CONVERT(VARCHAR(8), @EndTime, 108),
+            '; CreatedCount=', @CreatedCount,
+            '; SkippedExistingCount=', @SkippedExistingCount
+        )
+    );
 
     SELECT
         @CreatedCount AS CreatedCount,
