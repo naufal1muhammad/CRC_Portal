@@ -8992,6 +8992,8 @@ wwwroot\lib\xlsx\package\xlsxworker.js
 wwwroot\uploads\patient\012037f9314e4f1b9e6d12cc6b682464_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\patient\28a98915ad114f60a3b0aee3dbdc0620_ADVISE FORM.pdf
 wwwroot\uploads\patient\48ecff36b6f341d9bc127db3cf153c8a_HISTOPATHOLOGICAL EXAMINATION FORM.pdf
+wwwroot\uploads\patient\53fbfa61c479484894a76227f558fdbb_REFERRAL LETTER.pdf
+wwwroot\uploads\patient\55f2c08ce06840559d58ac67b7ca00c6_SEDATION CONSENT FORM.pdf
 wwwroot\uploads\patient\5d35708da931410caa96ae195fff7e27_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\patient\74cea03af80941c7a8cecf3a26637281_PDPA FORM.pdf
 wwwroot\uploads\patient\91dd1479806640ad9d0845cd5155ed57_HISTORY AND EXAMINATION FORM.pdf
@@ -9003,4 +9005,5 @@ wwwroot\uploads\staff\573837a32b6c4e778f28e72d79239596_MMC REGISTRATION CERTIFIC
 wwwroot\uploads\staff\61d09cdec1c34fe9b82fe8edea759224_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
 wwwroot\uploads\staff\89334f850beb486e887f3e28ccda3cbd_HIGHER PROFESSIONAL QUALIFICATION.pdf
 wwwroot\uploads\staff\bb8159dc004f47399be2965ee02d21a7_PERSONAL IDENTIFICATION.pdf
+wwwroot\uploads\staff\dbfce4688c2244df8979e5adf1a71cb3_CV_RESUME.pdf
 wwwroot\uploads\staff\dc2113655b61436fb03bd71a57bcf45b_ANNUAL PRACTICING CERTIFICATE.pdf
