@@ -646,36 +646,19 @@ namespace CRC.Web.Controllers.Staff
             return Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
         }
 
-        private static async Task<DataTable> ExecDataTableAsync(SqlConnection conn, SqlTransaction tx, string storedProc, SqlParameter[]? parameters)
+        private async Task<DataTable> ExecDataTableAsync(SqlConnection conn, SqlTransaction tx, string storedProc, SqlParameter[]? parameters)
         {
-            await using var cmd = new SqlCommand(storedProc, conn, tx)
-            {
-                CommandType = CommandType.StoredProcedure
-            };
+            using var cmd = await _db.CreateStoredProcedureCommandAsync(conn, tx, storedProc, parameters);
 
-            if (parameters != null && parameters.Length > 0)
-            {
-                cmd.Parameters.AddRange(parameters);
-            }
-
-            await using var reader = await cmd.ExecuteReaderAsync();
+            using var reader = await cmd.ExecuteReaderAsync();
             var dt = new DataTable();
             dt.Load(reader);
             return dt;
         }
 
-        private static async Task<int> ExecNonQueryAsync(SqlConnection conn, SqlTransaction tx, string storedProc, SqlParameter[]? parameters)
+        private async Task<int> ExecNonQueryAsync(SqlConnection conn, SqlTransaction tx, string storedProc, SqlParameter[]? parameters)
         {
-            await using var cmd = new SqlCommand(storedProc, conn, tx)
-            {
-                CommandType = CommandType.StoredProcedure
-            };
-
-            if (parameters != null && parameters.Length > 0)
-            {
-                cmd.Parameters.AddRange(parameters);
-            }
-
+            using var cmd = await _db.CreateStoredProcedureCommandAsync(conn, tx, storedProc, parameters);
             return await cmd.ExecuteNonQueryAsync();
         }
 
