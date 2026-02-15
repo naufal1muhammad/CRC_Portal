@@ -87,8 +87,6 @@ BEGIN
     FROM [dbo].[PatientFollowUp] pf
     WHERE pf.[Patient_ID] = @Patient_ID;
 
-    -- PatientDocument: no name field is stored; name is resolved from PatientBasic
-
     -- PatientColonoscopy: Patient_ID, Patient_Name
     UPDATE pc
     SET
