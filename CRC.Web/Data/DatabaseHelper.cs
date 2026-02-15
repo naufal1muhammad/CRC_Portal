@@ -115,7 +115,10 @@ namespace CRC.Web.Data
             if (string.IsNullOrWhiteSpace(procName))
                 return;
 
-            var supportsUserId = await SupportsUserIdParameterAsync(conn, schemaName, procName, cacheKey);
+            // IMPORTANT: if the caller is running inside a local transaction, the metadata query must
+            // participate in the same transaction, otherwise ADO.NET throws:
+            // "The Transaction property of the command has not been initialized".
+            var supportsUserId = await SupportsUserIdParameterAsync(conn, cmd.Transaction, schemaName, procName, cacheKey);
             if (!supportsUserId)
                 return;
 
@@ -152,6 +155,7 @@ namespace CRC.Web.Data
 
         private async Task<bool> SupportsUserIdParameterAsync(
             SqlConnection conn,
+            SqlTransaction? transaction,
             string schemaName,
             string procName,
             string cacheKey)
@@ -161,6 +165,7 @@ namespace CRC.Web.Data
 
             // We query sys.parameters (requirement) to see if @User_ID exists.
             using var metaCmd = conn.CreateCommand();
+            metaCmd.Transaction = transaction;
             metaCmd.CommandType = CommandType.Text;
             metaCmd.CommandText = @"
 SELECT TOP (1) 1

@@ -8991,7 +8991,9 @@ wwwroot\lib\xlsx\package\xlsx.mjs
 wwwroot\lib\xlsx\package\xlsxworker.js
 wwwroot\uploads\patient\012037f9314e4f1b9e6d12cc6b682464_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\patient\28a98915ad114f60a3b0aee3dbdc0620_ADVISE FORM.pdf
+wwwroot\uploads\patient\48ecff36b6f341d9bc127db3cf153c8a_HISTOPATHOLOGICAL EXAMINATION FORM.pdf
 wwwroot\uploads\patient\5d35708da931410caa96ae195fff7e27_PERSONAL IDENTIFICATION.pdf
+wwwroot\uploads\patient\91dd1479806640ad9d0845cd5155ed57_HISTORY AND EXAMINATION FORM.pdf
 wwwroot\uploads\patient\95fd73702f9d4d99bca61d18e640377e_iFOBT RESULTS.pdf
 wwwroot\uploads\patient\9ee7fc45dd10495186c6e760248010c4_HISTORY AND EXAMINATION FORM.pdf
 wwwroot\uploads\patient\ae2e750472124601b6eaaab1390fff98_COLONOSCOPY FINDING FORM.pdf
