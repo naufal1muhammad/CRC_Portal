@@ -1,4 +1,4 @@
-﻿CREATE PROCEDURE [dbo].[spStaff_Update]
+CREATE PROCEDURE [dbo].[spStaff_Update]
 (
     @Staff_ID          VARCHAR(100),
     @Staff_Name        VARCHAR(100),
@@ -14,7 +14,8 @@
     @Staff_AddLine1    VARCHAR(MAX),
     @Staff_AddLine2    VARCHAR(MAX),
     @Staff_Base        VARCHAR(100),
-    @Staff_Type        VARCHAR(100)  -- still pass it, but UI will keep it fixed
+    @Staff_Type        VARCHAR(100),  -- still pass it, but UI will keep it fixed
+    @User_ID           INT = NULL
 )
 AS
 BEGIN
@@ -40,5 +41,35 @@ BEGIN
         [Staff_Base]        = @Staff_Base,
         [Staff_Type]        = @Staff_Type
     WHERE [Staff_ID] = @Staff_ID;
+
+    DECLARE @RowsAffected INT = @@ROWCOUNT;
+
+    IF @RowsAffected > 0
+    BEGIN
+        -- -----------------------------
+        -- Audit trail
+        -- -----------------------------
+        INSERT INTO [dbo].[AuditTrails]
+        (
+            [User_Id],
+            [AuditTrail_Action],
+            [AuditTrail_Category],
+            [AuditTrail_Summary]
+        )
+        VALUES
+        (
+            ISNULL(@User_ID, 0),
+            'UPDATE',
+            'Staff',
+            CONCAT(
+                'Updated Staff: Staff_ID=', @Staff_ID,
+                '; Name=', @Staff_Name,
+                '; NRIC=', @Staff_NRIC,
+                '; Phone=', @Staff_Phone,
+                '; Email=', @Staff_Email,
+                '; Type=', @Staff_Type
+            )
+        );
+    END
 END;
 GO

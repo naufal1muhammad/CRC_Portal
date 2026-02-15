@@ -1,4 +1,4 @@
-﻿CREATE PROCEDURE [dbo].[spStaff_Insert]
+CREATE PROCEDURE [dbo].[spStaff_Insert]
     @Staff_Name        VARCHAR(100),
     @Staff_NRIC        VARCHAR(100),
     @Staff_BirthDate   DATETIME,
@@ -12,7 +12,8 @@
     @Staff_AddLine1    VARCHAR(MAX),
     @Staff_AddLine2    VARCHAR(MAX),
     @Staff_Base        VARCHAR(100),
-    @Staff_Type        VARCHAR(100)  -- this is StaffType_ID
+    @Staff_Type        VARCHAR(100),  -- this is StaffType_ID
+    @User_ID           INT = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -77,6 +78,31 @@ BEGIN
         @Staff_AddLine2,
         @Staff_Base,
         @Staff_Type
+    );
+
+    -- -----------------------------
+    -- Audit trail
+    -- -----------------------------
+    INSERT INTO [dbo].[AuditTrails]
+    (
+        [User_Id],
+        [AuditTrail_Action],
+        [AuditTrail_Category],
+        [AuditTrail_Summary]
+    )
+    VALUES
+    (
+        ISNULL(@User_ID, 0),
+        'INSERT',
+        'Staff',
+        CONCAT(
+            'Created Staff: Staff_ID=', @Staff_ID,
+            '; Name=', @Staff_Name,
+            '; NRIC=', @Staff_NRIC,
+            '; Phone=', @Staff_Phone,
+            '; Email=', @Staff_Email,
+            '; Type=', @Staff_Type
+        )
     );
 
     -- Return the new Staff_ID to C#
