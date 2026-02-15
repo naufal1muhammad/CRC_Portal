@@ -69,6 +69,42 @@ namespace CRC.Web.Data
             return new SqlConnection(_connectionString);
         }
 
+
+        /// <summary>
+        /// Creates a SqlCommand for a stored procedure using an existing open connection/transaction,
+        /// and auto-injects @User_ID when the stored procedure supports it (same behavior as ExecuteNonQueryAsync / ExecuteDataTableAsync).
+        /// Caller is responsible to dispose the returned command.
+        /// </summary>
+        public async Task<SqlCommand> CreateStoredProcedureCommandAsync(
+            SqlConnection conn,
+            SqlTransaction? transaction,
+            string storedProcedure,
+            SqlParameter[]? parameters = null)
+        {
+            if (conn == null) throw new ArgumentNullException(nameof(conn));
+            if (string.IsNullOrWhiteSpace(storedProcedure)) throw new ArgumentException("Stored procedure name is required.", nameof(storedProcedure));
+
+            if (transaction != null && !ReferenceEquals(transaction.Connection, conn))
+                throw new InvalidOperationException("The provided transaction does not belong to the provided connection.");
+
+            if (conn.State != ConnectionState.Open)
+                await conn.OpenAsync();
+
+            var cmd = new SqlCommand(storedProcedure, conn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                Transaction = transaction
+            };
+
+            if (parameters is { Length: > 0 })
+            {
+                cmd.Parameters.AddRange(parameters);
+            }
+
+            await TryInjectUserIdAsync(conn, storedProcedure, cmd);
+            return cmd;
+        }
+
         private async Task TryInjectUserIdAsync(SqlConnection conn, string storedProcedure, SqlCommand cmd)
         {
             // If caller already supplies @User_ID, do not duplicate.

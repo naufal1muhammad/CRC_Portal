@@ -935,17 +935,17 @@ namespace CRC.Web.Controllers.Patient
                 var slots = new List<SlotInfo>();
 
                 // Load staff slots through existing StaffSlots sproc and then keep selected IDs
-                using (var cmdSlots = new SqlCommand("spStaffSlots_List", conn, tx)
-                {
-                    CommandType = CommandType.StoredProcedure
-                })
-                {
-                    cmdSlots.Parameters.AddRange(new[]
+                using (var cmdSlots = await _db.CreateStoredProcedureCommandAsync(
+                    conn,
+                    tx,
+                    "spStaffSlots_List",
+                    new[]
                     {
                         new SqlParameter("@Staff_ID", staffId),
                         new SqlParameter("@FromDate", SqlDbType.Date) { Value = apptDate.Date },
                         new SqlParameter("@ToDate", SqlDbType.Date) { Value = apptDate.Date }
-                    });
+                    }))
+                {
 
                     using var reader = await cmdSlots.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
@@ -1014,22 +1014,21 @@ namespace CRC.Web.Controllers.Patient
                 if (appointmentId <= 0)
                 {
                     // INSERT
-                    using var cmd = new SqlCommand("spPatientAppointment_Insert", conn, tx)
-                    {
-                        CommandType = CommandType.StoredProcedure
-                    };
-
-                    cmd.Parameters.AddRange(new[]
-                    {
-                        new SqlParameter("@Patient_ID", patientId),
-                        new SqlParameter("@PatientAppointment_Date", SqlDbType.Date) { Value = apptDate.Date },
-                        new SqlParameter("@Staff_ID", staffId),
-                        new SqlParameter("@PatientAppointment_StartTime", SqlDbType.Time) { Value = startTime },
-                        new SqlParameter("@PatientAppointment_EndTime", SqlDbType.Time) { Value = endTime },
-                        new SqlParameter("@PjAppType_ID", pjAppTypeId),
-                        new SqlParameter("@Branch_ID", branchId),
-                        new SqlParameter("@PatientAppointment_Status", status)
-                    });
+                    using var cmd = await _db.CreateStoredProcedureCommandAsync(
+                        conn,
+                        tx,
+                        "spPatientAppointment_Insert",
+                        new[]
+                        {
+                            new SqlParameter("@Patient_ID", patientId),
+                            new SqlParameter("@PatientAppointment_Date", SqlDbType.Date) { Value = apptDate.Date },
+                            new SqlParameter("@Staff_ID", staffId),
+                            new SqlParameter("@PatientAppointment_StartTime", SqlDbType.Time) { Value = startTime },
+                            new SqlParameter("@PatientAppointment_EndTime", SqlDbType.Time) { Value = endTime },
+                            new SqlParameter("@PjAppType_ID", pjAppTypeId),
+                            new SqlParameter("@Branch_ID", branchId),
+                            new SqlParameter("@PatientAppointment_Status", status)
+                        });
 
                     var outId = new SqlParameter("@NewPatientAppointment_ID", SqlDbType.Int)
                     {
@@ -1050,50 +1049,51 @@ namespace CRC.Web.Controllers.Patient
                 else
                 {
                     // UPDATE appointment
-                    using var cmd = new SqlCommand("spPatientAppointment_Update", conn, tx)
-                    {
-                        CommandType = CommandType.StoredProcedure
-                    };
-
-                    cmd.Parameters.AddRange(new[]
-                    {
-                        new SqlParameter("@PatientAppointment_ID", appointmentId),
-                        new SqlParameter("@PatientAppointment_Date", SqlDbType.Date) { Value = apptDate.Date },
-                        new SqlParameter("@Staff_ID", staffId),
-                        new SqlParameter("@PatientAppointment_StartTime", SqlDbType.Time) { Value = startTime },
-                        new SqlParameter("@PatientAppointment_EndTime", SqlDbType.Time) { Value = endTime },
-                        new SqlParameter("@PjAppType_ID", pjAppTypeId),
-                        new SqlParameter("@Branch_ID", branchId),
-                        new SqlParameter("@PatientAppointment_Status", status)
-                    });
+                    using var cmd = await _db.CreateStoredProcedureCommandAsync(
+                        conn,
+                        tx,
+                        "spPatientAppointment_Update",
+                        new[]
+                        {
+                            new SqlParameter("@PatientAppointment_ID", appointmentId),
+                            new SqlParameter("@PatientAppointment_Date", SqlDbType.Date) { Value = apptDate.Date },
+                            new SqlParameter("@Staff_ID", staffId),
+                            new SqlParameter("@PatientAppointment_StartTime", SqlDbType.Time) { Value = startTime },
+                            new SqlParameter("@PatientAppointment_EndTime", SqlDbType.Time) { Value = endTime },
+                            new SqlParameter("@PjAppType_ID", pjAppTypeId),
+                            new SqlParameter("@Branch_ID", branchId),
+                            new SqlParameter("@PatientAppointment_Status", status)
+                        });
 
                     await cmd.ExecuteNonQueryAsync();
 
                     // Release previous slots (if any)
-                    using (var cmdClear = new SqlCommand("spStaffSlots_ClearAppointment", conn, tx)
+                    using (var cmdClear = await _db.CreateStoredProcedureCommandAsync(
+                        conn,
+                        tx,
+                        "spStaffSlots_ClearAppointment",
+                        new[]
+                        {
+                            new SqlParameter("@ApptId", SqlDbType.Int) { Value = appointmentId }
+                        }))
                     {
-                        CommandType = CommandType.StoredProcedure
-                    })
-                    {
-                        cmdClear.Parameters.Add(new SqlParameter("@ApptId", SqlDbType.Int) { Value = appointmentId });
                         await cmdClear.ExecuteNonQueryAsync();
                     }
                 }
 
                 // Assign selected slots to the appointment
-                using (var cmdAssign = new SqlCommand("spStaffSlots_AssignAppointment", conn, tx)
-                {
-                    CommandType = CommandType.StoredProcedure
-                })
-                {
-                    cmdAssign.Parameters.Add(new SqlParameter("@ApptId", SqlDbType.Int) { Value = finalAppointmentId });
-                    cmdAssign.Parameters.Add(new SqlParameter("@StaffSlotIds", SqlDbType.VarChar, -1)
+                using (var cmdAssign = await _db.CreateStoredProcedureCommandAsync(
+                    conn,
+                    tx,
+                    "spStaffSlots_AssignAppointment",
+                    new[]
                     {
-                        Value = string.Join(",", slotIds)
-                    });
+                        new SqlParameter("@ApptId", SqlDbType.Int) { Value = finalAppointmentId },
+                        new SqlParameter("@StaffSlotIds", SqlDbType.VarChar, -1) { Value = string.Join(",", slotIds) }
+                    }))
+                {
                     await cmdAssign.ExecuteNonQueryAsync();
                 }
-
                 tx.Commit();
 
                 return Ok(new { success = true, appointmentId = finalAppointmentId });
