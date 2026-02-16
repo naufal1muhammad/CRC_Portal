@@ -161,6 +161,11 @@
                        class="list-group-item list-group-item-action @activeClass("Account", "Register")">
                         <i class="fas fa-user-plus me-2"></i> User Management
                     </a>
+
+                    <a asp-controller="AuditTrails" asp-action="Index"
+                       class="list-group-item list-group-item-action @activeClass("AuditTrails", "Index")">
+                        <i class="fas fa-clipboard-list me-2"></i> Audit Trails
+                    </a>
                 }
 
                 @if (isAdmin)

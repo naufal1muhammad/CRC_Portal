@@ -87,6 +87,7 @@
     <Folder Include="Stored Procedures\PatientColonoscopy" />
     <Folder Include="Stored Procedures\PatientFollowUp" />
     <Folder Include="Stored Procedures\StaffSlots" />
+    <Folder Include="Stored Procedures\AuditTrails" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="dbo\Tables\Users.sql" />
@@ -206,5 +207,9 @@
     <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_ThisWeekAppointments.sql" />
     <Build Include="Stored Procedures\StaffDashboard\spStaffDashboard_ThisMonthAppointments.sql" />
     <Build Include="dbo\Tables\AuditTrails.sql" />
+    <Build Include="Stored Procedures\AuditTrails\spAuditTrails_Search.sql" />
+    <Build Include="Stored Procedures\AuditTrails\spAuditTrails_LookupUsers.sql" />
+    <Build Include="Stored Procedures\AuditTrails\spAuditTrails_LookupCategories.sql" />
+    <Build Include="Stored Procedures\AuditTrails\spAuditTrails_LookupActions.sql" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,84 @@
+﻿@{
+    ViewData["Title"] = "Audit Trails";
+    Layout = "_Layout";
+}
+
+<div class="container-fluid py-3">
+    <div class="card mb-3">
+        <div class="card-header">
+            <h2 class="mb-3">Audit Trails</h2>
+
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4 col-lg-3">
+                    <label for="filterUserId" class="form-label form-label-sm mb-1">User Name</label>
+                    <select id="filterUserId" class="form-select form-select-sm select2">
+                        <option value="">-- All Users --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4 col-lg-2">
+                    <label for="filterFromDate" class="form-label form-label-sm mb-1">From Date</label>
+                    <input id="filterFromDate" type="date" class="form-control form-control-sm" />
+                </div>
+
+                <div class="col-md-4 col-lg-2">
+                    <label for="filterToDate" class="form-label form-label-sm mb-1">To Date</label>
+                    <input id="filterToDate" type="date" class="form-control form-control-sm" />
+                </div>
+
+                <div class="col-md-4 col-lg-2">
+                    <label for="filterAction" class="form-label form-label-sm mb-1">Action</label>
+                    <select id="filterAction" class="form-select form-select-sm select2">
+                        <option value="">-- All Actions --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4 col-lg-3">
+                    <label for="filterCategory" class="form-label form-label-sm mb-1">Category</label>
+                    <select id="filterCategory" class="form-select form-select-sm select2">
+                        <option value="">-- All Categories --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4 col-lg-2 mt-3 d-flex gap-2">
+                    <button id="btnSearchAuditTrails" type="button" class="btn btn-sm btn-primary flex-fill">
+                        <i class="fas fa-search me-1"></i> Search
+                    </button>
+                    <button id="btnClearAuditTrails" type="button" class="btn btn-sm btn-outline-secondary flex-fill">
+                        Clear Filters
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-body">
+            <div id="auditTrailsMessage" class="small text-danger mb-2"></div>
+
+            <div class="table-responsive">
+                <table id="auditTrailsTable" class="table table-sm table-striped mb-0">
+                    <thead class="table-secondary">
+                        <tr>
+                            <th>User ID</th>
+                            <th>Name</th>
+                            <th>Date &amp; Time</th>
+                            <th>Action</th>
+                            <th>Category</th>
+                            <th>Summary</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="6" class="text-center text-muted">
+                                Use the filters above and click <strong>Search</strong> to view audit trails.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/auditTrails/index.js"></script>
+}
