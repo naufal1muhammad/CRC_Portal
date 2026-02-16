@@ -94,6 +94,8 @@ namespace CRC.Web.Controllers.Documents
                     .OrderBy(x => x.name)
                     .ToList();
 
+                // Defensive de-duplication:
+                // If the lookup SP returns both (ID, Name) and (ID, ID), only keep the "real" name.
                 var staffDocTypes = dtStaffTypes.Rows.Cast<DataRow>()
                     .Select(r => new
                     {
@@ -106,7 +108,19 @@ namespace CRC.Web.Controllers.Documents
                         id = string.IsNullOrWhiteSpace(x.id) ? x.name : x.id,
                         name = string.IsNullOrWhiteSpace(x.name) ? x.id : x.name
                     })
-                    .Distinct()
+                    .GroupBy(x => x.id, StringComparer.OrdinalIgnoreCase)
+                    .Select(g =>
+                    {
+                        // Prefer a label that isn't just the ID itself.
+                        var best = g.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.name) && !x.name.Equals(g.Key, StringComparison.OrdinalIgnoreCase))
+                                   ?? g.First();
+
+                        return new
+                        {
+                            id = g.Key,
+                            name = best.name
+                        };
+                    })
                     .OrderBy(x => x.name)
                     .ToList();
 

@@ -3,25 +3,26 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    ;WITH src AS
+    ;WITH docTypes AS
     (
-        SELECT
-            NULLIF(LTRIM(RTRIM(ISNULL([StaffDocumentType_ID], ''))), '')   AS [StaffDocumentType_ID],
-            NULLIF(LTRIM(RTRIM(ISNULL([StaffDocumentType_Name], ''))), '') AS [StaffDocumentType_Name]
-        FROM [dbo].[LU_STAFFDOCUMENTTYPE]
+        SELECT DISTINCT
+            NULLIF(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], ''))), '') AS [StaffDocumentType_ID]
+        FROM [dbo].[StaffDocument] d
+        WHERE NULLIF(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], ''))), '') IS NOT NULL
 
         UNION
 
-        SELECT
-            NULLIF(LTRIM(RTRIM(ISNULL(d.[StaffDocumentType_ID], ''))), '') AS [StaffDocumentType_ID],
-            NULL AS [StaffDocumentType_Name]
-        FROM [dbo].[StaffDocument] d
+        SELECT DISTINCT
+            NULLIF(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_ID], ''))), '') AS [StaffDocumentType_ID]
+        FROM [dbo].[LU_STAFFDOCUMENTTYPE] t
+        WHERE NULLIF(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_ID], ''))), '') IS NOT NULL
     )
-    SELECT DISTINCT
-        [StaffDocumentType_ID],
-        COALESCE([StaffDocumentType_Name], [StaffDocumentType_ID]) AS [StaffDocumentType_Name]
-    FROM src
-    WHERE COALESCE([StaffDocumentType_Name], [StaffDocumentType_ID]) IS NOT NULL
-    ORDER BY COALESCE([StaffDocumentType_Name], [StaffDocumentType_ID]);
+    SELECT
+        dt.[StaffDocumentType_ID],
+        COALESCE(NULLIF(LTRIM(RTRIM(t.[StaffDocumentType_Name])), ''), dt.[StaffDocumentType_ID]) AS [StaffDocumentType_Name]
+    FROM docTypes dt
+    LEFT JOIN [dbo].[LU_STAFFDOCUMENTTYPE] t
+        ON UPPER(LTRIM(RTRIM(ISNULL(t.[StaffDocumentType_ID], '')))) = UPPER(dt.[StaffDocumentType_ID])
+    ORDER BY COALESCE(NULLIF(LTRIM(RTRIM(t.[StaffDocumentType_Name])), ''), dt.[StaffDocumentType_ID]);
 END;
 GO
