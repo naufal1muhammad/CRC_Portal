@@ -5,7 +5,7 @@
     var patientId = (string)(ViewData["PatientId"] ?? string.Empty);
 }
 
-<div class="container-fluid py-3 pb-5" data-patient-id="@patientId">
+<div class="container-fluid py-3" data-patient-id="@patientId">
 
     <!-- Header -->
     <div class="d-flex align-items-center mb-3">
@@ -290,318 +290,319 @@
             </div>
 
         </div>
-    </div>
 
-    <!-- Appointment tab -->
-    <div class="tab-pane fade"
-         id="tabAppointment"
-         role="tabpanel"
-         aria-labelledby="tab-appointment">
-        <div id="appointmentContent">
-            <div id="appointmentMessage" class="text-danger small mb-2"></div>
+        <!-- Appointment tab -->
+        <div class="tab-pane fade"
+             id="tabAppointment"
+             role="tabpanel"
+             aria-labelledby="tab-appointment">
+            <div id="appointmentContent">
+                <div id="appointmentMessage" class="text-danger small mb-2"></div>
 
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0">Appointments</h5>
-                <button id="btnAddAppointment"
-                        type="button"
-                        class="btn btn-sm btn-primary">
-                    <i class="fas fa-plus me-1"></i> Add Appointment
-                </button>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="mb-0">Appointments</h5>
+                    <button id="btnAddAppointment"
+                            type="button"
+                            class="btn btn-sm btn-primary">
+                        <i class="fas fa-plus me-1"></i> Add Appointment
+                    </button>
+                </div>
+
+                <div class="table-responsive">
+                    <table id="appointmentTable" class="table table-sm table-striped mb-0">
+                        <thead class="table-secondary">
+                            <tr>
+                                <th>Date</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Type</th>
+                                <th>Branch</th>
+                                <th>Status</th>
+                                <th>Doctor</th>
+                                <th style="width: 120px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="8" class="text-center text-muted">
+                                    No appointments loaded.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <div class="table-responsive">
-                <table id="appointmentTable" class="table table-sm table-striped mb-0">
-                    <thead class="table-secondary">
-                        <tr>
-                            <th>Date</th>
-                            <th>From</th>
-                            <th>To</th>
-                            <th>Type</th>
-                            <th>Branch</th>
-                            <th>Status</th>
-                            <th>Doctor</th>
-                            <th style="width: 120px;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td colspan="8" class="text-center text-muted">
-                                No appointments loaded.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
+            <!-- Add Appointment Modal -->
+            <div class="modal fade" id="appointmentModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Add Appointment</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="appointmentModalMessage" class="text-danger small mb-2"></div>
 
-        <!-- Add Appointment Modal -->
-        <div class="modal fade" id="appointmentModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-lg modal-dialog-scrollable">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">Add Appointment</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div id="appointmentModalMessage" class="text-danger small mb-2"></div>
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <label for="AppointmentDate" class="form-label">
+                                        Appointment Date <span class="text-danger">*</span>
+                                    </label>
+                                    <input id="AppointmentDate"
+                                           type="date"
+                                           class="form-control form-control-sm" />
+                                </div>
 
-                        <div class="row g-2">
-                            <div class="col-md-4">
-                                <label for="AppointmentDate" class="form-label">
-                                    Appointment Date <span class="text-danger">*</span>
-                                </label>
-                                <input id="AppointmentDate"
-                                       type="date"
-                                       class="form-control form-control-sm" />
+                                <div class="col-md-8">
+                                    <label for="AppointmentStaff" class="form-label">
+                                        Doctor <span class="text-danger">*</span>
+                                    </label>
+                                    <select id="AppointmentStaff" class="form-select form-select-sm">
+                                        <option value="">-- Select Staff --</option>
+                                    </select>
+                                </div>
                             </div>
 
-                            <div class="col-md-8">
-                                <label for="AppointmentStaff" class="form-label">
-                                    Doctor <span class="text-danger">*</span>
+                            <div class="mt-3">
+                                <label class="form-label mb-1">
+                                    Available Slots <span class="text-danger">*</span>
                                 </label>
-                                <select id="AppointmentStaff" class="form-select form-select-sm">
-                                    <option value="">-- Select Staff --</option>
+
+                                <div class="table-responsive border rounded">
+                                    <table id="appointmentSlotsTable" class="table table-sm mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Slots</th>
+                                                <th>Status</th>
+                                                <th style="width: 80px;">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="appointmentSlotsBody">
+                                            <tr>
+                                                <td colspan="3" class="text-center text-muted">
+                                                    Select appointment date and staff to view slots.
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div class="form-text">
+                                    Tick one or more consecutive slots (e.g. 08:00-09:00 then 09:00-10:00).
+                                </div>
+                            </div>
+
+                            <div class="row g-2 mt-3">
+                                <div class="col-md-6">
+                                    <label for="AppointmentType" class="form-label">
+                                        Appointment Type <span class="text-danger">*</span>
+                                    </label>
+                                    <select id="AppointmentType" class="form-select form-select-sm">
+                                        <option value="">-- Select Type --</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label for="AppointmentBranch" class="form-label">
+                                        Location <span class="text-danger">*</span>
+                                    </label>
+                                    <select id="AppointmentBranch" class="form-select form-select-sm">
+                                        <option value="">-- Select Location --</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="mt-2">
+                                <label for="AppointmentStatus" class="form-label">
+                                    Attendance Status <span class="text-danger">*</span>
+                                </label>
+                                <select id="AppointmentStatus" class="form-select form-select-sm">
+                                    <option value="Scheduled" selected>Scheduled</option>
+                                    <option value="Attended">Attended</option>
+                                    <option value="Not Attended">Not Attended</option>
                                 </select>
                             </div>
                         </div>
-
-                        <div class="mt-3">
-                            <label class="form-label mb-1">
-                                Available Slots <span class="text-danger">*</span>
-                            </label>
-
-                            <div class="table-responsive border rounded">
-                                <table id="appointmentSlotsTable" class="table table-sm mb-0">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Slots</th>
-                                            <th>Status</th>
-                                            <th style="width: 80px;">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="appointmentSlotsBody">
-                                        <tr>
-                                            <td colspan="3" class="text-center text-muted">
-                                                Select appointment date and staff to view slots.
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <div class="form-text">
-                                Tick one or more consecutive slots (e.g. 08:00-09:00 then 09:00-10:00).
-                            </div>
+                        <div class="modal-footer">
+                            <button type="button"
+                                    class="btn btn-sm btn-secondary"
+                                    data-bs-dismiss="modal">
+                                Cancel
+                            </button>
+                            <button type="button"
+                                    class="btn btn-sm btn-primary"
+                                    id="btnSaveAppointment">
+                                Save
+                            </button>
                         </div>
-
-                        <div class="row g-2 mt-3">
-                            <div class="col-md-6">
-                                <label for="AppointmentType" class="form-label">
-                                    Appointment Type <span class="text-danger">*</span>
-                                </label>
-                                <select id="AppointmentType" class="form-select form-select-sm">
-                                    <option value="">-- Select Type --</option>
-                                </select>
-                            </div>
-
-                            <div class="col-md-6">
-                                <label for="AppointmentBranch" class="form-label">
-                                    Location <span class="text-danger">*</span>
-                                </label>
-                                <select id="AppointmentBranch" class="form-select form-select-sm">
-                                    <option value="">-- Select Location --</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="mt-2">
-                            <label for="AppointmentStatus" class="form-label">
-                                Attendance Status <span class="text-danger">*</span>
-                            </label>
-                            <select id="AppointmentStatus" class="form-select form-select-sm">
-                                <option value="Scheduled" selected>Scheduled</option>
-                                <option value="Attended">Attended</option>
-                                <option value="Not Attended">Not Attended</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button"
-                                class="btn btn-sm btn-secondary"
-                                data-bs-dismiss="modal">
-                            Cancel
-                        </button>
-                        <button type="button"
-                                class="btn btn-sm btn-primary"
-                                id="btnSaveAppointment">
-                            Save
-                        </button>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Patient Journey tab -->
-    <div class="tab-pane fade"
-         id="tabPatientJourney"
-         role="tabpanel"
-         aria-labelledby="tab-journey">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between mb-2">
-                    <div>
-                        <h5 class="mb-0">Patient Journey</h5>
+        <!-- Patient Journey tab -->
+        <div class="tab-pane fade"
+             id="tabPatientJourney"
+             role="tabpanel"
+             aria-labelledby="tab-journey">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div>
+                            <h5 class="mb-0">Patient Journey</h5>
+                        </div>
+                    </div>
+
+                    <div class="text-muted small mb-3" id="spJourneyMsg"></div>
+
+                    <!-- Timeline container (same as Staff view) -->
+                    <div id="journeyTimeline" class="position-relative">
+                        <!-- JS will render timeline here -->
                     </div>
                 </div>
-
-                <div class="text-muted small mb-3" id="spJourneyMsg"></div>
-
-                <!-- Timeline container (same as Staff view) -->
-                <div id="journeyTimeline" class="position-relative">
-                    <!-- JS will render timeline here -->
-                </div>
             </div>
+
         </div>
 
-    </div>
-
-    <!-- =========================
+        <!-- =========================
                  Modal: View Journey (read-only)
             ========================== -->
-    <div class="modal fade" id="journeyModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="journeyModalTitle">View Patient Journey</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="modal fade" id="journeyModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="journeyModalTitle">View Patient Journey</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <input type="hidden" id="pj_patientJourneyId" value="0" />
+
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Journey Date</label>
+                                <input id="pj_journeyDate" type="datetime-local" class="form-control" disabled />
+                                <div class="form-text">Clinical journey date (not the audit timestamp).</div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Journey Type</label>
+                                <input id="pj_journeyType" class="form-control" type="text" readonly />
+                            </div>
+                        </div>
+
+                        <hr class="my-3" />
+
+                        <!-- Template HTML will be injected here -->
+                        <div id="journeyTemplateHost">
+                            <div class="text-muted">
+                                Loading journey details...
+                            </div>
+                        </div>
+
+                        <div class="text-danger small mt-2" id="pj_formError"></div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Documents tab -->
+        <div class="tab-pane fade"
+             id="tabDocuments"
+             role="tabpanel"
+             aria-labelledby="tab-documents">
+            <div id="documentsContent">
+                <div id="documentsMessage" class="text-danger small mb-2"></div>
+
+                <p class="text-muted small mb-2">
+                    Upload documents by type. Uploads are saved immediately and do not depend on the main Save button.
+                </p>
+
+                <div id="patientDocumentsContainer">
+                    <p class="text-muted mb-0">Loading document types...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Discharge tab -->
+        <div class="tab-pane fade" id="tab-discharge" role="tabpanel" aria-labelledby="tab-discharge-tab">
+            <div class="mt-3">
+
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="PatientIsDischarged">
+                    <label class="form-check-label" for="PatientIsDischarged">
+                        Discharge this patient
+                    </label>
                 </div>
 
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="PatientDischargeDate" class="form-label">
+                            Discharge Date (mm/dd/yyyy) <span class="text-danger">*</span>
+                        </label>
+                        <input type="date"
+                               class="form-control form-control-sm"
+                               id="PatientDischargeDate" />
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="PatientDischargeType" class="form-label">
+                            Discharge Type <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select form-select-sm"
+                                id="PatientDischargeType">
+                            <option value="">-- Select Discharge Type --</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="PatientDischargeRemarks" class="form-label">
+                            Remarks
+                        </label>
+                        <textarea class="form-control form-control-sm"
+                                  id="PatientDischargeRemarks"
+                                  rows="2"></textarea>
+                    </div>
+                </div>
+
+                <div id="dischargeTabMessage" class="small text-danger mt-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="basicDetailsMessage" class="text-danger small mb-2"></div>
+    <!-- Global Save button -->
+    <div class="mt-3 d-flex justify-content-end">
+        <button id="btnSavePatientMain"
+                type="button"
+                class="btn btn-primary">
+            <i class="fas fa-save me-1"></i> Save
+        </button>
+    </div>
+
+    <!-- Save Success Modal -->
+    <div class="modal fade" id="saveSuccessModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content text-center p-4">
                 <div class="modal-body">
-                    <input type="hidden" id="pj_patientJourneyId" value="0" />
-
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Journey Date</label>
-                            <input id="pj_journeyDate" type="datetime-local" class="form-control" disabled />
-                            <div class="form-text">Clinical journey date (not the audit timestamp).</div>
-                        </div>
-
-                        <div class="col-md-4">
-                            <label class="form-label">Journey Type</label>
-                            <input id="pj_journeyType" class="form-control" type="text" readonly />
-                        </div>
+                    <div class="display-3 text-success mb-3">
+                        <i class="fas fa-check-circle"></i>
                     </div>
-
-                    <hr class="my-3" />
-
-                    <!-- Template HTML will be injected here -->
-                    <div id="journeyTemplateHost">
-                        <div class="text-muted">
-                            Loading journey details...
-                        </div>
-                    </div>
-
-                    <div class="text-danger small mt-2" id="pj_formError"></div>
-                </div>
-
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    <h5 class="mb-2">Saved Successfully</h5>
+                    <p class="text-muted mb-3">Patient details have been saved.</p>
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">
+                        OK
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Documents tab -->
-    <div class="tab-pane fade"
-         id="tabDocuments"
-         role="tabpanel"
-         aria-labelledby="tab-documents">
-        <div id="documentsContent">
-            <div id="documentsMessage" class="text-danger small mb-2"></div>
-
-            <p class="text-muted small mb-2">
-                Upload documents by type. Uploads are saved immediately and do not depend on the main Save button.
-            </p>
-
-            <div id="patientDocumentsContainer">
-                <p class="text-muted mb-0">Loading document types...</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Discharge tab -->
-    <div class="tab-pane fade" id="tab-discharge" role="tabpanel" aria-labelledby="tab-discharge-tab">
-        <div class="mt-3">
-
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" id="PatientIsDischarged">
-                <label class="form-check-label" for="PatientIsDischarged">
-                    Discharge this patient
-                </label>
-            </div>
-
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <label for="PatientDischargeDate" class="form-label">
-                        Discharge Date (mm/dd/yyyy) <span class="text-danger">*</span>
-                    </label>
-                    <input type="date"
-                           class="form-control form-control-sm"
-                           id="PatientDischargeDate" />
-                </div>
-
-                <div class="col-md-4">
-                    <label for="PatientDischargeType" class="form-label">
-                        Discharge Type <span class="text-danger">*</span>
-                    </label>
-                    <select class="form-select form-select-sm"
-                            id="PatientDischargeType">
-                        <option value="">-- Select Discharge Type --</option>
-                    </select>
-                </div>
-
-                <div class="col-md-4">
-                    <label for="PatientDischargeRemarks" class="form-label">
-                        Remarks
-                    </label>
-                    <textarea class="form-control form-control-sm"
-                              id="PatientDischargeRemarks"
-                              rows="2"></textarea>
-                </div>
-            </div>
-
-            <div id="dischargeTabMessage" class="small text-danger mt-2"></div>
-        </div>
-    </div>
-</div>
-
-<div id="basicDetailsMessage" class="text-danger small mb-2"></div>
-<!-- Global Save button -->
-<div class="mt-3 d-flex justify-content-end">
-    <button id="btnSavePatientMain"
-            type="button"
-            class="btn btn-primary">
-        <i class="fas fa-save me-1"></i> Save
-    </button>
-</div>
-
-<!-- Save Success Modal -->
-<div class="modal fade" id="saveSuccessModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content text-center p-4">
-            <div class="modal-body">
-                <div class="display-3 text-success mb-3">
-                    <i class="fas fa-check-circle"></i>
-                </div>
-                <h5 class="mb-2">Saved Successfully</h5>
-                <p class="text-muted mb-3">Patient details have been saved.</p>
-                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">
-                    OK
-                </button>
-            </div>
-        </div>
-    </div>
 </div>
 
 @section Scripts {
