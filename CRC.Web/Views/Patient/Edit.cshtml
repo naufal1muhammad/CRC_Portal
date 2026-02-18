@@ -5,7 +5,7 @@
     var patientId = (string)(ViewData["PatientId"] ?? string.Empty);
 }
 
-<div class="container-fluid py-3" data-patient-id="@patientId">
+<div class="container-fluid py-3 pb-5" data-patient-id="@patientId">
 
     <!-- Header -->
     <div class="d-flex align-items-center mb-3">
@@ -578,12 +578,14 @@
 
 <div id="basicDetailsMessage" class="text-danger small mb-2"></div>
 <!-- Global Save button for Basic + Discharge -->
-<div class="mt-3 d-flex justify-content-end">
-    <button id="btnSavePatientMain"
-            type="button"
-            class="btn btn-primary">
-        <i class="fas fa-save me-1"></i> Save
-    </button>
+<div class="fixed-bottom bg-white border-top shadow-sm">
+    <div class="container-fluid py-2 d-flex justify-content-end">
+        <button id="btnSavePatientMain"
+                type="button"
+                class="btn btn-primary">
+            <i class="fas fa-save me-1"></i> Save
+        </button>
+    </div>
 </div>
 
 <!-- Save Success Modal -->
