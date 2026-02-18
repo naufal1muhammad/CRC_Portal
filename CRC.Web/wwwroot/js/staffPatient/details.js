@@ -1,5 +1,5 @@
 ﻿// @ts-nocheck
-(function() {
+(function () {
     // ---------------------------
     // Shared context for all tabs
     // ---------------------------
@@ -21,6 +21,13 @@
         if (!x) return;
         x.value = val ?? "";
     }
+
+    function showById(id, visible) {
+        const node = el(id);
+        if (!node) return;
+        node.style.display = visible ? "" : "none";
+    }
+
 
     function setMsg(idOrEl, text, cssClass) {
         const node =
@@ -96,6 +103,18 @@
             setValue("sp_patientEmergencyRelationship", p.emergencyRelationship);
             setValue("sp_patientEmergencyNumber", p.emergencyNumber);
 
+            // Additional (iFOBT)
+            const ifobtStatusText = (p.iFobtStatus === true) ? "COMPLETE" : (p.iFobtStatus === false) ? "INCOMPLETE" : "";
+            setValue("sp_patientIFOBTStatus", ifobtStatusText);
+
+            const isComplete = (p.iFobtStatus === true);
+            showById("sp_ifobtCompletionDateWrap", isComplete);
+            showById("sp_ifobtResultsWrap", isComplete);
+
+            setValue("sp_patientIFOBTCompletionDate", isComplete ? p.iFobtCompletionDate : "");
+            const ifobtResultsText = (p.iFobtResults === true) ? "POSITIVE" : (p.iFobtResults === false) ? "NEGATIVE" : "";
+            setValue("sp_patientIFOBTResults", isComplete ? ifobtResultsText : "");
+
             setValue("sp_patientDischargeDate", p.dischargeDate);
             setValue("sp_patientDischargeType", p.dischargeTypeName);
             setValue("sp_patientDischargeRemarks", p.dischargeRemarks);
@@ -115,7 +134,7 @@
     window.StaffPatient.helpers = { el, setText, setValue, setMsg, getJson, getPatientIdFromDom };
 
     // Run only the Basic tab logic here
-    document.addEventListener("DOMContentLoaded", async function() {
+    document.addEventListener("DOMContentLoaded", async function () {
         console.log("staffPatient/details.js loaded ✅");
         window.StaffPatient.patientId = getPatientIdFromDom();
         await loadBasicDetails();

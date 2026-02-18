@@ -347,6 +347,10 @@ namespace CRC.Web.Controllers.Patient
                     emergencyRelationship = row["Patient_EmergencyRelationship"]?.ToString() ?? "",
                     emergencyNumber = row["Patient_EmergencyNumber"]?.ToString() ?? "",
 
+                    iFobtStatus = row["Patient_iFOBTStatus"] == DBNull.Value ? (bool?)null : Convert.ToBoolean(row["Patient_iFOBTStatus"]),
+                    iFobtCompletionDate = ToDateInputString(row["Patient_iFOBTCompletionDate"]),
+                    iFobtResults = row["Patient_iFOBTResults"] == DBNull.Value ? (bool?)null : Convert.ToBoolean(row["Patient_iFOBTResults"]),
+
                     dischargeTypeId = row["DischargeType_ID"] == DBNull.Value ? null : row["DischargeType_ID"]?.ToString(),
                     dischargeTypeName = row["DischargeType_Name"] == DBNull.Value ? null : row["DischargeType_Name"]?.ToString(),
                     dischargeDate = ToDateInputString(row["Patient_DischargeDate"]),
@@ -386,6 +390,11 @@ namespace CRC.Web.Controllers.Patient
             public string EmergencyName { get; set; } = string.Empty;
             public string EmergencyRelationship { get; set; } = string.Empty;
             public string EmergencyNumber { get; set; } = string.Empty;
+
+            // Additional (iFOBT)
+            public bool? IFOBTStatus { get; set; }
+            public string? IFOBTCompletionDate { get; set; } // yyyy-MM-dd
+            public bool? IFOBTResults { get; set; }
 
             // Discharge
             public bool IsDischarged { get; set; }
@@ -447,6 +456,23 @@ namespace CRC.Web.Controllers.Patient
             string emergencyName = (model.EmergencyName ?? "").Trim();
             string emergencyRel = (model.EmergencyRelationship ?? "").Trim();
             string emergencyNum = (model.EmergencyNumber ?? "").Trim();
+
+            // ----------- ADDITIONAL (iFOBT) -----------
+            bool? ifobtStatus = model.IFOBTStatus;
+            string ifobtCompletionStr = (model.IFOBTCompletionDate ?? "").Trim();
+            DateTime? ifobtCompletionDate = null;
+            if (!string.IsNullOrWhiteSpace(ifobtCompletionStr) && DateTime.TryParse(ifobtCompletionStr, out var parsedIfobt))
+            {
+                ifobtCompletionDate = parsedIfobt.Date;
+            }
+            bool? ifobtResults = model.IFOBTResults;
+
+            // If status is not COMPLETE, force-clear completion fields
+            if (ifobtStatus != true)
+            {
+                ifobtCompletionDate = null;
+                ifobtResults = null;
+            }
 
             if (string.IsNullOrWhiteSpace(name) ||
                 string.IsNullOrWhiteSpace(email) ||
@@ -576,7 +602,11 @@ namespace CRC.Web.Controllers.Patient
                         new SqlParameter("@Patient_AddLine2",              string.IsNullOrWhiteSpace(addLine2) ? (object)DBNull.Value : addLine2),
                         new SqlParameter("@Patient_EmergencyName",         emergencyName.ToUpperInvariant()),
                         new SqlParameter("@Patient_EmergencyRelationship", emergencyRel),
-                        new SqlParameter("@Patient_EmergencyNumber",       emergencyNum)
+                        new SqlParameter("@Patient_EmergencyNumber",       emergencyNum),
+
+                        new SqlParameter("@Patient_iFOBTStatus", SqlDbType.Bit) { Value = (object?)ifobtStatus ?? DBNull.Value },
+                        new SqlParameter("@Patient_iFOBTCompletionDate", SqlDbType.Date) { Value = ifobtCompletionDate.HasValue ? (object)ifobtCompletionDate.Value : DBNull.Value },
+                        new SqlParameter("@Patient_iFOBTResults", SqlDbType.Bit) { Value = (object?)ifobtResults ?? DBNull.Value }
                         // Discharge columns for new records will default to NULL
                     };
 
@@ -619,6 +649,10 @@ namespace CRC.Web.Controllers.Patient
                     new SqlParameter("@Patient_EmergencyName",         emergencyName.ToUpperInvariant()),
                     new SqlParameter("@Patient_EmergencyRelationship", emergencyRel),
                     new SqlParameter("@Patient_EmergencyNumber",       emergencyNum),
+
+                    new SqlParameter("@Patient_iFOBTStatus", SqlDbType.Bit) { Value = (object?)ifobtStatus ?? DBNull.Value },
+                    new SqlParameter("@Patient_iFOBTCompletionDate", SqlDbType.Date) { Value = ifobtCompletionDate.HasValue ? (object)ifobtCompletionDate.Value : DBNull.Value },
+                    new SqlParameter("@Patient_iFOBTResults", SqlDbType.Bit) { Value = (object?)ifobtResults ?? DBNull.Value },
 
                     new SqlParameter("@DischargeType_ID", (object?)(isDischarged ? dischargeTypeId : null) ?? DBNull.Value),
                     new SqlParameter("@Patient_DischargeDate", isDischarged && dischargeDate.HasValue ? (object)dischargeDate.Value : DBNull.Value),

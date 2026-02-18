@@ -104,6 +104,10 @@ namespace CRC.Web.Controllers.StaffPatient
                     emergencyNumber = row["Patient_EmergencyNumber"]?.ToString() ?? "",
                     occupationName = row["Occupation_Name"]?.ToString() ?? "",
 
+                    iFobtStatus = row["Patient_iFOBTStatus"] == DBNull.Value ? (bool?)null : Convert.ToBoolean(row["Patient_iFOBTStatus"]),
+                    iFobtCompletionDate = ToDateInputString(row["Patient_iFOBTCompletionDate"]),
+                    iFobtResults = row["Patient_iFOBTResults"] == DBNull.Value ? (bool?)null : Convert.ToBoolean(row["Patient_iFOBTResults"]),
+
                     dischargeTypeName = row["DischargeType_Name"] == DBNull.Value ? "" : row["DischargeType_Name"]?.ToString() ?? "",
                     dischargeDate = ToDateInputString(row["Patient_DischargeDate"]),
                     dischargeRemarks = row["Patient_DischargeRemarks"] == DBNull.Value ? "" : row["Patient_DischargeRemarks"]?.ToString() ?? ""
