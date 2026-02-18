@@ -37,6 +37,11 @@ BEGIN
         pb.[Patient_EmergencyRelationship],
         pb.[Patient_EmergencyNumber],
 
+        pb.[Patient_iFOBTStatus],
+        pb.[Patient_iFOBTCompletionDate],
+        pb.[Patient_iFOBTResults],
+        pb.[Patient_IsApproved],
+
         pb.[DischargeType_ID],
         dt.[DischargeType_Name],
         pb.[Patient_DischargeDate],

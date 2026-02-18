@@ -25,6 +25,11 @@ CREATE PROCEDURE [dbo].[spPatientBasic_Update]
     @Patient_EmergencyRelationship VARCHAR(100),
     @Patient_EmergencyNumber       VARCHAR(100),
 
+    @Patient_iFOBTStatus             BIT = NULL,
+    @Patient_iFOBTCompletionDate     DATE = NULL,
+    @Patient_iFOBTResults            BIT = NULL,
+    @Patient_IsApproved              BIT = NULL,
+
     @DischargeType_ID              VARCHAR(100) = NULL,
     @Patient_DischargeDate         DATETIME     = NULL,
     @Patient_DischargeRemarks      VARCHAR(MAX) = NULL,
@@ -36,6 +41,12 @@ BEGIN
 
     DECLARE @AddLine2Clean VARCHAR(MAX) =
         NULLIF(LTRIM(RTRIM(ISNULL(@Patient_AddLine2, ''))), '');
+
+    DECLARE @iFOBTCompletionDateClean DATE =
+        CASE WHEN @Patient_iFOBTStatus = 1 THEN @Patient_iFOBTCompletionDate ELSE NULL END;
+
+    DECLARE @iFOBTResultsClean BIT =
+        CASE WHEN @Patient_iFOBTStatus = 1 THEN @Patient_iFOBTResults ELSE NULL END;
 
     ---------------------------------
     -- 1) Update main PatientBasic
@@ -62,6 +73,10 @@ BEGIN
         [Patient_EmergencyName]         = @Patient_EmergencyName,
         [Patient_EmergencyRelationship] = @Patient_EmergencyRelationship,
         [Patient_EmergencyNumber]       = @Patient_EmergencyNumber,
+        [Patient_iFOBTStatus]            = @Patient_iFOBTStatus,
+        [Patient_iFOBTCompletionDate]    = @iFOBTCompletionDateClean,
+        [Patient_iFOBTResults]           = @iFOBTResultsClean,
+        [Patient_IsApproved]             = COALESCE(@Patient_IsApproved, [Patient_IsApproved]),
         [DischargeType_ID]              = @DischargeType_ID,
         [Patient_DischargeDate]         = @Patient_DischargeDate,
         [Patient_DischargeRemarks]      = @Patient_DischargeRemarks
