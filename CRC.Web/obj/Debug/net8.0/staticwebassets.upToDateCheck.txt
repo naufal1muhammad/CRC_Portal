@@ -41,12 +41,14 @@ wwwroot\js\helpers\FormValidatorFalcon.js
 wwwroot\js\patient\active-list.js
 wwwroot\js\patient\discharged-list.js
 wwwroot\js\patient\edit-appointment.js
+wwwroot\js\patient\edit-basic.js
 wwwroot\js\patient\edit-discharge.js
 wwwroot\js\patient\edit-documents.js
 wwwroot\js\patient\edit-journey.js
 wwwroot\js\settings\index.js
 wwwroot\js\site.js
 wwwroot\js\staffDashboard\index.js
+wwwroot\js\staffPatient\details.js
 wwwroot\js\staffPatient\documents.js
 wwwroot\js\staffPatient\journey.js
 wwwroot\js\staffPatient\templates\patientAssessment.js
@@ -9016,5 +9018,3 @@ wwwroot\uploads\staff\bb8159dc004f47399be2965ee02d21a7_PERSONAL IDENTIFICATION.p
 wwwroot\uploads\staff\d6dac07d92234da49eac0cc7b4e5228f_PERSONAL IDENTIFICATION.pdf
 wwwroot\uploads\staff\dbfce4688c2244df8979e5adf1a71cb3_CV_RESUME.pdf
 wwwroot\uploads\staff\dc2113655b61436fb03bd71a57bcf45b_ANNUAL PRACTICING CERTIFICATE.pdf
-wwwroot\js\patient\edit-basic.js
-wwwroot\js\staffPatient\details.js
