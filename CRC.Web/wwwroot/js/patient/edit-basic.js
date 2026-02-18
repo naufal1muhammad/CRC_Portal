@@ -29,31 +29,17 @@
     function updateDependentTabs() {
         const hasPatient = !!getRootPatientId();
         setDependentTabsDisabled(!hasPatient);
+        toggleDependentSections(hasPatient);
+    }
+
+    function toggleDependentSections(hasPatient) {
+        document.querySelectorAll('[data-dependent-hint]').forEach(el => show(el, !hasPatient));
+        document.querySelectorAll('[data-dependent-content]').forEach(el => show(el, hasPatient));
     }
 
     function show(el, visible) {
         if (!el) return;
         el.style.display = visible ? '' : 'none';
-    }
-
-
-    function updateIFOBTVisibility() {
-        const statusSel = document.getElementById('PatientIFOBTStatus');
-        const wrapDate = document.getElementById('ifobtCompletionDateWrap');
-        const wrapRes = document.getElementById('ifobtResultsWrap');
-        const dateInput = document.getElementById('PatientIFOBTCompletionDate');
-        const resSel = document.getElementById('PatientIFOBTResults');
-
-        const isComplete = !!(statusSel && statusSel.value === '1');
-
-        show(wrapDate, isComplete);
-        show(wrapRes, isComplete);
-
-        // If not COMPLETE, force-clear completion fields
-        if (!isComplete) {
-            if (dateInput) dateInput.value = '';
-            if (resSel) resSel.value = '';
-        }
     }
 
     function resetSelect(select, placeholder) {
@@ -510,19 +496,6 @@
             document.getElementById('PatientEmergencyRelationship').value = p.emergencyRelationship || '';
             document.getElementById('PatientEmergencyNumber').value = p.emergencyNumber || '';
 
-            // Additional (iFOBT)
-            const ifobtStatusSel = document.getElementById('PatientIFOBTStatus');
-            if (ifobtStatusSel) {
-                ifobtStatusSel.value = (p.iFobtStatus === true) ? '1' : (p.iFobtStatus === false) ? '0' : '';
-            }
-            const ifobtComp = document.getElementById('PatientIFOBTCompletionDate');
-            if (ifobtComp) ifobtComp.value = p.iFobtCompletionDate || '';
-            const ifobtResSel = document.getElementById('PatientIFOBTResults');
-            if (ifobtResSel) {
-                ifobtResSel.value = (p.iFobtResults === true) ? '1' : (p.iFobtResults === false) ? '0' : '';
-            }
-            updateIFOBTVisibility();
-
             // Discharge tab
             initDischargeFromBasic(p);
 
@@ -571,23 +544,6 @@
         const emergencyRelationship = (document.getElementById('PatientEmergencyRelationship').value || '').trim();
         const emergencyNumber = (document.getElementById('PatientEmergencyNumber').value || '').trim();
 
-        // Additional (iFOBT) - optional
-        const ifobtStatusVal = (document.getElementById('PatientIFOBTStatus')?.value || '').trim();
-        let iFobtStatus = null;
-        if (ifobtStatusVal === '1') iFobtStatus = true;
-        else if (ifobtStatusVal === '0') iFobtStatus = false;
-
-        let iFobtCompletionDate = null;
-        let iFobtResults = null;
-        if (iFobtStatus === true) {
-            const dt = (document.getElementById('PatientIFOBTCompletionDate')?.value || '').trim();
-            iFobtCompletionDate = dt ? dt : null;
-
-            const resVal = (document.getElementById('PatientIFOBTResults')?.value || '').trim();
-            if (resVal === '1') iFobtResults = true;
-            else if (resVal === '0') iFobtResults = false;
-        }
-
         // Validation
         if (!name || !email || !phone || !nricDigits || !raceId || !sourceId || !religionId || !maritalStatusId || !occupationId ||
             !resState || !resCity || !resPostcode || !addLine1 || !emergencyName || !emergencyRelationship || !emergencyNumber) {
@@ -627,11 +583,7 @@
 
             emergencyName: emergencyName,
             emergencyRelationship: emergencyRelationship,
-            emergencyNumber: emergencyNumber,
-
-            iFobtStatus: iFobtStatus,
-            iFobtCompletionDate: iFobtCompletionDate,
-            iFobtResults: iFobtResults
+            emergencyNumber: emergencyNumber
         };
     }
 
@@ -765,25 +717,18 @@
         const citySelect = document.getElementById('PatientResCity');
         const postcodeSelect = document.getElementById('PatientResPostcode');
 
-        const ifobtStatusSelect = document.getElementById('PatientIFOBTStatus');
-
         const patientId = getRootPatientId();
 
         await loadLookups();
         await loadStates();
         applySelect2();
         await loadPatientBasic(patientId);
-        updateIFOBTVisibility();
         updateDependentTabs();
 
         // Wire events
         if (nricInput) {
             nricInput.addEventListener('input', applyDerivedFieldsFromNric);
             nricInput.addEventListener('change', applyDerivedFieldsFromNric);
-        }
-
-        if (ifobtStatusSelect) {
-            ifobtStatusSelect.addEventListener('change', updateIFOBTVisibility);
         }
 
         // Address: State -> City -> Postcode (Select2 where available)
