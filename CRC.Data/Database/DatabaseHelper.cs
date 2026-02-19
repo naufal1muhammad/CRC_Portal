@@ -1,10 +1,11 @@
 ﻿using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Data.SqlClient;
 using System.Collections.Concurrent;
 using System.Data;
 using System.Security.Claims;
 
-namespace CRC.Web.Data
+namespace CRC.Data.Database
 {
     public class DatabaseHelper
     {

@@ -161,3 +161,5 @@ C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\refint\CRC.W
 C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.pdb
 C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\CRC.Web.genruntimeconfig.cache
 C:\Personal Projects\CRC_Portal\CRC_Portal\CRC.Web\obj\Debug\net8.0\ref\CRC.Web.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Data.dll
+C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Web\bin\Debug\net8.0\CRC.Data.pdb

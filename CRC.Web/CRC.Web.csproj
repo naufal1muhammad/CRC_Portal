@@ -15,4 +15,8 @@
     <Folder Include="wwwroot\uploads\patient\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\CRC.Data\CRC.Data.csproj" />
+  </ItemGroup>
+
 </Project>

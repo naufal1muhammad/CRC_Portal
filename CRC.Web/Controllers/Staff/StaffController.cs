@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using CRC.Web.Data;
+using CRC.Data.Database;
 
 namespace CRC.Web.Controllers.Staff
 {
