@@ -1045,35 +1045,24 @@ namespace CRC.Web.Controllers.Staff
 
             try
             {
-                // Get file path first
-                var paramGet = new[]
+                var deletedFilePathParameter = new SqlParameter("@DeletedFilePath", SqlDbType.VarChar, 500)
                 {
-                    new SqlParameter("@StaffDocument_ID", model.DocumentId)
+                    Direction = ParameterDirection.Output
                 };
 
-                var dt = await _db.ExecuteDataTableAsync("spStaffDocument_GetById", paramGet);
-
-                string? filePath = null;
-
-                if (dt.Rows.Count > 0)
+                var parameters = new[]
                 {
-                    filePath = dt.Rows[0]["FilePath"].ToString();
-                }
-
-                // Delete DB row
-                var paramDelete = new[]
-                {
-                    new SqlParameter("@StaffDocument_ID", model.DocumentId)
+                    new SqlParameter("@StaffDocument_ID", model.DocumentId),
+                    deletedFilePathParameter
                 };
 
-                await _db.ExecuteNonQueryAsync("spStaffDocument_Delete", paramDelete);
+                await _db.ExecuteNonQueryAsync("spStaffDocument_Delete", parameters);
 
-                // Delete file from disk
-                if (!string.IsNullOrWhiteSpace(filePath))
+                var deletedFilePath = deletedFilePathParameter.Value?.ToString();
+                if (!string.IsNullOrWhiteSpace(deletedFilePath))
                 {
-                    var physicalPath = Path.Combine(
-                        _env.WebRootPath,
-                        filePath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                    var relativePath = deletedFilePath.Trim().TrimStart('~').TrimStart('/', '\\');
+                    var physicalPath = Path.Combine(_env.WebRootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
                     if (System.IO.File.Exists(physicalPath))
                     {
