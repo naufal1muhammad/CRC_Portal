@@ -689,16 +689,20 @@ namespace CRC.Web.Controllers.Staff
             {
                 if (string.IsNullOrWhiteSpace(filePath)) return;
 
+                var candidatePath = filePath.Trim().TrimStart('~').TrimStart('/', '\\');
+
                 // If it's already a physical path
-                if (Path.IsPathRooted(filePath))
+                if (Path.IsPathRooted(candidatePath))
                 {
-                    if (System.IO.File.Exists(filePath))
-                        System.IO.File.Delete(filePath);
+                    if (System.IO.File.Exists(candidatePath))
+                        System.IO.File.Delete(candidatePath);
                     return;
                 }
 
-                // Treat as web-relative path like /uploads/staff/xxx.pdf
-                var rel = filePath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
+                // Treat as web-relative path like /uploads/staff/xxx.pdf or \uploads\staff\xxx.pdf
+                var rel = candidatePath
+                    .Replace('/', Path.DirectorySeparatorChar)
+                    .Replace('\\', Path.DirectorySeparatorChar);
                 var physicalPath = Path.Combine(GetWebRootPath(), rel);
 
                 if (System.IO.File.Exists(physicalPath))
@@ -1045,40 +1049,23 @@ namespace CRC.Web.Controllers.Staff
 
             try
             {
-                // Get file path first
-                var paramGet = new[]
+                var deletedFilePathParameter = new SqlParameter("@DeletedFilePath", SqlDbType.VarChar, 500)
                 {
-                    new SqlParameter("@StaffDocument_ID", model.DocumentId)
+                    Direction = ParameterDirection.Output
                 };
 
-                var dt = await _db.ExecuteDataTableAsync("spStaffDocument_GetById", paramGet);
-
-                string? filePath = null;
-
-                if (dt.Rows.Count > 0)
+                var parameters = new[]
                 {
-                    filePath = dt.Rows[0]["FilePath"].ToString();
-                }
-
-                // Delete DB row
-                var paramDelete = new[]
-                {
-                    new SqlParameter("@StaffDocument_ID", model.DocumentId)
+                    new SqlParameter("@StaffDocument_ID", model.DocumentId),
+                    deletedFilePathParameter
                 };
 
-                await _db.ExecuteNonQueryAsync("spStaffDocument_Delete", paramDelete);
+                await _db.ExecuteNonQueryAsync("spStaffDocument_Delete", parameters);
 
-                // Delete file from disk
-                if (!string.IsNullOrWhiteSpace(filePath))
+                var deletedFilePath = deletedFilePathParameter.Value?.ToString();
+                if (!string.IsNullOrWhiteSpace(deletedFilePath))
                 {
-                    var physicalPath = Path.Combine(
-                        _env.WebRootPath,
-                        filePath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
-
-                    if (System.IO.File.Exists(physicalPath))
-                    {
-                        System.IO.File.Delete(physicalPath);
-                    }
+                    TryDeletePhysicalFile(deletedFilePath);
                 }
 
                 return Ok(new { success = true, message = "Document deleted successfully." });

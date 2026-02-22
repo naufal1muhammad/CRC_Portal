@@ -1,7 +1,8 @@
 CREATE PROCEDURE [dbo].[spStaffDocument_Delete]
 (
     @StaffDocument_ID INT,
-    @User_ID          INT = NULL
+    @User_ID          INT = NULL,
+    @DeletedFilePath  VARCHAR(500) = NULL OUTPUT
 )
 AS
 BEGIN
@@ -43,6 +44,8 @@ BEGIN
     WHERE [StaffDocument_ID] = @StaffDocument_ID;
 
     DECLARE @RowsAffected INT = @@ROWCOUNT;
+
+    SET @DeletedFilePath = CASE WHEN @RowsAffected > 0 THEN @FilePath ELSE NULL END;
 
     IF @RowsAffected > 0
     BEGIN
