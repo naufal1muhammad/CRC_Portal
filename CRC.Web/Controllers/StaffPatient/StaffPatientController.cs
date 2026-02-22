@@ -1015,12 +1015,30 @@ namespace CRC.Web.Controllers.StaffPatient
 
             try
             {
+                var deletedFilePathParameter = new SqlParameter("@DeletedFilePath", SqlDbType.VarChar, 500)
+                {
+                    Direction = ParameterDirection.Output
+                };
+
                 var parameters = new[]
                 {
-            new SqlParameter("@PatientDocument_ID", model.DocumentId)
-        };
+                    new SqlParameter("@PatientDocument_ID", model.DocumentId),
+                    deletedFilePathParameter
+                };
 
                 await _db.ExecuteNonQueryAsync("spPatientDocument_Delete", parameters);
+
+                var deletedFilePath = deletedFilePathParameter.Value?.ToString();
+                if (!string.IsNullOrWhiteSpace(deletedFilePath))
+                {
+                    var relativePath = deletedFilePath.Trim().TrimStart('~').TrimStart('/', '\\');
+                    var physicalPath = Path.Combine(_env.WebRootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+                    if (System.IO.File.Exists(physicalPath))
+                    {
+                        System.IO.File.Delete(physicalPath);
+                    }
+                }
 
                 return Ok(new { success = true });
             }
