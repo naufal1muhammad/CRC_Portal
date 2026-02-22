@@ -9008,6 +9008,7 @@ wwwroot\uploads\patient\bd75c7c62c464889aa1957ba5591eed3_COLONOSCOPY CONSENT FOR
 wwwroot\uploads\patient\be0f04bead424e8ebf2c5185be4e26ee_COLONOSCOPY FINDING FORM.pdf
 wwwroot\uploads\patient\ca10ed2be57045f9a83bfdc5d033ed98_COLONOSCOPY FINDING FORM.pdf
 wwwroot\uploads\staff\06d0c1644c7a41dbbcaeb01af676f472_ANNUAL PRACTICING CERTIFICATE.pdf
+wwwroot\uploads\staff\1150e01a6ec749dd8ceb11f6d73be742_CV_RESUME.pdf
 wwwroot\uploads\staff\573837a32b6c4e778f28e72d79239596_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\5a5edf3dac7142908b3a5d8d4236a013_MMC REGISTRATION CERTIFICATE.pdf
 wwwroot\uploads\staff\61d09cdec1c34fe9b82fe8edea759224_MALPRACTICE INDEMNITY MEMBERSHIP.pdf
