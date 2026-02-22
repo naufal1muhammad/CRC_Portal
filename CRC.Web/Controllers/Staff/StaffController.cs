@@ -689,16 +689,20 @@ namespace CRC.Web.Controllers.Staff
             {
                 if (string.IsNullOrWhiteSpace(filePath)) return;
 
+                var candidatePath = filePath.Trim().TrimStart('~').TrimStart('/', '\\');
+
                 // If it's already a physical path
-                if (Path.IsPathRooted(filePath))
+                if (Path.IsPathRooted(candidatePath))
                 {
-                    if (System.IO.File.Exists(filePath))
-                        System.IO.File.Delete(filePath);
+                    if (System.IO.File.Exists(candidatePath))
+                        System.IO.File.Delete(candidatePath);
                     return;
                 }
 
-                // Treat as web-relative path like /uploads/staff/xxx.pdf
-                var rel = filePath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
+                // Treat as web-relative path like /uploads/staff/xxx.pdf or \uploads\staff\xxx.pdf
+                var rel = candidatePath
+                    .Replace('/', Path.DirectorySeparatorChar)
+                    .Replace('\\', Path.DirectorySeparatorChar);
                 var physicalPath = Path.Combine(GetWebRootPath(), rel);
 
                 if (System.IO.File.Exists(physicalPath))
@@ -1061,13 +1065,7 @@ namespace CRC.Web.Controllers.Staff
                 var deletedFilePath = deletedFilePathParameter.Value?.ToString();
                 if (!string.IsNullOrWhiteSpace(deletedFilePath))
                 {
-                    var relativePath = deletedFilePath.Trim().TrimStart('~').TrimStart('/', '\\');
-                    var physicalPath = Path.Combine(_env.WebRootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
-
-                    if (System.IO.File.Exists(physicalPath))
-                    {
-                        System.IO.File.Delete(physicalPath);
-                    }
+                    TryDeletePhysicalFile(deletedFilePath);
                 }
 
                 return Ok(new { success = true, message = "Document deleted successfully." });
