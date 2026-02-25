@@ -102,13 +102,6 @@ BEGIN
     FROM [dbo].[PatientFollowUp] pf
     WHERE pf.[Patient_ID] = @Patient_ID;
 
-    -- PatientColonoscopy: Patient_ID, Patient_Name
-    UPDATE pc
-    SET
-        pc.[Patient_Name] = @Patient_Name
-    FROM [dbo].[PatientColonoscopy] pc
-    WHERE pc.[Patient_ID] = @Patient_ID;
-
     -- PatientAssessment: Patient_ID, Patient_Name
     UPDATE pas
     SET

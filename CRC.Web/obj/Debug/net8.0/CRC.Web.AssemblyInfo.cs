@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CRC.Web")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f62b79419b35ce1335efbd7b34ec70c638cef549")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+962b02521e1e02d196f4c2377db672866228ec4d")]
 [assembly: System.Reflection.AssemblyProductAttribute("CRC.Web")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CRC.Web")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
