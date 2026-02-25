@@ -102,13 +102,6 @@ BEGIN
     FROM [dbo].[PatientFollowUp] pf
     WHERE pf.[Patient_ID] = @Patient_ID;
 
-    -- PatientAssessment: Patient_ID, Patient_Name
-    UPDATE pas
-    SET
-        pas.[Patient_Name] = @Patient_Name
-    FROM [dbo].[PatientAssessment] pas
-    WHERE pas.[Patient_ID] = @Patient_ID;
-
     IF @RowsAffected > 0
     BEGIN
         -- -----------------------------
