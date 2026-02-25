@@ -39,7 +39,6 @@ BEGIN
         INSERT INTO dbo.PatientJourney
         (
             Patient_ID,
-            Patient_Name,
             PjAppType_Name,
             PatientJourney_Date,
             Staff_ID,
@@ -48,7 +47,6 @@ BEGIN
         VALUES
         (
             @Patient_ID,
-            @Patient_Name,
             'PATIENT FOLLOW UP',
             @PatientJourney_Date,
             @Staff_ID,

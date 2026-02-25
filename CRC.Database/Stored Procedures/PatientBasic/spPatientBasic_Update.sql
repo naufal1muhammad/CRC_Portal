@@ -84,17 +84,6 @@ BEGIN
 
     DECLARE @RowsAffected INT = @@ROWCOUNT;
 
-    ---------------------------------
-    -- 2) Cascade updates to children
-    ---------------------------------
-
-    -- PatientJourney: Patient_ID, Patient_Name
-    UPDATE pj
-    SET
-        pj.[Patient_Name]  = @Patient_Name
-    FROM [dbo].[PatientJourney] pj
-    WHERE pj.[Patient_ID] = @Patient_ID;
-
     IF @RowsAffected > 0
     BEGIN
         -- -----------------------------
