@@ -7,7 +7,7 @@ BEGIN
     SELECT TOP 1
         pj.PatientJourney_ID,
         pj.Patient_ID,
-        pj.Patient_Name,
+        pb.Patient_Name,
         pj.PjAppType_Name,
         pj.PatientJourney_Date,
         pj.Staff_ID,
@@ -17,6 +17,8 @@ BEGIN
         pf.DischargePlan,
         pf.DischargeSummary_Status
     FROM dbo.PatientJourney pj
+    INNER JOIN dbo.PatientBasic pb
+        ON pb.Patient_ID = pj.Patient_ID
     INNER JOIN dbo.PatientFollowUp pf
         ON pf.PatientJourney_ID = pj.PatientJourney_ID
     WHERE pj.PatientJourney_ID = @PatientJourney_ID;

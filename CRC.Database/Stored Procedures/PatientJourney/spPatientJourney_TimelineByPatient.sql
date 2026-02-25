@@ -9,7 +9,7 @@ BEGIN
     SELECT
         pj.PatientJourney_ID,
         pj.Patient_ID,
-        pj.Patient_Name,
+        pb.Patient_Name,
         pj.PjAppType_Name,
         pj.PatientJourney_Date,
 
@@ -21,6 +21,8 @@ BEGIN
         ua.Staff_ID     AS UpdatedByStaffId,
         ua.Staff_Name   AS UpdatedByStaffName
     FROM dbo.PatientJourney pj
+    INNER JOIN dbo.PatientBasic pb
+        ON pb.Patient_ID = pj.Patient_ID
     OUTER APPLY
     (
         SELECT TOP 1
