@@ -95,13 +95,6 @@ BEGIN
     FROM [dbo].[PatientJourney] pj
     WHERE pj.[Patient_ID] = @Patient_ID;
 
-    -- PatientFollowUp: Patient_ID, Patient_Name
-    UPDATE pf
-    SET
-        pf.[Patient_Name]  = @Patient_Name
-    FROM [dbo].[PatientFollowUp] pf
-    WHERE pf.[Patient_ID] = @Patient_ID;
-
     IF @RowsAffected > 0
     BEGIN
         -- -----------------------------

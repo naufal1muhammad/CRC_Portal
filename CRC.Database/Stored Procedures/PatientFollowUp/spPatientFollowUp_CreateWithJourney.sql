@@ -62,7 +62,6 @@ BEGIN
         (
             PatientJourney_ID,
             Patient_ID,
-            Patient_Name,
             HPE_Results,
             DischargePlan,
             DischargeSummary_Status
@@ -71,7 +70,6 @@ BEGIN
         (
             @PatientJourney_ID,
             @Patient_ID,
-            @Patient_Name,
             @HPE_Results,
             @DischargePlan,
             @DischargeSummary_Status

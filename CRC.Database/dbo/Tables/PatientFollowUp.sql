@@ -3,7 +3,6 @@
     [PatientFollowUp_ID] INT IDENTITY(1,1) NOT NULL,
     [PatientJourney_ID] INT NOT NULL,
     [Patient_ID] VARCHAR(100) NOT NULL,
-    [Patient_Name] VARCHAR(100) NOT NULL,
 
     [HPE_Results] VARCHAR(100) NOT NULL,
     [DischargePlan] VARCHAR(100) NOT NULL,
