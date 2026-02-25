@@ -87,7 +87,6 @@ BEGIN
         (
             PatientJourney_ID,
             Patient_ID,
-            Patient_Name,
 
             ColonoscopyStatus,
             ColonoscopyStatus_Details,
@@ -124,7 +123,6 @@ BEGIN
         (
             @PatientJourney_ID,
             @Patient_ID,
-            @Patient_Name,
 
             @ColonoscopyStatus,
             @ColonoscopyStatus_Details,
