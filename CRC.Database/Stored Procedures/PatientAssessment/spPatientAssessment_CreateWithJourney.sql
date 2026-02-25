@@ -110,7 +110,6 @@ BEGIN
         (
             PatientJourney_ID,
             Patient_ID,
-            Patient_Name,
             iFOBTPositive_Date,
             Risks_Smoking,
             Risks_AlcoholConsumption,
@@ -161,7 +160,6 @@ BEGIN
         (
             @PatientJourney_ID,
             @Patient_ID,
-            @Patient_Name,
             @iFOBTPositive_Date,
             @Risks_Smoking,
             @Risks_AlcoholConsumption,
