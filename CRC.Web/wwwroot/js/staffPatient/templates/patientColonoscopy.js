@@ -177,16 +177,46 @@
     // conditional logic
     // -----------------------------------------------------------------
     const FINDINGS = [
-        { sel: "pc_findingsAnus", wrap: "wrap_pc_findingsAnusDetails", organ: "Anus" },
-        { sel: "pc_findingsRectum", wrap: "wrap_pc_findingsRectumDetails", organ: "Rectum" },
-        { sel: "pc_findingsSigmoidColon", wrap: "wrap_pc_findingsSigmoidColonDetails", organ: "SigmoidColon" },
-        { sel: "pc_findingsDescendingColon", wrap: "wrap_pc_findingsDescendingColonDetails", organ: "DescendingColon" },
-        { sel: "pc_findingsSplenicFlexure", wrap: "wrap_pc_findingsSplenicFlexureDetails", organ: "SplenicFlexure" },
-        { sel: "pc_findingsTransverseColon", wrap: "wrap_pc_findingsTransverseColonDetails", organ: "TransverseColon" },
-        { sel: "pc_findingsHepaticFlexure", wrap: "wrap_pc_findingsHepaticFlexureDetails", organ: "HepaticFlexure" },
-        { sel: "pc_findingsAscendingColon", wrap: "wrap_pc_findingsAscendingColonDetails", organ: "AscendingColon" },
-        { sel: "pc_findingsCaecum", wrap: "wrap_pc_findingsCaecumDetails", organ: "Caecum" },
+        { sel: "pc_findingsAnus", wrap: "wrap_pc_findingsAnusDetails", organ: "Anus", label: "Anus" },
+        { sel: "pc_findingsRectum", wrap: "wrap_pc_findingsRectumDetails", organ: "Rectum", label: "Rectum" },
+        { sel: "pc_findingsSigmoidColon", wrap: "wrap_pc_findingsSigmoidColonDetails", organ: "SigmoidColon", label: "Sigmoid Colon" },
+        { sel: "pc_findingsDescendingColon", wrap: "wrap_pc_findingsDescendingColonDetails", organ: "DescendingColon", label: "Descending Colon" },
+        { sel: "pc_findingsSplenicFlexure", wrap: "wrap_pc_findingsSplenicFlexureDetails", organ: "SplenicFlexure", label: "Splenic Flexure" },
+        { sel: "pc_findingsTransverseColon", wrap: "wrap_pc_findingsTransverseColonDetails", organ: "TransverseColon", label: "Transverse Colon" },
+        { sel: "pc_findingsHepaticFlexure", wrap: "wrap_pc_findingsHepaticFlexureDetails", organ: "HepaticFlexure", label: "Hepatic Flexure" },
+        { sel: "pc_findingsAscendingColon", wrap: "wrap_pc_findingsAscendingColonDetails", organ: "AscendingColon", label: "Ascending Colon" },
+        { sel: "pc_findingsCaecum", wrap: "wrap_pc_findingsCaecumDetails", organ: "Caecum", label: "Caecum" },
     ];
+
+    /**
+     * Clone the single <template id="pcAnomalyTemplate"> into each organ's
+     * wrapper div, setting the organ-specific title and field IDs.
+     * Called once during init() so the DOM ends up identical to the old
+     * hard-coded version.
+     */
+    function stampAnomalyTemplates() {
+        var tmpl = rootEl.querySelector("#pcAnomalyTemplate");
+        if (!tmpl) return;
+
+        FINDINGS.forEach(function (f) {
+            var wrapper = q(f.wrap);
+            if (!wrapper) return;
+
+            var clone = tmpl.content.cloneNode(true);
+
+            // Set the organ label in the title
+            var labelEl = clone.querySelector("[data-anomaly-label]");
+            if (labelEl) labelEl.textContent = f.label;
+
+            // Set unique IDs on each anomaly field select
+            clone.querySelectorAll("[data-anomaly-field]").forEach(function (sel) {
+                sel.id = "pcAnomaly_" + f.organ + "_" + sel.getAttribute("data-anomaly-field");
+                sel.removeAttribute("data-anomaly-field");
+            });
+
+            wrapper.appendChild(clone);
+        });
+    }
 
     function refreshConditionals() {
         // Colonoscopy status details required only when INCOMPLETE (false)
@@ -215,6 +245,9 @@
     // -----------------------------------------------------------------
     function init(root) {
         rootEl = root;
+
+        // Stamp the anomaly details template into each organ wrapper
+        stampAnomalyTemplates();
 
         // Wire conditional toggles
         [
