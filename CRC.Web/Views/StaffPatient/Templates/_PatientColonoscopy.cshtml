@@ -49,178 +49,1167 @@
         </div>
         <div class="card-body">
 
-            <div class="row g-3">
-                <!-- Anus -->
-                <div class="col-md-4">
-                    <label class="form-label">4. Anus <span class="text-danger">*</span></label>
-                    <select id="pc_findingsAnus" class="form-select pc-findings-select" data-organ="Anus">
-                        <option value="">-- Select --</option>
-                        <option value="true">NORMAL</option>
-                        <option value="false">ABNORMAL</option>
-                    </select>
-                </div>
-                <div class="col-md-8" id="wrap_pc_findingsAnusDetails" style="display:none;">
-                    <input type="hidden" id="pc_findingsAnusDetails" />
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                        <button type="button" class="btn btn-sm btn-outline-primary pc-anomaly-btn" data-organ="Anus">
-                            <i class="bi bi-pencil-square"></i> Anomaly Details
-                        </button>
-                        <span id="pc_findingsAnusBadge" class="badge bg-secondary d-none">Filled</span>
-                    </div>
-                </div>
-
-                <!-- Rectum -->
-                <div class="col-md-4">
-                    <label class="form-label">5. Rectum <span class="text-danger">*</span></label>
-                    <select id="pc_findingsRectum" class="form-select pc-findings-select" data-organ="Rectum">
-                        <option value="">-- Select --</option>
-                        <option value="true">NORMAL</option>
-                        <option value="false">ABNORMAL</option>
-                    </select>
-                </div>
-                <div class="col-md-8" id="wrap_pc_findingsRectumDetails" style="display:none;">
-                    <input type="hidden" id="pc_findingsRectumDetails" />
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                        <button type="button" class="btn btn-sm btn-outline-primary pc-anomaly-btn" data-organ="Rectum">
-                            <i class="bi bi-pencil-square"></i> Anomaly Details
-                        </button>
-                        <span id="pc_findingsRectumBadge" class="badge bg-secondary d-none">Filled</span>
-                    </div>
-                </div>
-
-                <!-- Sigmoid Colon -->
-                <div class="col-md-4">
-                    <label class="form-label">6. Sigmoid Colon <span class="text-danger">*</span></label>
-                    <select id="pc_findingsSigmoidColon" class="form-select pc-findings-select" data-organ="SigmoidColon">
-                        <option value="">-- Select --</option>
-                        <option value="true">NORMAL</option>
-                        <option value="false">ABNORMAL</option>
-                    </select>
-                </div>
-                <div class="col-md-8" id="wrap_pc_findingsSigmoidColonDetails" style="display:none;">
-                    <input type="hidden" id="pc_findingsSigmoidColonDetails" />
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                        <button type="button" class="btn btn-sm btn-outline-primary pc-anomaly-btn" data-organ="SigmoidColon">
-                            <i class="bi bi-pencil-square"></i> Anomaly Details
-                        </button>
-                        <span id="pc_findingsSigmoidColonBadge" class="badge bg-secondary d-none">Filled</span>
-                    </div>
-                </div>
-
-                <!-- Descending Colon -->
-                <div class="col-md-4">
-                    <label class="form-label">7. Descending Colon <span class="text-danger">*</span></label>
-                    <select id="pc_findingsDescendingColon" class="form-select pc-findings-select" data-organ="DescendingColon">
-                        <option value="">-- Select --</option>
-                        <option value="true">NORMAL</option>
-                        <option value="false">ABNORMAL</option>
-                    </select>
-                </div>
-                <div class="col-md-8" id="wrap_pc_findingsDescendingColonDetails" style="display:none;">
-                    <input type="hidden" id="pc_findingsDescendingColonDetails" />
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                        <button type="button" class="btn btn-sm btn-outline-primary pc-anomaly-btn" data-organ="DescendingColon">
-                            <i class="bi bi-pencil-square"></i> Anomaly Details
-                        </button>
-                        <span id="pc_findingsDescendingColonBadge" class="badge bg-secondary d-none">Filled</span>
-                    </div>
-                </div>
-
-                <!-- Splenic Flexure -->
-                <div class="col-md-4">
-                    <label class="form-label">8. Splenic Flexure <span class="text-danger">*</span></label>
-                    <select id="pc_findingsSplenicFlexure" class="form-select pc-findings-select" data-organ="SplenicFlexure">
-                        <option value="">-- Select --</option>
-                        <option value="true">NORMAL</option>
-                        <option value="false">ABNORMAL</option>
-                    </select>
-                </div>
-                <div class="col-md-8" id="wrap_pc_findingsSplenicFlexureDetails" style="display:none;">
-                    <input type="hidden" id="pc_findingsSplenicFlexureDetails" />
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                        <button type="button" class="btn btn-sm btn-outline-primary pc-anomaly-btn" data-organ="SplenicFlexure">
-                            <i class="bi bi-pencil-square"></i> Anomaly Details
-                        </button>
-                        <span id="pc_findingsSplenicFlexureBadge" class="badge bg-secondary d-none">Filled</span>
-                    </div>
-                </div>
-
-                <!-- Transverse Colon -->
-                <div class="col-md-4">
-                    <label class="form-label">9. Transverse Colon <span class="text-danger">*</span></label>
-                    <select id="pc_findingsTransverseColon" class="form-select pc-findings-select" data-organ="TransverseColon">
-                        <option value="">-- Select --</option>
-                        <option value="true">NORMAL</option>
-                        <option value="false">ABNORMAL</option>
-                    </select>
-                </div>
-                <div class="col-md-8" id="wrap_pc_findingsTransverseColonDetails" style="display:none;">
-                    <input type="hidden" id="pc_findingsTransverseColonDetails" />
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                        <button type="button" class="btn btn-sm btn-outline-primary pc-anomaly-btn" data-organ="TransverseColon">
-                            <i class="bi bi-pencil-square"></i> Anomaly Details
-                        </button>
-                        <span id="pc_findingsTransverseColonBadge" class="badge bg-secondary d-none">Filled</span>
-                    </div>
-                </div>
-
-                <!-- Hepatic Flexure -->
-                <div class="col-md-4">
-                    <label class="form-label">10. Hepatic Flexure <span class="text-danger">*</span></label>
-                    <select id="pc_findingsHepaticFlexure" class="form-select pc-findings-select" data-organ="HepaticFlexure">
-                        <option value="">-- Select --</option>
-                        <option value="true">NORMAL</option>
-                        <option value="false">ABNORMAL</option>
-                    </select>
-                </div>
-                <div class="col-md-8" id="wrap_pc_findingsHepaticFlexureDetails" style="display:none;">
-                    <input type="hidden" id="pc_findingsHepaticFlexureDetails" />
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                        <button type="button" class="btn btn-sm btn-outline-primary pc-anomaly-btn" data-organ="HepaticFlexure">
-                            <i class="bi bi-pencil-square"></i> Anomaly Details
-                        </button>
-                        <span id="pc_findingsHepaticFlexureBadge" class="badge bg-secondary d-none">Filled</span>
-                    </div>
-                </div>
-
-                <!-- Ascending Colon -->
-                <div class="col-md-4">
-                    <label class="form-label">11. Ascending Colon <span class="text-danger">*</span></label>
-                    <select id="pc_findingsAscendingColon" class="form-select pc-findings-select" data-organ="AscendingColon">
-                        <option value="">-- Select --</option>
-                        <option value="true">NORMAL</option>
-                        <option value="false">ABNORMAL</option>
-                    </select>
-                </div>
-                <div class="col-md-8" id="wrap_pc_findingsAscendingColonDetails" style="display:none;">
-                    <input type="hidden" id="pc_findingsAscendingColonDetails" />
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                        <button type="button" class="btn btn-sm btn-outline-primary pc-anomaly-btn" data-organ="AscendingColon">
-                            <i class="bi bi-pencil-square"></i> Anomaly Details
-                        </button>
-                        <span id="pc_findingsAscendingColonBadge" class="badge bg-secondary d-none">Filled</span>
-                    </div>
-                </div>
-
-                <!-- Caecum -->
-                <div class="col-md-4">
-                    <label class="form-label">12. Caecum <span class="text-danger">*</span></label>
-                    <select id="pc_findingsCaecum" class="form-select pc-findings-select" data-organ="Caecum">
-                        <option value="">-- Select --</option>
-                        <option value="true">NORMAL</option>
-                        <option value="false">ABNORMAL</option>
-                    </select>
-                </div>
-                <div class="col-md-8" id="wrap_pc_findingsCaecumDetails" style="display:none;">
-                    <input type="hidden" id="pc_findingsCaecumDetails" />
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                        <button type="button" class="btn btn-sm btn-outline-primary pc-anomaly-btn" data-organ="Caecum">
-                            <i class="bi bi-pencil-square"></i> Anomaly Details
-                        </button>
-                        <span id="pc_findingsCaecumBadge" class="badge bg-secondary d-none">Filled</span>
+            <!-- Anus -->
+            <div class="mb-3">
+                <label class="form-label">4. Anus <span class="text-danger">*</span></label>
+                <select id="pc_findingsAnus" class="form-select pc-findings-select" data-organ="Anus">
+                    <option value="">-- Select --</option>
+                    <option value="true">NORMAL</option>
+                    <option value="false">ABNORMAL</option>
+                </select>
+                <div id="wrap_pc_findingsAnusDetails" style="display:none;">
+                    <div class="card card-body bg-light mt-2 p-2">
+                        <p class="text-muted small mb-2"><strong>Anomaly Details &mdash; Anus</strong> <span class="text-muted">(all fields optional)</span></p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr><th style="width:35%;">Field</th><th>Value</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Type of Anomaly</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Anus_TypeOfAnomaly" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Polyps">Polyps</option>
+                                                <option value="Mass/Tumor">Mass/Tumor</option>
+                                                <option value="Diverticulosis">Diverticulosis</option>
+                                                <option value="Hemorrhoids">Hemorrhoids</option>
+                                                <option value="Inflammation / Colitis">Inflammation / Colitis</option>
+                                                <option value="Vascular lesions">Vascular lesions</option>
+                                                <option value="Stricture / Stenosis">Stricture / Stenosis</option>
+                                                <option value="Surgical anastomosis">Surgical anastomosis</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Size</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Anus_Size" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Diminutive (≤5 mm)">Diminutive (≤5 mm)</option>
+                                                <option value="Small (6–9 mm)">Small (6–9 mm)</option>
+                                                <option value="Large (≥10 mm)">Large (≥10 mm)</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Count</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Anus_Count" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="1–2">1–2</option>
+                                                <option value="3–4">3–4</option>
+                                                <option value="5–10">5–10</option>
+                                                <option value=">10">&gt;10</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Morphology</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Anus_Morphology" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="0-Ip Pedunculated">0-Ip Pedunculated</option>
+                                                <option value="0-Isp Sub-pedunculated">0-Isp Sub-pedunculated</option>
+                                                <option value="0-Is Sessile">0-Is Sessile</option>
+                                                <option value="0-IIa Slightly elevated">0-IIa Slightly elevated</option>
+                                                <option value="0-IIb Completely flat">0-IIb Completely flat</option>
+                                                <option value="0-IIc Slightly depressed">0-IIc Slightly depressed</option>
+                                                <option value="0-III Excavated">0-III Excavated</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">JNET Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Anus_JNETClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Type 1">Type 1</option>
+                                                <option value="Type 2A">Type 2A</option>
+                                                <option value="Type 2B">Type 2B</option>
+                                                <option value="Type 3">Type 3</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">WASP Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Anus_WASPClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Sessile Serrated Polyp">Sessile Serrated Polyp</option>
+                                                <option value="Hyperplastic Polyp">Hyperplastic Polyp</option>
+                                                <option value="Conventional Adenoma">Conventional Adenoma</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Kudo Pit Pattern</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Anus_KudoPitPattern" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="I Round pits">I Round pits</option>
+                                                <option value="II Stellar/papillary pits">II Stellar/papillary pits</option>
+                                                <option value="II-O Open-type pits">II-O Open-type pits</option>
+                                                <option value="IIIs Small tubular pits">IIIs Small tubular pits</option>
+                                                <option value="IIIL Large tubular pits">IIIL Large tubular pits</option>
+                                                <option value="IV Dendritic/gyrus-like">IV Dendritic/gyrus-like</option>
+                                                <option value="Vi Irregular pits">Vi Irregular pits</option>
+                                                <option value="Vn Non-structural/amorphous">Vn Non-structural/amorphous</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">LST Subtype</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Anus_LSTSubtype" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="LST-G-H">LST-G-H</option>
+                                                <option value="LST-G-NM">LST-G-NM</option>
+                                                <option value="LST-NG-FE">LST-NG-FE</option>
+                                                <option value="LST-NG-PD">LST-NG-PD</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            <!-- Rectum -->
+            <div class="mb-3">
+                <label class="form-label">5. Rectum <span class="text-danger">*</span></label>
+                <select id="pc_findingsRectum" class="form-select pc-findings-select" data-organ="Rectum">
+                    <option value="">-- Select --</option>
+                    <option value="true">NORMAL</option>
+                    <option value="false">ABNORMAL</option>
+                </select>
+                <div id="wrap_pc_findingsRectumDetails" style="display:none;">
+                    <div class="card card-body bg-light mt-2 p-2">
+                        <p class="text-muted small mb-2"><strong>Anomaly Details &mdash; Rectum</strong> <span class="text-muted">(all fields optional)</span></p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr><th style="width:35%;">Field</th><th>Value</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Type of Anomaly</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Rectum_TypeOfAnomaly" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Polyps">Polyps</option>
+                                                <option value="Mass/Tumor">Mass/Tumor</option>
+                                                <option value="Diverticulosis">Diverticulosis</option>
+                                                <option value="Hemorrhoids">Hemorrhoids</option>
+                                                <option value="Inflammation / Colitis">Inflammation / Colitis</option>
+                                                <option value="Vascular lesions">Vascular lesions</option>
+                                                <option value="Stricture / Stenosis">Stricture / Stenosis</option>
+                                                <option value="Surgical anastomosis">Surgical anastomosis</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Size</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Rectum_Size" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Diminutive (≤5 mm)">Diminutive (≤5 mm)</option>
+                                                <option value="Small (6–9 mm)">Small (6–9 mm)</option>
+                                                <option value="Large (≥10 mm)">Large (≥10 mm)</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Count</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Rectum_Count" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="1–2">1–2</option>
+                                                <option value="3–4">3–4</option>
+                                                <option value="5–10">5–10</option>
+                                                <option value=">10">&gt;10</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Morphology</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Rectum_Morphology" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="0-Ip Pedunculated">0-Ip Pedunculated</option>
+                                                <option value="0-Isp Sub-pedunculated">0-Isp Sub-pedunculated</option>
+                                                <option value="0-Is Sessile">0-Is Sessile</option>
+                                                <option value="0-IIa Slightly elevated">0-IIa Slightly elevated</option>
+                                                <option value="0-IIb Completely flat">0-IIb Completely flat</option>
+                                                <option value="0-IIc Slightly depressed">0-IIc Slightly depressed</option>
+                                                <option value="0-III Excavated">0-III Excavated</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">JNET Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Rectum_JNETClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Type 1">Type 1</option>
+                                                <option value="Type 2A">Type 2A</option>
+                                                <option value="Type 2B">Type 2B</option>
+                                                <option value="Type 3">Type 3</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">WASP Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Rectum_WASPClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Sessile Serrated Polyp">Sessile Serrated Polyp</option>
+                                                <option value="Hyperplastic Polyp">Hyperplastic Polyp</option>
+                                                <option value="Conventional Adenoma">Conventional Adenoma</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Kudo Pit Pattern</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Rectum_KudoPitPattern" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="I Round pits">I Round pits</option>
+                                                <option value="II Stellar/papillary pits">II Stellar/papillary pits</option>
+                                                <option value="II-O Open-type pits">II-O Open-type pits</option>
+                                                <option value="IIIs Small tubular pits">IIIs Small tubular pits</option>
+                                                <option value="IIIL Large tubular pits">IIIL Large tubular pits</option>
+                                                <option value="IV Dendritic/gyrus-like">IV Dendritic/gyrus-like</option>
+                                                <option value="Vi Irregular pits">Vi Irregular pits</option>
+                                                <option value="Vn Non-structural/amorphous">Vn Non-structural/amorphous</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">LST Subtype</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Rectum_LSTSubtype" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="LST-G-H">LST-G-H</option>
+                                                <option value="LST-G-NM">LST-G-NM</option>
+                                                <option value="LST-NG-FE">LST-NG-FE</option>
+                                                <option value="LST-NG-PD">LST-NG-PD</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sigmoid Colon -->
+            <div class="mb-3">
+                <label class="form-label">6. Sigmoid Colon <span class="text-danger">*</span></label>
+                <select id="pc_findingsSigmoidColon" class="form-select pc-findings-select" data-organ="SigmoidColon">
+                    <option value="">-- Select --</option>
+                    <option value="true">NORMAL</option>
+                    <option value="false">ABNORMAL</option>
+                </select>
+                <div id="wrap_pc_findingsSigmoidColonDetails" style="display:none;">
+                    <div class="card card-body bg-light mt-2 p-2">
+                        <p class="text-muted small mb-2"><strong>Anomaly Details &mdash; Sigmoid Colon</strong> <span class="text-muted">(all fields optional)</span></p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr><th style="width:35%;">Field</th><th>Value</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Type of Anomaly</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SigmoidColon_TypeOfAnomaly" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Polyps">Polyps</option>
+                                                <option value="Mass/Tumor">Mass/Tumor</option>
+                                                <option value="Diverticulosis">Diverticulosis</option>
+                                                <option value="Hemorrhoids">Hemorrhoids</option>
+                                                <option value="Inflammation / Colitis">Inflammation / Colitis</option>
+                                                <option value="Vascular lesions">Vascular lesions</option>
+                                                <option value="Stricture / Stenosis">Stricture / Stenosis</option>
+                                                <option value="Surgical anastomosis">Surgical anastomosis</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Size</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SigmoidColon_Size" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Diminutive (≤5 mm)">Diminutive (≤5 mm)</option>
+                                                <option value="Small (6–9 mm)">Small (6–9 mm)</option>
+                                                <option value="Large (≥10 mm)">Large (≥10 mm)</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Count</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SigmoidColon_Count" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="1–2">1–2</option>
+                                                <option value="3–4">3–4</option>
+                                                <option value="5–10">5–10</option>
+                                                <option value=">10">&gt;10</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Morphology</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SigmoidColon_Morphology" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="0-Ip Pedunculated">0-Ip Pedunculated</option>
+                                                <option value="0-Isp Sub-pedunculated">0-Isp Sub-pedunculated</option>
+                                                <option value="0-Is Sessile">0-Is Sessile</option>
+                                                <option value="0-IIa Slightly elevated">0-IIa Slightly elevated</option>
+                                                <option value="0-IIb Completely flat">0-IIb Completely flat</option>
+                                                <option value="0-IIc Slightly depressed">0-IIc Slightly depressed</option>
+                                                <option value="0-III Excavated">0-III Excavated</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">JNET Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SigmoidColon_JNETClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Type 1">Type 1</option>
+                                                <option value="Type 2A">Type 2A</option>
+                                                <option value="Type 2B">Type 2B</option>
+                                                <option value="Type 3">Type 3</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">WASP Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SigmoidColon_WASPClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Sessile Serrated Polyp">Sessile Serrated Polyp</option>
+                                                <option value="Hyperplastic Polyp">Hyperplastic Polyp</option>
+                                                <option value="Conventional Adenoma">Conventional Adenoma</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Kudo Pit Pattern</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SigmoidColon_KudoPitPattern" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="I Round pits">I Round pits</option>
+                                                <option value="II Stellar/papillary pits">II Stellar/papillary pits</option>
+                                                <option value="II-O Open-type pits">II-O Open-type pits</option>
+                                                <option value="IIIs Small tubular pits">IIIs Small tubular pits</option>
+                                                <option value="IIIL Large tubular pits">IIIL Large tubular pits</option>
+                                                <option value="IV Dendritic/gyrus-like">IV Dendritic/gyrus-like</option>
+                                                <option value="Vi Irregular pits">Vi Irregular pits</option>
+                                                <option value="Vn Non-structural/amorphous">Vn Non-structural/amorphous</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">LST Subtype</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SigmoidColon_LSTSubtype" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="LST-G-H">LST-G-H</option>
+                                                <option value="LST-G-NM">LST-G-NM</option>
+                                                <option value="LST-NG-FE">LST-NG-FE</option>
+                                                <option value="LST-NG-PD">LST-NG-PD</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Descending Colon -->
+            <div class="mb-3">
+                <label class="form-label">7. Descending Colon <span class="text-danger">*</span></label>
+                <select id="pc_findingsDescendingColon" class="form-select pc-findings-select" data-organ="DescendingColon">
+                    <option value="">-- Select --</option>
+                    <option value="true">NORMAL</option>
+                    <option value="false">ABNORMAL</option>
+                </select>
+                <div id="wrap_pc_findingsDescendingColonDetails" style="display:none;">
+                    <div class="card card-body bg-light mt-2 p-2">
+                        <p class="text-muted small mb-2"><strong>Anomaly Details &mdash; Descending Colon</strong> <span class="text-muted">(all fields optional)</span></p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr><th style="width:35%;">Field</th><th>Value</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Type of Anomaly</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_DescendingColon_TypeOfAnomaly" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Polyps">Polyps</option>
+                                                <option value="Mass/Tumor">Mass/Tumor</option>
+                                                <option value="Diverticulosis">Diverticulosis</option>
+                                                <option value="Hemorrhoids">Hemorrhoids</option>
+                                                <option value="Inflammation / Colitis">Inflammation / Colitis</option>
+                                                <option value="Vascular lesions">Vascular lesions</option>
+                                                <option value="Stricture / Stenosis">Stricture / Stenosis</option>
+                                                <option value="Surgical anastomosis">Surgical anastomosis</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Size</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_DescendingColon_Size" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Diminutive (≤5 mm)">Diminutive (≤5 mm)</option>
+                                                <option value="Small (6–9 mm)">Small (6–9 mm)</option>
+                                                <option value="Large (≥10 mm)">Large (≥10 mm)</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Count</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_DescendingColon_Count" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="1–2">1–2</option>
+                                                <option value="3–4">3–4</option>
+                                                <option value="5–10">5–10</option>
+                                                <option value=">10">&gt;10</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Morphology</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_DescendingColon_Morphology" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="0-Ip Pedunculated">0-Ip Pedunculated</option>
+                                                <option value="0-Isp Sub-pedunculated">0-Isp Sub-pedunculated</option>
+                                                <option value="0-Is Sessile">0-Is Sessile</option>
+                                                <option value="0-IIa Slightly elevated">0-IIa Slightly elevated</option>
+                                                <option value="0-IIb Completely flat">0-IIb Completely flat</option>
+                                                <option value="0-IIc Slightly depressed">0-IIc Slightly depressed</option>
+                                                <option value="0-III Excavated">0-III Excavated</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">JNET Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_DescendingColon_JNETClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Type 1">Type 1</option>
+                                                <option value="Type 2A">Type 2A</option>
+                                                <option value="Type 2B">Type 2B</option>
+                                                <option value="Type 3">Type 3</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">WASP Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_DescendingColon_WASPClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Sessile Serrated Polyp">Sessile Serrated Polyp</option>
+                                                <option value="Hyperplastic Polyp">Hyperplastic Polyp</option>
+                                                <option value="Conventional Adenoma">Conventional Adenoma</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Kudo Pit Pattern</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_DescendingColon_KudoPitPattern" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="I Round pits">I Round pits</option>
+                                                <option value="II Stellar/papillary pits">II Stellar/papillary pits</option>
+                                                <option value="II-O Open-type pits">II-O Open-type pits</option>
+                                                <option value="IIIs Small tubular pits">IIIs Small tubular pits</option>
+                                                <option value="IIIL Large tubular pits">IIIL Large tubular pits</option>
+                                                <option value="IV Dendritic/gyrus-like">IV Dendritic/gyrus-like</option>
+                                                <option value="Vi Irregular pits">Vi Irregular pits</option>
+                                                <option value="Vn Non-structural/amorphous">Vn Non-structural/amorphous</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">LST Subtype</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_DescendingColon_LSTSubtype" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="LST-G-H">LST-G-H</option>
+                                                <option value="LST-G-NM">LST-G-NM</option>
+                                                <option value="LST-NG-FE">LST-NG-FE</option>
+                                                <option value="LST-NG-PD">LST-NG-PD</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Splenic Flexure -->
+            <div class="mb-3">
+                <label class="form-label">8. Splenic Flexure <span class="text-danger">*</span></label>
+                <select id="pc_findingsSplenicFlexure" class="form-select pc-findings-select" data-organ="SplenicFlexure">
+                    <option value="">-- Select --</option>
+                    <option value="true">NORMAL</option>
+                    <option value="false">ABNORMAL</option>
+                </select>
+                <div id="wrap_pc_findingsSplenicFlexureDetails" style="display:none;">
+                    <div class="card card-body bg-light mt-2 p-2">
+                        <p class="text-muted small mb-2"><strong>Anomaly Details &mdash; Splenic Flexure</strong> <span class="text-muted">(all fields optional)</span></p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr><th style="width:35%;">Field</th><th>Value</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Type of Anomaly</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SplenicFlexure_TypeOfAnomaly" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Polyps">Polyps</option>
+                                                <option value="Mass/Tumor">Mass/Tumor</option>
+                                                <option value="Diverticulosis">Diverticulosis</option>
+                                                <option value="Hemorrhoids">Hemorrhoids</option>
+                                                <option value="Inflammation / Colitis">Inflammation / Colitis</option>
+                                                <option value="Vascular lesions">Vascular lesions</option>
+                                                <option value="Stricture / Stenosis">Stricture / Stenosis</option>
+                                                <option value="Surgical anastomosis">Surgical anastomosis</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Size</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SplenicFlexure_Size" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Diminutive (≤5 mm)">Diminutive (≤5 mm)</option>
+                                                <option value="Small (6–9 mm)">Small (6–9 mm)</option>
+                                                <option value="Large (≥10 mm)">Large (≥10 mm)</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Count</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SplenicFlexure_Count" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="1–2">1–2</option>
+                                                <option value="3–4">3–4</option>
+                                                <option value="5–10">5–10</option>
+                                                <option value=">10">&gt;10</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Morphology</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SplenicFlexure_Morphology" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="0-Ip Pedunculated">0-Ip Pedunculated</option>
+                                                <option value="0-Isp Sub-pedunculated">0-Isp Sub-pedunculated</option>
+                                                <option value="0-Is Sessile">0-Is Sessile</option>
+                                                <option value="0-IIa Slightly elevated">0-IIa Slightly elevated</option>
+                                                <option value="0-IIb Completely flat">0-IIb Completely flat</option>
+                                                <option value="0-IIc Slightly depressed">0-IIc Slightly depressed</option>
+                                                <option value="0-III Excavated">0-III Excavated</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">JNET Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SplenicFlexure_JNETClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Type 1">Type 1</option>
+                                                <option value="Type 2A">Type 2A</option>
+                                                <option value="Type 2B">Type 2B</option>
+                                                <option value="Type 3">Type 3</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">WASP Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SplenicFlexure_WASPClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Sessile Serrated Polyp">Sessile Serrated Polyp</option>
+                                                <option value="Hyperplastic Polyp">Hyperplastic Polyp</option>
+                                                <option value="Conventional Adenoma">Conventional Adenoma</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Kudo Pit Pattern</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SplenicFlexure_KudoPitPattern" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="I Round pits">I Round pits</option>
+                                                <option value="II Stellar/papillary pits">II Stellar/papillary pits</option>
+                                                <option value="II-O Open-type pits">II-O Open-type pits</option>
+                                                <option value="IIIs Small tubular pits">IIIs Small tubular pits</option>
+                                                <option value="IIIL Large tubular pits">IIIL Large tubular pits</option>
+                                                <option value="IV Dendritic/gyrus-like">IV Dendritic/gyrus-like</option>
+                                                <option value="Vi Irregular pits">Vi Irregular pits</option>
+                                                <option value="Vn Non-structural/amorphous">Vn Non-structural/amorphous</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">LST Subtype</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_SplenicFlexure_LSTSubtype" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="LST-G-H">LST-G-H</option>
+                                                <option value="LST-G-NM">LST-G-NM</option>
+                                                <option value="LST-NG-FE">LST-NG-FE</option>
+                                                <option value="LST-NG-PD">LST-NG-PD</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transverse Colon -->
+            <div class="mb-3">
+                <label class="form-label">9. Transverse Colon <span class="text-danger">*</span></label>
+                <select id="pc_findingsTransverseColon" class="form-select pc-findings-select" data-organ="TransverseColon">
+                    <option value="">-- Select --</option>
+                    <option value="true">NORMAL</option>
+                    <option value="false">ABNORMAL</option>
+                </select>
+                <div id="wrap_pc_findingsTransverseColonDetails" style="display:none;">
+                    <div class="card card-body bg-light mt-2 p-2">
+                        <p class="text-muted small mb-2"><strong>Anomaly Details &mdash; Transverse Colon</strong> <span class="text-muted">(all fields optional)</span></p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr><th style="width:35%;">Field</th><th>Value</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Type of Anomaly</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_TransverseColon_TypeOfAnomaly" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Polyps">Polyps</option>
+                                                <option value="Mass/Tumor">Mass/Tumor</option>
+                                                <option value="Diverticulosis">Diverticulosis</option>
+                                                <option value="Hemorrhoids">Hemorrhoids</option>
+                                                <option value="Inflammation / Colitis">Inflammation / Colitis</option>
+                                                <option value="Vascular lesions">Vascular lesions</option>
+                                                <option value="Stricture / Stenosis">Stricture / Stenosis</option>
+                                                <option value="Surgical anastomosis">Surgical anastomosis</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Size</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_TransverseColon_Size" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Diminutive (≤5 mm)">Diminutive (≤5 mm)</option>
+                                                <option value="Small (6–9 mm)">Small (6–9 mm)</option>
+                                                <option value="Large (≥10 mm)">Large (≥10 mm)</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Count</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_TransverseColon_Count" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="1–2">1–2</option>
+                                                <option value="3–4">3–4</option>
+                                                <option value="5–10">5–10</option>
+                                                <option value=">10">&gt;10</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Morphology</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_TransverseColon_Morphology" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="0-Ip Pedunculated">0-Ip Pedunculated</option>
+                                                <option value="0-Isp Sub-pedunculated">0-Isp Sub-pedunculated</option>
+                                                <option value="0-Is Sessile">0-Is Sessile</option>
+                                                <option value="0-IIa Slightly elevated">0-IIa Slightly elevated</option>
+                                                <option value="0-IIb Completely flat">0-IIb Completely flat</option>
+                                                <option value="0-IIc Slightly depressed">0-IIc Slightly depressed</option>
+                                                <option value="0-III Excavated">0-III Excavated</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">JNET Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_TransverseColon_JNETClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Type 1">Type 1</option>
+                                                <option value="Type 2A">Type 2A</option>
+                                                <option value="Type 2B">Type 2B</option>
+                                                <option value="Type 3">Type 3</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">WASP Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_TransverseColon_WASPClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Sessile Serrated Polyp">Sessile Serrated Polyp</option>
+                                                <option value="Hyperplastic Polyp">Hyperplastic Polyp</option>
+                                                <option value="Conventional Adenoma">Conventional Adenoma</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Kudo Pit Pattern</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_TransverseColon_KudoPitPattern" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="I Round pits">I Round pits</option>
+                                                <option value="II Stellar/papillary pits">II Stellar/papillary pits</option>
+                                                <option value="II-O Open-type pits">II-O Open-type pits</option>
+                                                <option value="IIIs Small tubular pits">IIIs Small tubular pits</option>
+                                                <option value="IIIL Large tubular pits">IIIL Large tubular pits</option>
+                                                <option value="IV Dendritic/gyrus-like">IV Dendritic/gyrus-like</option>
+                                                <option value="Vi Irregular pits">Vi Irregular pits</option>
+                                                <option value="Vn Non-structural/amorphous">Vn Non-structural/amorphous</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">LST Subtype</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_TransverseColon_LSTSubtype" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="LST-G-H">LST-G-H</option>
+                                                <option value="LST-G-NM">LST-G-NM</option>
+                                                <option value="LST-NG-FE">LST-NG-FE</option>
+                                                <option value="LST-NG-PD">LST-NG-PD</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hepatic Flexure -->
+            <div class="mb-3">
+                <label class="form-label">10. Hepatic Flexure <span class="text-danger">*</span></label>
+                <select id="pc_findingsHepaticFlexure" class="form-select pc-findings-select" data-organ="HepaticFlexure">
+                    <option value="">-- Select --</option>
+                    <option value="true">NORMAL</option>
+                    <option value="false">ABNORMAL</option>
+                </select>
+                <div id="wrap_pc_findingsHepaticFlexureDetails" style="display:none;">
+                    <div class="card card-body bg-light mt-2 p-2">
+                        <p class="text-muted small mb-2"><strong>Anomaly Details &mdash; Hepatic Flexure</strong> <span class="text-muted">(all fields optional)</span></p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr><th style="width:35%;">Field</th><th>Value</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Type of Anomaly</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_HepaticFlexure_TypeOfAnomaly" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Polyps">Polyps</option>
+                                                <option value="Mass/Tumor">Mass/Tumor</option>
+                                                <option value="Diverticulosis">Diverticulosis</option>
+                                                <option value="Hemorrhoids">Hemorrhoids</option>
+                                                <option value="Inflammation / Colitis">Inflammation / Colitis</option>
+                                                <option value="Vascular lesions">Vascular lesions</option>
+                                                <option value="Stricture / Stenosis">Stricture / Stenosis</option>
+                                                <option value="Surgical anastomosis">Surgical anastomosis</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Size</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_HepaticFlexure_Size" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Diminutive (≤5 mm)">Diminutive (≤5 mm)</option>
+                                                <option value="Small (6–9 mm)">Small (6–9 mm)</option>
+                                                <option value="Large (≥10 mm)">Large (≥10 mm)</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Count</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_HepaticFlexure_Count" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="1–2">1–2</option>
+                                                <option value="3–4">3–4</option>
+                                                <option value="5–10">5–10</option>
+                                                <option value=">10">&gt;10</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Morphology</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_HepaticFlexure_Morphology" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="0-Ip Pedunculated">0-Ip Pedunculated</option>
+                                                <option value="0-Isp Sub-pedunculated">0-Isp Sub-pedunculated</option>
+                                                <option value="0-Is Sessile">0-Is Sessile</option>
+                                                <option value="0-IIa Slightly elevated">0-IIa Slightly elevated</option>
+                                                <option value="0-IIb Completely flat">0-IIb Completely flat</option>
+                                                <option value="0-IIc Slightly depressed">0-IIc Slightly depressed</option>
+                                                <option value="0-III Excavated">0-III Excavated</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">JNET Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_HepaticFlexure_JNETClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Type 1">Type 1</option>
+                                                <option value="Type 2A">Type 2A</option>
+                                                <option value="Type 2B">Type 2B</option>
+                                                <option value="Type 3">Type 3</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">WASP Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_HepaticFlexure_WASPClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Sessile Serrated Polyp">Sessile Serrated Polyp</option>
+                                                <option value="Hyperplastic Polyp">Hyperplastic Polyp</option>
+                                                <option value="Conventional Adenoma">Conventional Adenoma</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Kudo Pit Pattern</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_HepaticFlexure_KudoPitPattern" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="I Round pits">I Round pits</option>
+                                                <option value="II Stellar/papillary pits">II Stellar/papillary pits</option>
+                                                <option value="II-O Open-type pits">II-O Open-type pits</option>
+                                                <option value="IIIs Small tubular pits">IIIs Small tubular pits</option>
+                                                <option value="IIIL Large tubular pits">IIIL Large tubular pits</option>
+                                                <option value="IV Dendritic/gyrus-like">IV Dendritic/gyrus-like</option>
+                                                <option value="Vi Irregular pits">Vi Irregular pits</option>
+                                                <option value="Vn Non-structural/amorphous">Vn Non-structural/amorphous</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">LST Subtype</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_HepaticFlexure_LSTSubtype" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="LST-G-H">LST-G-H</option>
+                                                <option value="LST-G-NM">LST-G-NM</option>
+                                                <option value="LST-NG-FE">LST-NG-FE</option>
+                                                <option value="LST-NG-PD">LST-NG-PD</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ascending Colon -->
+            <div class="mb-3">
+                <label class="form-label">11. Ascending Colon <span class="text-danger">*</span></label>
+                <select id="pc_findingsAscendingColon" class="form-select pc-findings-select" data-organ="AscendingColon">
+                    <option value="">-- Select --</option>
+                    <option value="true">NORMAL</option>
+                    <option value="false">ABNORMAL</option>
+                </select>
+                <div id="wrap_pc_findingsAscendingColonDetails" style="display:none;">
+                    <div class="card card-body bg-light mt-2 p-2">
+                        <p class="text-muted small mb-2"><strong>Anomaly Details &mdash; Ascending Colon</strong> <span class="text-muted">(all fields optional)</span></p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr><th style="width:35%;">Field</th><th>Value</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Type of Anomaly</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_AscendingColon_TypeOfAnomaly" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Polyps">Polyps</option>
+                                                <option value="Mass/Tumor">Mass/Tumor</option>
+                                                <option value="Diverticulosis">Diverticulosis</option>
+                                                <option value="Hemorrhoids">Hemorrhoids</option>
+                                                <option value="Inflammation / Colitis">Inflammation / Colitis</option>
+                                                <option value="Vascular lesions">Vascular lesions</option>
+                                                <option value="Stricture / Stenosis">Stricture / Stenosis</option>
+                                                <option value="Surgical anastomosis">Surgical anastomosis</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Size</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_AscendingColon_Size" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Diminutive (≤5 mm)">Diminutive (≤5 mm)</option>
+                                                <option value="Small (6–9 mm)">Small (6–9 mm)</option>
+                                                <option value="Large (≥10 mm)">Large (≥10 mm)</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Count</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_AscendingColon_Count" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="1–2">1–2</option>
+                                                <option value="3–4">3–4</option>
+                                                <option value="5–10">5–10</option>
+                                                <option value=">10">&gt;10</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Morphology</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_AscendingColon_Morphology" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="0-Ip Pedunculated">0-Ip Pedunculated</option>
+                                                <option value="0-Isp Sub-pedunculated">0-Isp Sub-pedunculated</option>
+                                                <option value="0-Is Sessile">0-Is Sessile</option>
+                                                <option value="0-IIa Slightly elevated">0-IIa Slightly elevated</option>
+                                                <option value="0-IIb Completely flat">0-IIb Completely flat</option>
+                                                <option value="0-IIc Slightly depressed">0-IIc Slightly depressed</option>
+                                                <option value="0-III Excavated">0-III Excavated</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">JNET Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_AscendingColon_JNETClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Type 1">Type 1</option>
+                                                <option value="Type 2A">Type 2A</option>
+                                                <option value="Type 2B">Type 2B</option>
+                                                <option value="Type 3">Type 3</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">WASP Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_AscendingColon_WASPClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Sessile Serrated Polyp">Sessile Serrated Polyp</option>
+                                                <option value="Hyperplastic Polyp">Hyperplastic Polyp</option>
+                                                <option value="Conventional Adenoma">Conventional Adenoma</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Kudo Pit Pattern</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_AscendingColon_KudoPitPattern" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="I Round pits">I Round pits</option>
+                                                <option value="II Stellar/papillary pits">II Stellar/papillary pits</option>
+                                                <option value="II-O Open-type pits">II-O Open-type pits</option>
+                                                <option value="IIIs Small tubular pits">IIIs Small tubular pits</option>
+                                                <option value="IIIL Large tubular pits">IIIL Large tubular pits</option>
+                                                <option value="IV Dendritic/gyrus-like">IV Dendritic/gyrus-like</option>
+                                                <option value="Vi Irregular pits">Vi Irregular pits</option>
+                                                <option value="Vn Non-structural/amorphous">Vn Non-structural/amorphous</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">LST Subtype</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_AscendingColon_LSTSubtype" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="LST-G-H">LST-G-H</option>
+                                                <option value="LST-G-NM">LST-G-NM</option>
+                                                <option value="LST-NG-FE">LST-NG-FE</option>
+                                                <option value="LST-NG-PD">LST-NG-PD</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Caecum -->
+            <div class="mb-3">
+                <label class="form-label">12. Caecum <span class="text-danger">*</span></label>
+                <select id="pc_findingsCaecum" class="form-select pc-findings-select" data-organ="Caecum">
+                    <option value="">-- Select --</option>
+                    <option value="true">NORMAL</option>
+                    <option value="false">ABNORMAL</option>
+                </select>
+                <div id="wrap_pc_findingsCaecumDetails" style="display:none;">
+                    <div class="card card-body bg-light mt-2 p-2">
+                        <p class="text-muted small mb-2"><strong>Anomaly Details &mdash; Caecum</strong> <span class="text-muted">(all fields optional)</span></p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr><th style="width:35%;">Field</th><th>Value</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Type of Anomaly</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Caecum_TypeOfAnomaly" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Polyps">Polyps</option>
+                                                <option value="Mass/Tumor">Mass/Tumor</option>
+                                                <option value="Diverticulosis">Diverticulosis</option>
+                                                <option value="Hemorrhoids">Hemorrhoids</option>
+                                                <option value="Inflammation / Colitis">Inflammation / Colitis</option>
+                                                <option value="Vascular lesions">Vascular lesions</option>
+                                                <option value="Stricture / Stenosis">Stricture / Stenosis</option>
+                                                <option value="Surgical anastomosis">Surgical anastomosis</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Size</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Caecum_Size" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Diminutive (≤5 mm)">Diminutive (≤5 mm)</option>
+                                                <option value="Small (6–9 mm)">Small (6–9 mm)</option>
+                                                <option value="Large (≥10 mm)">Large (≥10 mm)</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Count</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Caecum_Count" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="1–2">1–2</option>
+                                                <option value="3–4">3–4</option>
+                                                <option value="5–10">5–10</option>
+                                                <option value=">10">&gt;10</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Morphology</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Caecum_Morphology" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="0-Ip Pedunculated">0-Ip Pedunculated</option>
+                                                <option value="0-Isp Sub-pedunculated">0-Isp Sub-pedunculated</option>
+                                                <option value="0-Is Sessile">0-Is Sessile</option>
+                                                <option value="0-IIa Slightly elevated">0-IIa Slightly elevated</option>
+                                                <option value="0-IIb Completely flat">0-IIb Completely flat</option>
+                                                <option value="0-IIc Slightly depressed">0-IIc Slightly depressed</option>
+                                                <option value="0-III Excavated">0-III Excavated</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">JNET Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Caecum_JNETClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Type 1">Type 1</option>
+                                                <option value="Type 2A">Type 2A</option>
+                                                <option value="Type 2B">Type 2B</option>
+                                                <option value="Type 3">Type 3</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">WASP Classification</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Caecum_WASPClassification" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="Sessile Serrated Polyp">Sessile Serrated Polyp</option>
+                                                <option value="Hyperplastic Polyp">Hyperplastic Polyp</option>
+                                                <option value="Conventional Adenoma">Conventional Adenoma</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">Kudo Pit Pattern</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Caecum_KudoPitPattern" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="I Round pits">I Round pits</option>
+                                                <option value="II Stellar/papillary pits">II Stellar/papillary pits</option>
+                                                <option value="II-O Open-type pits">II-O Open-type pits</option>
+                                                <option value="IIIs Small tubular pits">IIIs Small tubular pits</option>
+                                                <option value="IIIL Large tubular pits">IIIL Large tubular pits</option>
+                                                <option value="IV Dendritic/gyrus-like">IV Dendritic/gyrus-like</option>
+                                                <option value="Vi Irregular pits">Vi Irregular pits</option>
+                                                <option value="Vn Non-structural/amorphous">Vn Non-structural/amorphous</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><label class="form-label mb-0">LST Subtype</label></td>
+                                        <td>
+                                            <select id="pcAnomaly_Caecum_LSTSubtype" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                <option value="LST-G-H">LST-G-H</option>
+                                                <option value="LST-G-NM">LST-G-NM</option>
+                                                <option value="LST-NG-FE">LST-NG-FE</option>
+                                                <option value="LST-NG-PD">LST-NG-PD</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -286,149 +1275,5 @@
             </div>
         </div>
     </div>
-
-    <!-- ============================================================ -->
-    <!-- Findings Anomaly Detail Modal                                -->
-    <!-- ============================================================ -->
-    <div class="modal fade" id="pcAnomalyModal" tabindex="-1" aria-labelledby="pcAnomalyModalLabel" aria-hidden="true" data-bs-backdrop="static">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="pcAnomalyModalLabel">Anomaly Details &mdash; <span id="pcAnomalyOrganTitle"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted small mb-3">All fields below are optional. Fill in what is applicable.</p>
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-sm align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width:35%;">Field</th>
-                                    <th>Value</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><label class="form-label mb-0" for="pcAnomaly_TypeOfAnomaly">Type of Anomaly</label></td>
-                                    <td>
-                                        <select id="pcAnomaly_TypeOfAnomaly" class="form-select form-select-sm">
-                                            <option value="">-- Select --</option>
-                                            <option value="Polyps">Polyps</option>
-                                            <option value="Mass/Tumor">Mass/Tumor</option>
-                                            <option value="Diverticulosis">Diverticulosis</option>
-                                            <option value="Hemorrhoids">Hemorrhoids</option>
-                                            <option value="Inflammation / Colitis">Inflammation / Colitis</option>
-                                            <option value="Vascular lesions">Vascular lesions</option>
-                                            <option value="Stricture / Stenosis">Stricture / Stenosis</option>
-                                            <option value="Surgical anastomosis">Surgical anastomosis</option>
-                                        </select>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td><label class="form-label mb-0" for="pcAnomaly_Size">Size</label></td>
-                                    <td>
-                                        <select id="pcAnomaly_Size" class="form-select form-select-sm">
-                                            <option value="">-- Select --</option>
-                                            <option value="Diminutive (≤5 mm)">Diminutive (≤5 mm)</option>
-                                            <option value="Small (6–9 mm)">Small (6–9 mm)</option>
-                                            <option value="Large (≥10 mm)">Large (≥10 mm)</option>
-                                        </select>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td><label class="form-label mb-0" for="pcAnomaly_Count">Count</label></td>
-                                    <td>
-                                        <select id="pcAnomaly_Count" class="form-select form-select-sm">
-                                            <option value="">-- Select --</option>
-                                            <option value="1–2">1–2</option>
-                                            <option value="3–4">3–4</option>
-                                            <option value="5–10">5–10</option>
-                                            <option value=">10">&gt;10</option>
-                                        </select>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td><label class="form-label mb-0" for="pcAnomaly_Morphology">Morphology</label></td>
-                                    <td>
-                                        <select id="pcAnomaly_Morphology" class="form-select form-select-sm">
-                                            <option value="">-- Select --</option>
-                                            <option value="0-Ip Pedunculated">0-Ip Pedunculated</option>
-                                            <option value="0-Isp Sub-pedunculated">0-Isp Sub-pedunculated</option>
-                                            <option value="0-Is Sessile">0-Is Sessile</option>
-                                            <option value="0-IIa Slightly elevated">0-IIa Slightly elevated</option>
-                                            <option value="0-IIb Completely flat">0-IIb Completely flat</option>
-                                            <option value="0-IIc Slightly depressed">0-IIc Slightly depressed</option>
-                                            <option value="0-III Excavated">0-III Excavated</option>
-                                        </select>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td><label class="form-label mb-0" for="pcAnomaly_JNETClassification">JNET Classification</label></td>
-                                    <td>
-                                        <select id="pcAnomaly_JNETClassification" class="form-select form-select-sm">
-                                            <option value="">-- Select --</option>
-                                            <option value="Type 1">Type 1</option>
-                                            <option value="Type 2A">Type 2A</option>
-                                            <option value="Type 2B">Type 2B</option>
-                                            <option value="Type 3">Type 3</option>
-                                        </select>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td><label class="form-label mb-0" for="pcAnomaly_WASPClassification">WASP Classification</label></td>
-                                    <td>
-                                        <select id="pcAnomaly_WASPClassification" class="form-select form-select-sm">
-                                            <option value="">-- Select --</option>
-                                            <option value="Sessile Serrated Polyp">Sessile Serrated Polyp</option>
-                                            <option value="Hyperplastic Polyp">Hyperplastic Polyp</option>
-                                            <option value="Conventional Adenoma">Conventional Adenoma</option>
-                                        </select>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td><label class="form-label mb-0" for="pcAnomaly_KudoPitPattern">Kudo Pit Pattern</label></td>
-                                    <td>
-                                        <select id="pcAnomaly_KudoPitPattern" class="form-select form-select-sm">
-                                            <option value="">-- Select --</option>
-                                            <option value="I Round pits">I Round pits</option>
-                                            <option value="II Stellar/papillary pits">II Stellar/papillary pits</option>
-                                            <option value="II-O Open-type pits">II-O Open-type pits</option>
-                                            <option value="IIIs Small tubular pits">IIIs Small tubular pits</option>
-                                            <option value="IIIL Large tubular pits">IIIL Large tubular pits</option>
-                                            <option value="IV Dendritic/gyrus-like">IV Dendritic/gyrus-like</option>
-                                            <option value="Vi Irregular pits">Vi Irregular pits</option>
-                                            <option value="Vn Non-structural/amorphous">Vn Non-structural/amorphous</option>
-                                        </select>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td><label class="form-label mb-0" for="pcAnomaly_LSTSubtype">LST Subtype</label></td>
-                                    <td>
-                                        <select id="pcAnomaly_LSTSubtype" class="form-select form-select-sm">
-                                            <option value="">-- Select --</option>
-                                            <option value="LST-G-H">LST-G-H</option>
-                                            <option value="LST-G-NM">LST-G-NM</option>
-                                            <option value="LST-NG-FE">LST-NG-FE</option>
-                                            <option value="LST-NG-PD">LST-NG-PD</option>
-                                        </select>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-danger btn-sm" id="pcAnomalyClearBtn">
-                        <i class="bi bi-trash"></i> Clear All
-                    </button>
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary btn-sm" id="pcAnomalySaveBtn">
-                        <i class="bi bi-check-lg"></i> Save
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- END Findings Anomaly Detail Modal -->
 
 </div>
