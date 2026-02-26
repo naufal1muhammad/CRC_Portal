@@ -10,31 +10,31 @@
     [BowelPreparation] INT NOT NULL,
 
     [Findings_Anus] BIT NOT NULL,
-    [Findings_AnusDetails] VARCHAR(500) NULL,
+    [Findings_AnusDetails] NVARCHAR(MAX) NULL,
 
     [Findings_Rectum] BIT NOT NULL,
-    [Findings_RectumDetails] VARCHAR(500) NULL,
+    [Findings_RectumDetails] NVARCHAR(MAX) NULL,
 
     [Findings_SigmoidColon] BIT NOT NULL,
-    [Findings_SigmoidColonDetails] VARCHAR(500) NULL,
+    [Findings_SigmoidColonDetails] NVARCHAR(MAX) NULL,
 
     [Findings_DescendingColon] BIT NOT NULL,
-    [Findings_DescendingColonDetails] VARCHAR(500) NULL,
+    [Findings_DescendingColonDetails] NVARCHAR(MAX) NULL,
 
     [Findings_SplenicFlexure] BIT NOT NULL,
-    [Findings_SplenicFlexureDetails] VARCHAR(500) NULL,
+    [Findings_SplenicFlexureDetails] NVARCHAR(MAX) NULL,
 
     [Findings_TransverseColon] BIT NOT NULL,
-    [Findings_TransverseColonDetails] VARCHAR(500) NULL,
+    [Findings_TransverseColonDetails] NVARCHAR(MAX) NULL,
 
     [Findings_HepaticFlexure] BIT NOT NULL,
-    [Findings_HepaticFlexureDetails] VARCHAR(500) NULL,
+    [Findings_HepaticFlexureDetails] NVARCHAR(MAX) NULL,
 
     [Findings_AscendingColon] BIT NOT NULL,
-    [Findings_AscendingColonDetails] VARCHAR(500) NULL,
+    [Findings_AscendingColonDetails] NVARCHAR(MAX) NULL,
 
     [Findings_Caecum] BIT NOT NULL,
-    [Findings_CaecumDetails] VARCHAR(500) NULL,
+    [Findings_CaecumDetails] NVARCHAR(MAX) NULL,
 
     [HPE_Status] BIT NOT NULL,
     [HPE_Details] VARCHAR(500) NULL,

@@ -105,30 +105,178 @@
         return v;
     }
 
-    // -----------------------------
+    // -----------------------------------------------------------------
+    // Anomaly Modal: field IDs inside the modal (must match cshtml IDs)
+    // -----------------------------------------------------------------
+    const ANOMALY_FIELDS = [
+        "pcAnomaly_TypeOfAnomaly",
+        "pcAnomaly_Size",
+        "pcAnomaly_Count",
+        "pcAnomaly_Morphology",
+        "pcAnomaly_JNETClassification",
+        "pcAnomaly_WASPClassification",
+        "pcAnomaly_KudoPitPattern",
+        "pcAnomaly_LSTSubtype",
+    ];
+
+    // JSON property keys (used in the stored JSON object)
+    const ANOMALY_KEYS = [
+        "TypeOfAnomaly",
+        "Size",
+        "Count",
+        "Morphology",
+        "JNETClassification",
+        "WASPClassification",
+        "KudoPitPattern",
+        "LSTSubtype",
+    ];
+
+    // The organ currently being edited in the modal
+    let _activeOrgan = null;
+    let _anomalyModal = null;
+
+    // -----------------------------------------------------------------
+    // Anomaly Modal helpers
+    // -----------------------------------------------------------------
+
+    /** Read the modal form and return a JSON object (only non-empty fields). */
+    function readModalFields() {
+        const obj = {};
+        let hasAny = false;
+        for (let i = 0; i < ANOMALY_FIELDS.length; i++) {
+            const el = q(ANOMALY_FIELDS[i]);
+            const v = el ? (el.value || "").trim() : "";
+            if (v) {
+                obj[ANOMALY_KEYS[i]] = v;
+                hasAny = true;
+            }
+        }
+        return hasAny ? obj : null;
+    }
+
+    /** Populate the modal form from a JSON object (or clear if null). */
+    function writeModalFields(obj) {
+        for (let i = 0; i < ANOMALY_FIELDS.length; i++) {
+            const el = q(ANOMALY_FIELDS[i]);
+            if (!el) continue;
+            el.value = (obj && obj[ANOMALY_KEYS[i]]) ? obj[ANOMALY_KEYS[i]] : "";
+        }
+    }
+
+    /** Clear all modal selects. */
+    function clearModalFields() {
+        writeModalFields(null);
+    }
+
+    /**
+     * Safely parse JSON from a hidden input value.
+     * Supports both JSON strings and legacy plain-text (returns null for plain text).
+     */
+    function parseDetailsJson(raw) {
+        if (!raw || typeof raw !== "string") return null;
+        const trimmed = raw.trim();
+        if (!trimmed || trimmed === "null") return null;
+        // If it looks like JSON object, parse it
+        if (trimmed.startsWith("{")) {
+            try { return JSON.parse(trimmed); } catch { return null; }
+        }
+        // Legacy: plain text from old schema – ignore (treat as no data)
+        return null;
+    }
+
+    /** Get the hidden input ID for an organ's details. */
+    function detailsInputId(organ) {
+        return "pc_findings" + organ + "Details";
+    }
+
+    /** Get the badge element ID for an organ. */
+    function badgeId(organ) {
+        return "pc_findings" + organ + "Badge";
+    }
+
+    /** Refresh the "Filled" badge visibility for a given organ. */
+    function refreshBadge(organ) {
+        const badge = q(badgeId(organ));
+        if (!badge) return;
+        const raw = getVal(detailsInputId(organ));
+        const obj = parseDetailsJson(raw);
+        if (obj && Object.keys(obj).length > 0) {
+            badge.classList.remove("d-none");
+            badge.classList.remove("bg-secondary");
+            badge.classList.add("bg-success");
+            badge.textContent = Object.keys(obj).length + " field(s)";
+        } else {
+            badge.classList.add("d-none");
+            badge.classList.remove("bg-success");
+            badge.classList.add("bg-secondary");
+            badge.textContent = "Filled";
+        }
+    }
+
+    /** Open the anomaly modal for a given organ. */
+    function openAnomalyModal(organ) {
+        _activeOrgan = organ;
+
+        // Set title
+        const titleEl = q("pcAnomalyOrganTitle");
+        if (titleEl) {
+            // Convert camelCase organ key to readable name
+            const readableMap = {
+                "Anus": "Anus",
+                "Rectum": "Rectum",
+                "SigmoidColon": "Sigmoid Colon",
+                "DescendingColon": "Descending Colon",
+                "SplenicFlexure": "Splenic Flexure",
+                "TransverseColon": "Transverse Colon",
+                "HepaticFlexure": "Hepatic Flexure",
+                "AscendingColon": "Ascending Colon",
+                "Caecum": "Caecum",
+            };
+            titleEl.textContent = readableMap[organ] || organ;
+        }
+
+        // Load existing JSON data into modal fields
+        const raw = getVal(detailsInputId(organ));
+        const obj = parseDetailsJson(raw);
+        writeModalFields(obj);
+
+        // Show the modal
+        if (_anomalyModal) {
+            _anomalyModal.show();
+        }
+    }
+
+    // -----------------------------------------------------------------
     // conditional logic
-    // -----------------------------
+    // -----------------------------------------------------------------
+    const FINDINGS = [
+        { sel: "pc_findingsAnus", wrap: "wrap_pc_findingsAnusDetails", organ: "Anus" },
+        { sel: "pc_findingsRectum", wrap: "wrap_pc_findingsRectumDetails", organ: "Rectum" },
+        { sel: "pc_findingsSigmoidColon", wrap: "wrap_pc_findingsSigmoidColonDetails", organ: "SigmoidColon" },
+        { sel: "pc_findingsDescendingColon", wrap: "wrap_pc_findingsDescendingColonDetails", organ: "DescendingColon" },
+        { sel: "pc_findingsSplenicFlexure", wrap: "wrap_pc_findingsSplenicFlexureDetails", organ: "SplenicFlexure" },
+        { sel: "pc_findingsTransverseColon", wrap: "wrap_pc_findingsTransverseColonDetails", organ: "TransverseColon" },
+        { sel: "pc_findingsHepaticFlexure", wrap: "wrap_pc_findingsHepaticFlexureDetails", organ: "HepaticFlexure" },
+        { sel: "pc_findingsAscendingColon", wrap: "wrap_pc_findingsAscendingColonDetails", organ: "AscendingColon" },
+        { sel: "pc_findingsCaecum", wrap: "wrap_pc_findingsCaecumDetails", organ: "Caecum" },
+    ];
+
     function refreshConditionals() {
         // Colonoscopy status details required only when INCOMPLETE (false)
         const status = parseBitSelect(getVal("pc_colonoscopyStatus"));
         showWrap("wrap_pc_colonoscopyStatusDetails", status === false);
 
-        // Findings detail wrappers required only when ABNORMAL (false)
-        const findings = [
-            { sel: "pc_findingsAnus", wrap: "wrap_pc_findingsAnusDetails" },
-            { sel: "pc_findingsRectum", wrap: "wrap_pc_findingsRectumDetails" },
-            { sel: "pc_findingsSigmoidColon", wrap: "wrap_pc_findingsSigmoidColonDetails" },
-            { sel: "pc_findingsDescendingColon", wrap: "wrap_pc_findingsDescendingColonDetails" },
-            { sel: "pc_findingsSplenicFlexure", wrap: "wrap_pc_findingsSplenicFlexureDetails" },
-            { sel: "pc_findingsTransverseColon", wrap: "wrap_pc_findingsTransverseColonDetails" },
-            { sel: "pc_findingsHepaticFlexure", wrap: "wrap_pc_findingsHepaticFlexureDetails" },
-            { sel: "pc_findingsAscendingColon", wrap: "wrap_pc_findingsAscendingColonDetails" },
-            { sel: "pc_findingsCaecum", wrap: "wrap_pc_findingsCaecumDetails" },
-        ];
-
-        findings.forEach((f) => {
+        // Findings detail wrappers shown only when ABNORMAL (false)
+        FINDINGS.forEach(function (f) {
             const v = parseBitSelect(getVal(f.sel));
-            showWrap(f.wrap, v === false);
+            const isAbnormal = v === false;
+            showWrap(f.wrap, isAbnormal);
+
+            // If switching back to NORMAL, clear the stored JSON
+            if (!isAbnormal) {
+                setVal(detailsInputId(f.organ), "");
+                refreshBadge(f.organ);
+            }
         });
 
         // HPE details required only when YES (true)
@@ -136,13 +284,19 @@
         showWrap("wrap_pc_hpeDetails", hpe === true);
     }
 
-    // -----------------------------
+    // -----------------------------------------------------------------
     // lifecycle
-    // -----------------------------
+    // -----------------------------------------------------------------
     function init(root) {
         rootEl = root;
 
-        // wire conditional toggles
+        // Initialise Bootstrap modal instance for anomaly modal
+        var modalEl = q("pcAnomalyModal");
+        if (modalEl && typeof bootstrap !== "undefined" && bootstrap.Modal) {
+            _anomalyModal = new bootstrap.Modal(modalEl);
+        }
+
+        // Wire conditional toggles
         [
             "pc_colonoscopyStatus",
             "pc_findingsAnus",
@@ -155,10 +309,39 @@
             "pc_findingsAscendingColon",
             "pc_findingsCaecum",
             "pc_hpeStatus",
-        ].forEach((id) => {
-            const el = q(id);
+        ].forEach(function (id) {
+            var el = q(id);
             if (el) el.addEventListener("change", refreshConditionals);
         });
+
+        // Wire anomaly buttons (open modal)
+        rootEl.querySelectorAll(".pc-anomaly-btn").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var organ = btn.getAttribute("data-organ");
+                if (organ) openAnomalyModal(organ);
+            });
+        });
+
+        // Wire modal Save button
+        var saveBtn = q("pcAnomalySaveBtn");
+        if (saveBtn) {
+            saveBtn.addEventListener("click", function () {
+                if (!_activeOrgan) return;
+                var obj = readModalFields();
+                var json = obj ? JSON.stringify(obj) : "";
+                setVal(detailsInputId(_activeOrgan), json);
+                refreshBadge(_activeOrgan);
+                if (_anomalyModal) _anomalyModal.hide();
+            });
+        }
+
+        // Wire modal Clear button
+        var clearBtn = q("pcAnomalyClearBtn");
+        if (clearBtn) {
+            clearBtn.addEventListener("click", function () {
+                clearModalFields();
+            });
+        }
 
         refreshConditionals();
     }
@@ -168,24 +351,11 @@
         setVal("pc_colonoscopyStatusDetails", "");
         setVal("pc_bowelPreparation", "");
 
-        setVal("pc_findingsAnus", "");
-        setVal("pc_findingsAnusDetails", "");
-        setVal("pc_findingsRectum", "");
-        setVal("pc_findingsRectumDetails", "");
-        setVal("pc_findingsSigmoidColon", "");
-        setVal("pc_findingsSigmoidColonDetails", "");
-        setVal("pc_findingsDescendingColon", "");
-        setVal("pc_findingsDescendingColonDetails", "");
-        setVal("pc_findingsSplenicFlexure", "");
-        setVal("pc_findingsSplenicFlexureDetails", "");
-        setVal("pc_findingsTransverseColon", "");
-        setVal("pc_findingsTransverseColonDetails", "");
-        setVal("pc_findingsHepaticFlexure", "");
-        setVal("pc_findingsHepaticFlexureDetails", "");
-        setVal("pc_findingsAscendingColon", "");
-        setVal("pc_findingsAscendingColonDetails", "");
-        setVal("pc_findingsCaecum", "");
-        setVal("pc_findingsCaecumDetails", "");
+        FINDINGS.forEach(function (f) {
+            setVal(f.sel, "");
+            setVal(detailsInputId(f.organ), "");
+            refreshBadge(f.organ);
+        });
 
         setVal("pc_hpeStatus", "");
         setVal("pc_hpeDetails", "");
@@ -205,32 +375,35 @@
         setVal("pc_colonoscopyStatusDetails", data.ColonoscopyStatus_Details ?? "");
         setVal("pc_bowelPreparation", data.BowelPreparation ?? "");
 
-        setVal("pc_findingsAnus", bitSelectValue(data.Findings_Anus));
-        setVal("pc_findingsAnusDetails", data.Findings_AnusDetails ?? "");
+        // Map of server column name suffix → organ key
+        var organMap = {
+            "Anus": "Anus",
+            "Rectum": "Rectum",
+            "SigmoidColon": "SigmoidColon",
+            "DescendingColon": "DescendingColon",
+            "SplenicFlexure": "SplenicFlexure",
+            "TransverseColon": "TransverseColon",
+            "HepaticFlexure": "HepaticFlexure",
+            "AscendingColon": "AscendingColon",
+            "Caecum": "Caecum",
+        };
 
-        setVal("pc_findingsRectum", bitSelectValue(data.Findings_Rectum));
-        setVal("pc_findingsRectumDetails", data.Findings_RectumDetails ?? "");
+        Object.keys(organMap).forEach(function (key) {
+            var organ = organMap[key];
+            // Set the Normal/Abnormal select
+            setVal("pc_findings" + key, bitSelectValue(data["Findings_" + key]));
 
-        setVal("pc_findingsSigmoidColon", bitSelectValue(data.Findings_SigmoidColon));
-        setVal("pc_findingsSigmoidColonDetails", data.Findings_SigmoidColonDetails ?? "");
+            // Set the details hidden input (JSON string from server or legacy text)
+            var detailsRaw = data["Findings_" + key + "Details"] ?? "";
 
-        setVal("pc_findingsDescendingColon", bitSelectValue(data.Findings_DescendingColon));
-        setVal("pc_findingsDescendingColonDetails", data.Findings_DescendingColonDetails ?? "");
-
-        setVal("pc_findingsSplenicFlexure", bitSelectValue(data.Findings_SplenicFlexure));
-        setVal("pc_findingsSplenicFlexureDetails", data.Findings_SplenicFlexureDetails ?? "");
-
-        setVal("pc_findingsTransverseColon", bitSelectValue(data.Findings_TransverseColon));
-        setVal("pc_findingsTransverseColonDetails", data.Findings_TransverseColonDetails ?? "");
-
-        setVal("pc_findingsHepaticFlexure", bitSelectValue(data.Findings_HepaticFlexure));
-        setVal("pc_findingsHepaticFlexureDetails", data.Findings_HepaticFlexureDetails ?? "");
-
-        setVal("pc_findingsAscendingColon", bitSelectValue(data.Findings_AscendingColon));
-        setVal("pc_findingsAscendingColonDetails", data.Findings_AscendingColonDetails ?? "");
-
-        setVal("pc_findingsCaecum", bitSelectValue(data.Findings_Caecum));
-        setVal("pc_findingsCaecumDetails", data.Findings_CaecumDetails ?? "");
+            // If it's a string, use as-is (could be JSON or legacy text); if object, stringify
+            if (typeof detailsRaw === "object" && detailsRaw !== null) {
+                setVal(detailsInputId(organ), JSON.stringify(detailsRaw));
+            } else {
+                setVal(detailsInputId(organ), detailsRaw);
+            }
+            refreshBadge(organ);
+        });
 
         setVal("pc_hpeStatus", bitSelectValue(data.HPE_Status));
         setVal("pc_hpeDetails", data.HPE_Details ?? "");
@@ -245,48 +418,64 @@
 
     function collect() {
         // Mandatorys
-        const colonoscopyStatus = requireBitSelect("pc_colonoscopyStatus", "Colonoscopy Status is required.");
-        let colonoscopyStatusDetails = getVal("pc_colonoscopyStatusDetails");
+        var colonoscopyStatus = requireBitSelect("pc_colonoscopyStatus", "Colonoscopy Status is required.");
+        var colonoscopyStatusDetails = getVal("pc_colonoscopyStatusDetails");
         if (colonoscopyStatus === false) {
             colonoscopyStatusDetails = requireNonEmpty("pc_colonoscopyStatusDetails", "Please specify details for INCOMPLETE colonoscopy status.");
         } else {
             colonoscopyStatusDetails = isEmpty(colonoscopyStatusDetails) ? null : colonoscopyStatusDetails;
         }
 
-        const bowelPrep = requireIntSelect("pc_bowelPreparation", "Bowel Preparedness is required.");
+        var bowelPrep = requireIntSelect("pc_bowelPreparation", "Bowel Preparedness is required.");
 
-        function collectFinding(selId, detailsId, label) {
-            const isNormal = requireBitSelect(selId, label + " is required.");
-            let details = getVal(detailsId);
+        /**
+         * Collect finding for an organ.
+         * The Details column now stores JSON (or null).
+         * ABNORMAL is allowed without filling the anomaly modal (not mandatory).
+         */
+        function collectFinding(selId, organ, label) {
+            var isNormal = requireBitSelect(selId, label + " is required.");
+            var detailsRaw = getVal(detailsInputId(organ));
+            var details = null;
+
             if (isNormal === false) {
-                details = requireNonEmpty(detailsId, "Please specify details for ABNORMAL " + label + ".");
-            } else {
-                details = isEmpty(details) ? null : details;
+                // ABNORMAL – details are optional (modal/table is not mandatory)
+                if (!isEmpty(detailsRaw)) {
+                    // Validate it's valid JSON if it looks like JSON
+                    var parsed = parseDetailsJson(detailsRaw);
+                    if (parsed) {
+                        details = JSON.stringify(parsed);
+                    } else if (detailsRaw.trim()) {
+                        // Legacy text or invalid – pass through as-is
+                        details = detailsRaw.trim();
+                    }
+                }
             }
-            return { isNormal, details };
+            // If NORMAL, details are cleared (null)
+            return { isNormal: isNormal, details: details };
         }
 
-        const anus = collectFinding("pc_findingsAnus", "pc_findingsAnusDetails", "Findings: Anus");
-        const rectum = collectFinding("pc_findingsRectum", "pc_findingsRectumDetails", "Findings: Rectum");
-        const sigmoid = collectFinding("pc_findingsSigmoidColon", "pc_findingsSigmoidColonDetails", "Findings: Sigmoid Colon");
-        const descending = collectFinding("pc_findingsDescendingColon", "pc_findingsDescendingColonDetails", "Findings: Descending Colon");
-        const splenic = collectFinding("pc_findingsSplenicFlexure", "pc_findingsSplenicFlexureDetails", "Findings: Splenic Flexure");
-        const transverse = collectFinding("pc_findingsTransverseColon", "pc_findingsTransverseColonDetails", "Findings: Transverse Colon");
-        const hepatic = collectFinding("pc_findingsHepaticFlexure", "pc_findingsHepaticFlexureDetails", "Findings: Hepatic Flexure");
-        const ascending = collectFinding("pc_findingsAscendingColon", "pc_findingsAscendingColonDetails", "Findings: Ascending Colon");
-        const caecum = collectFinding("pc_findingsCaecum", "pc_findingsCaecumDetails", "Findings: Caecum");
+        var anus = collectFinding("pc_findingsAnus", "Anus", "Findings: Anus");
+        var rectum = collectFinding("pc_findingsRectum", "Rectum", "Findings: Rectum");
+        var sigmoid = collectFinding("pc_findingsSigmoidColon", "SigmoidColon", "Findings: Sigmoid Colon");
+        var descending = collectFinding("pc_findingsDescendingColon", "DescendingColon", "Findings: Descending Colon");
+        var splenic = collectFinding("pc_findingsSplenicFlexure", "SplenicFlexure", "Findings: Splenic Flexure");
+        var transverse = collectFinding("pc_findingsTransverseColon", "TransverseColon", "Findings: Transverse Colon");
+        var hepatic = collectFinding("pc_findingsHepaticFlexure", "HepaticFlexure", "Findings: Hepatic Flexure");
+        var ascending = collectFinding("pc_findingsAscendingColon", "AscendingColon", "Findings: Ascending Colon");
+        var caecum = collectFinding("pc_findingsCaecum", "Caecum", "Findings: Caecum");
 
-        const hpeStatus = requireBitSelect("pc_hpeStatus", "HPE Taken is required.");
-        let hpeDetails = getVal("pc_hpeDetails");
+        var hpeStatus = requireBitSelect("pc_hpeStatus", "HPE Taken is required.");
+        var hpeDetails = getVal("pc_hpeDetails");
         if (hpeStatus === true) {
             hpeDetails = requireNonEmpty("pc_hpeDetails", "Please specify HPE details when HPE Taken is YES.");
         } else {
             hpeDetails = isEmpty(hpeDetails) ? null : hpeDetails;
         }
 
-        const complications = requireSelectText("pc_complications", "Procedure Complications is required.");
-        const complicationsDetailsRaw = getVal("pc_complicationsDetails");
-        const dischargePlan = requireSelectText("pc_dischargePlan", "Discharge Plan is required.");
+        var complications = requireSelectText("pc_complications", "Procedure Complications is required.");
+        var complicationsDetailsRaw = getVal("pc_complicationsDetails");
+        var dischargePlan = requireSelectText("pc_dischargePlan", "Discharge Plan is required.");
 
         return {
             ColonoscopyStatus: colonoscopyStatus,
@@ -325,13 +514,13 @@
     // -----------------------------
     // REGISTER TEMPLATE (key must match dropdown value)
     // -----------------------------
-    const api = {
+    var api = {
         type: "PATIENT COLONOSCOPY",
         rootSelector: "#tmplPatientColonoscopy",
-        init,
-        clear,
-        fill,
-        collect,
+        init: init,
+        clear: clear,
+        fill: fill,
+        collect: collect,
     };
 
     window.StaffPatientTemplates["PATIENT COLONOSCOPY"] = api;
