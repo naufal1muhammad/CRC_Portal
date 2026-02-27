@@ -515,7 +515,6 @@ namespace CRC.Web.Controllers.StaffPatient
 
             try
             {
-                // 1) Journey row
                 var dtJ = await _db.ExecuteDataTableAsync(
                     "spPatientJourney_GetById",
                     new[] { new SqlParameter("@PatientJourney_ID", patientJourneyId) }
@@ -539,7 +538,6 @@ namespace CRC.Web.Controllers.StaffPatient
                     journeyDateInput = ToLocalInput(j["PatientJourney_Date"])
                 };
 
-                // 2) Colonoscopy row
                 var dtA = await _db.ExecuteDataTableAsync(
                     "spPatientColonoscopy_GetByJourneyId",
                     new[] { new SqlParameter("@PatientJourney_ID", patientJourneyId) }
@@ -563,7 +561,7 @@ namespace CRC.Web.Controllers.StaffPatient
 
         public class SavePatientColonoscopyRequest
         {
-            public int PatientJourneyId { get; set; } // 0 = create
+            public int PatientJourneyId { get; set; }
             public string PatientId { get; set; } = "";
             public DateTime PatientJourneyDate { get; set; }
             public string? AuditNote { get; set; }
@@ -598,6 +596,9 @@ namespace CRC.Web.Controllers.StaffPatient
             public string? Complications_Details { get; set; }
 
             public string DischargePlan { get; set; } = "";
+
+            // NEW: Medication details stored as JSON array
+            public string? Medication_Details { get; set; }
         }
 
         [Authorize(Policy = "StaffOnly")]
@@ -652,7 +653,10 @@ namespace CRC.Web.Controllers.StaffPatient
                         new SqlParameter("@Complications", model.Complications ?? ""),
                         new SqlParameter("@Complications_Details", (object?)model.Complications_Details ?? DBNull.Value),
 
-                        new SqlParameter("@DischargePlan", model.DischargePlan ?? "")
+                        new SqlParameter("@DischargePlan", model.DischargePlan ?? ""),
+
+                        // NEW: Medication_Details
+                        new SqlParameter("@Medication_Details", (object?)model.Medication_Details ?? DBNull.Value)
                     };
 
                     var dt = await _db.ExecuteDataTableAsync("spPatientColonoscopy_CreateWithJourney", prms.ToArray());
@@ -702,7 +706,10 @@ namespace CRC.Web.Controllers.StaffPatient
                         new SqlParameter("@Complications", model.Complications ?? ""),
                         new SqlParameter("@Complications_Details", (object?)model.Complications_Details ?? DBNull.Value),
 
-                        new SqlParameter("@DischargePlan", model.DischargePlan ?? "")
+                        new SqlParameter("@DischargePlan", model.DischargePlan ?? ""),
+
+                        // NEW: Medication_Details
+                        new SqlParameter("@Medication_Details", (object?)model.Medication_Details ?? DBNull.Value)
                     };
 
                     await _db.ExecuteNonQueryAsync("spPatientColonoscopy_UpdateWithJourney", prms.ToArray());

@@ -35,7 +35,9 @@
     @Complications VARCHAR(100),
     @Complications_Details VARCHAR(500) = NULL,
 
-    @DischargePlan VARCHAR(100)
+    @DischargePlan VARCHAR(100),
+
+    @Medication_Details NVARCHAR(MAX) = NULL
 )
 AS
 BEGIN
@@ -60,7 +62,6 @@ BEGIN
             RAISERROR('Staff not found.', 16, 1);
         END
 
-        -- Update journey (match Assessment)
         UPDATE dbo.PatientJourney
         SET
             PatientJourney_Date = @PatientJourney_Date,
@@ -68,7 +69,6 @@ BEGIN
             UpdatedBy_Staff_ID = @Staff_ID
         WHERE PatientJourney_ID = @PatientJourney_ID;
 
-        -- Update template row
         UPDATE dbo.PatientColonoscopy
         SET
             ColonoscopyStatus = @ColonoscopyStatus,
@@ -100,7 +100,9 @@ BEGIN
             Complications = @Complications,
             Complications_Details = @Complications_Details,
 
-            DischargePlan = @DischargePlan
+            DischargePlan = @DischargePlan,
+
+            Medication_Details = @Medication_Details
         WHERE PatientJourney_ID = @PatientJourney_ID;
 
         IF @@ROWCOUNT = 0
@@ -108,7 +110,6 @@ BEGIN
             RAISERROR('Colonoscopy row not found for this journey.', 16, 1);
         END
 
-        -- Audit (match Assessment)
         INSERT INTO dbo.PatientJourneyAudit
         (
             PatientJourney_ID,
@@ -125,8 +126,6 @@ BEGIN
         );
 
         COMMIT;
-
-        SELECT 1 AS Success;
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK;

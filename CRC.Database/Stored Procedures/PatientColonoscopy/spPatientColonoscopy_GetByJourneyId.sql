@@ -43,7 +43,9 @@ BEGIN
         pc.Complications,
         pc.Complications_Details,
 
-        pc.DischargePlan
+        pc.DischargePlan,
+
+        pc.Medication_Details
     FROM dbo.PatientJourney pj
     INNER JOIN dbo.PatientBasic pb
         ON pb.Patient_ID = pj.Patient_ID

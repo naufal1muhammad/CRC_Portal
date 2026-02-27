@@ -7,7 +7,6 @@
 
     @ColonoscopyStatus BIT,
     @ColonoscopyStatus_Details VARCHAR(500) = NULL,
-
     @BowelPreparation INT,
 
     @Findings_Anus BIT,
@@ -35,7 +34,9 @@
     @Complications VARCHAR(100),
     @Complications_Details VARCHAR(500) = NULL,
 
-    @DischargePlan VARCHAR(100)
+    @DischargePlan VARCHAR(100),
+
+    @Medication_Details NVARCHAR(MAX) = NULL
 )
 AS
 BEGIN
@@ -45,13 +46,8 @@ BEGIN
     BEGIN TRY
         BEGIN TRAN;
 
-        DECLARE @Patient_Name VARCHAR(100);
-        SELECT @Patient_Name = pb.Patient_Name
-        FROM dbo.PatientBasic pb
-        WHERE pb.Patient_ID = @Patient_ID;
-
-        IF (@Patient_Name IS NULL OR LTRIM(RTRIM(@Patient_Name)) = '')
-            RAISERROR('Patient not found.', 16, 1);
+        IF (@Patient_ID IS NULL OR LTRIM(RTRIM(@Patient_ID)) = '')
+            RAISERROR('Patient ID is required.', 16, 1);
 
         DECLARE @Staff_Name VARCHAR(100);
         SELECT @Staff_Name = s.Staff_Name
@@ -61,7 +57,6 @@ BEGIN
         IF (@Staff_Name IS NULL OR LTRIM(RTRIM(@Staff_Name)) = '')
             RAISERROR('Staff not found.', 16, 1);
 
-        -- Let IDENTITY generate PatientJourney_ID (same structure as Assessment)
         INSERT INTO dbo.PatientJourney
         (
             Patient_ID,
@@ -115,7 +110,9 @@ BEGIN
             Complications,
             Complications_Details,
 
-            DischargePlan
+            DischargePlan,
+
+            Medication_Details
         )
         VALUES
         (
@@ -151,10 +148,11 @@ BEGIN
             @Complications,
             @Complications_Details,
 
-            @DischargePlan
+            @DischargePlan,
+
+            @Medication_Details
         );
 
-        -- Audit insert now matches Assessment structure exactly
         INSERT INTO dbo.PatientJourneyAudit
         (
             PatientJourney_ID,

@@ -44,6 +44,8 @@
 
     [DischargePlan] VARCHAR(100) NOT NULL,
 
+    [Medication_Details] NVARCHAR(MAX) NULL,
+
     CONSTRAINT [PK_PatientColonoscopy]
         PRIMARY KEY CLUSTERED ([PatientColonoscopy_ID] ASC),
 

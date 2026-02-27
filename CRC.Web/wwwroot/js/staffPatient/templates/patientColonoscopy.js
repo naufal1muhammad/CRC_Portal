@@ -40,7 +40,6 @@
         el.value = value ?? "";
     }
 
-    // Convert server bit-ish values (true/false/1/0/"YES"/"NO") to true/false
     function parseAnyToBool(raw) {
         if (raw === true || raw === false) return raw;
         if (raw === 1 || raw === 0) return raw === 1;
@@ -50,7 +49,6 @@
         return false;
     }
 
-    // For <select> that uses option values "true" and "false" (with "" as placeholder)
     function parseBitSelect(raw) {
         const v = (raw ?? "").toString().trim().toLowerCase();
         if (v === "true" || v === "1" || v === "yes") return true;
@@ -64,23 +62,22 @@
     }
 
     function requireBitSelect(id, message) {
-        const raw = getVal(id);
-        const b = parseBitSelect(raw);
-        if (b === null) {
+        var v = parseBitSelect(getVal(id));
+        if (v === null) {
             focusEl(id);
             throw new Error(message);
         }
-        return b;
+        return v;
     }
 
     function requireIntSelect(id, message) {
-        const raw = getVal(id);
-        if (isEmpty(raw)) {
+        var raw = getVal(id);
+        if (raw === "" || raw === null || raw === undefined) {
             focusEl(id);
             throw new Error(message);
         }
-        const n = parseInt(raw, 10);
-        if (Number.isNaN(n)) {
+        var n = parseInt(raw, 10);
+        if (isNaN(n)) {
             focusEl(id);
             throw new Error(message);
         }
@@ -88,7 +85,7 @@
     }
 
     function requireSelectText(id, message) {
-        const v = getVal(id);
+        var v = getVal(id);
         if (isEmpty(v)) {
             focusEl(id);
             throw new Error(message);
@@ -97,7 +94,7 @@
     }
 
     function requireNonEmpty(id, message) {
-        const v = getVal(id);
+        var v = getVal(id);
         if (isEmpty(v)) {
             focusEl(id);
             throw new Error(message);
@@ -106,29 +103,14 @@
     }
 
     // -----------------------------------------------------------------
-    // Anomaly Inline Fields: JSON property keys used in stored JSON
+    // ANOMALY INLINE FIELDS (findings details stored as JSON)
     // -----------------------------------------------------------------
-    const ANOMALY_KEYS = [
-        "TypeOfAnomaly",
-        "Size",
-        "Count",
-        "Morphology",
-        "JNETClassification",
-        "WASPClassification",
-        "KudoPitPattern",
-        "LSTSubtype",
-    ];
+    const ANOMALY_KEYS = ["TypeOfAnomaly", "Size", "Morphology", "Intervention", "Remarks"];
 
-    // -----------------------------------------------------------------
-    // Inline Anomaly helpers (per-organ, no modal)
-    // -----------------------------------------------------------------
-
-    /** Build the inline field ID for an organ + anomaly key. */
-    function inlineFieldId(organ, key) {
-        return "pcAnomaly_" + organ + "_" + key;
+    function inlineFieldId(organ, fieldKey) {
+        return "pcAnomaly_" + organ + "_" + fieldKey;
     }
 
-    /** Read inline anomaly fields for a given organ and return a JSON object (only non-empty fields). */
     function readInlineFields(organ) {
         var obj = {};
         var hasAny = false;
@@ -143,7 +125,6 @@
         return hasAny ? obj : null;
     }
 
-    /** Populate inline anomaly fields for a given organ from a JSON object (or clear if null). */
     function writeInlineFields(organ, obj) {
         for (var i = 0; i < ANOMALY_KEYS.length; i++) {
             var el = q(inlineFieldId(organ, ANOMALY_KEYS[i]));
@@ -152,25 +133,167 @@
         }
     }
 
-    /** Clear all inline anomaly fields for a given organ. */
     function clearInlineFields(organ) {
         writeInlineFields(organ, null);
     }
 
-    /**
-     * Safely parse JSON from a string value.
-     * Supports both JSON strings and legacy plain-text (returns null for plain text).
-     */
     function parseDetailsJson(raw) {
         if (!raw || typeof raw !== "string") return null;
         var trimmed = raw.trim();
         if (!trimmed || trimmed === "null") return null;
-        // If it looks like JSON object, parse it
         if (trimmed.startsWith("{")) {
             try { return JSON.parse(trimmed); } catch (e) { return null; }
         }
-        // Legacy: plain text from old schema – ignore (treat as no data)
         return null;
+    }
+
+    function parseJsonArray(raw) {
+        if (!raw || typeof raw !== "string") return null;
+        var trimmed = raw.trim();
+        if (!trimmed || trimmed === "null") return null;
+        if (trimmed.startsWith("[")) {
+            try { return JSON.parse(trimmed); } catch (e) { return null; }
+        }
+        return null;
+    }
+
+    // -----------------------------------------------------------------
+    // MEDICATION TABLE LOGIC
+    // -----------------------------------------------------------------
+    var MEDICATION_OPTIONS = [
+        "Midazolam",
+        "Fentanyl",
+        "Propofol",
+        "Meperidine",
+        "Diphenhydramine",
+        "Glucagon"
+    ];
+
+    var medicationRowCounter = 0;
+
+    function buildMedicationSelectHtml(selectedValue) {
+        var html = '<select class="form-select form-select-sm pc-med-name">';
+        html += '<option value="">-- Select --</option>';
+        for (var i = 0; i < MEDICATION_OPTIONS.length; i++) {
+            var opt = MEDICATION_OPTIONS[i];
+            var sel = (selectedValue === opt) ? ' selected' : '';
+            html += '<option value="' + opt + '"' + sel + '>' + opt + '</option>';
+        }
+        html += '</select>';
+        return html;
+    }
+
+    function addMedicationRow(medication, remarks) {
+        var tbody = q("pc_medicationTableBody");
+        if (!tbody) return;
+
+        medicationRowCounter++;
+        var rowId = "pc_medRow_" + medicationRowCounter;
+
+        var tr = document.createElement("tr");
+        tr.id = rowId;
+
+        // Medication dropdown cell
+        var tdMed = document.createElement("td");
+        tdMed.innerHTML = buildMedicationSelectHtml(medication || "");
+        tr.appendChild(tdMed);
+
+        // Remarks text cell
+        var tdRemarks = document.createElement("td");
+        tdRemarks.innerHTML = '<input type="text" class="form-control form-control-sm pc-med-remarks" maxlength="500" value="' +
+            ((remarks || "").replace(/"/g, "&quot;")) + '" />';
+        tr.appendChild(tdRemarks);
+
+        // Actions cell (delete button)
+        var tdActions = document.createElement("td");
+        tdActions.className = "text-center";
+        tdActions.innerHTML =
+            '<button type="button" class="btn btn-sm btn-outline-danger pc-med-delete" title="Delete row">' +
+            '<i class="fas fa-trash-alt"></i>' +
+            '</button>';
+        tr.appendChild(tdActions);
+
+        tbody.appendChild(tr);
+    }
+
+    function clearMedicationTable() {
+        var tbody = q("pc_medicationTableBody");
+        if (!tbody) return;
+        tbody.innerHTML = "";
+        medicationRowCounter = 0;
+    }
+
+    function collectMedicationData() {
+        var tbody = q("pc_medicationTableBody");
+        if (!tbody) return null;
+
+        var rows = tbody.querySelectorAll("tr");
+        if (!rows || rows.length === 0) return null;
+
+        var data = [];
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            var medSelect = row.querySelector(".pc-med-name");
+            var remarksInput = row.querySelector(".pc-med-remarks");
+
+            var medVal = medSelect ? (medSelect.value || "").trim() : "";
+            var remarksVal = remarksInput ? (remarksInput.value || "").trim() : "";
+
+            // Only include rows where medication is selected
+            if (medVal) {
+                data.push({
+                    Medication: medVal,
+                    Remarks: remarksVal
+                });
+            }
+        }
+
+        return data.length > 0 ? JSON.stringify(data) : null;
+    }
+
+    function fillMedicationTable(raw) {
+        clearMedicationTable();
+
+        var arr = null;
+        if (typeof raw === "string" && raw.trim()) {
+            arr = parseJsonArray(raw);
+        } else if (Array.isArray(raw)) {
+            arr = raw;
+        }
+
+        if (!arr || !Array.isArray(arr)) return;
+
+        for (var i = 0; i < arr.length; i++) {
+            var item = arr[i];
+            addMedicationRow(
+                item.Medication || item.medication || "",
+                item.Remarks || item.remarks || ""
+            );
+        }
+    }
+
+    function initMedicationEvents() {
+        // Add row button
+        var addBtn = q("pc_addMedicationRow");
+        if (addBtn) {
+            addBtn.addEventListener("click", function () {
+                addMedicationRow("", "");
+            });
+        }
+
+        // Delegated delete handler on the table body
+        var tbody = q("pc_medicationTableBody");
+        if (tbody) {
+            tbody.addEventListener("click", function (e) {
+                var deleteBtn = e.target.closest(".pc-med-delete");
+                if (deleteBtn) {
+                    var row = deleteBtn.closest("tr");
+                    if (row) {
+                        row.remove();
+                    }
+                }
+            });
+        }
     }
 
     // -----------------------------------------------------------------
@@ -188,12 +311,6 @@
         { sel: "pc_findingsCaecum", wrap: "wrap_pc_findingsCaecumDetails", organ: "Caecum", label: "Caecum" },
     ];
 
-    /**
-     * Clone the single <template id="pcAnomalyTemplate"> into each organ's
-     * wrapper div, setting the organ-specific title and field IDs.
-     * Called once during init() so the DOM ends up identical to the old
-     * hard-coded version.
-     */
     function stampAnomalyTemplates() {
         var tmpl = rootEl.querySelector("#pcAnomalyTemplate");
         if (!tmpl) return;
@@ -204,11 +321,9 @@
 
             var clone = tmpl.content.cloneNode(true);
 
-            // Set the organ label in the title
             var labelEl = clone.querySelector("[data-anomaly-label]");
             if (labelEl) labelEl.textContent = f.label;
 
-            // Set unique IDs on each anomaly field select
             clone.querySelectorAll("[data-anomaly-field]").forEach(function (sel) {
                 sel.id = "pcAnomaly_" + f.organ + "_" + sel.getAttribute("data-anomaly-field");
                 sel.removeAttribute("data-anomaly-field");
@@ -219,23 +334,19 @@
     }
 
     function refreshConditionals() {
-        // Colonoscopy status details required only when INCOMPLETE (false)
         var status = parseBitSelect(getVal("pc_colonoscopyStatus"));
         showWrap("wrap_pc_colonoscopyStatusDetails", status === false);
 
-        // Findings detail wrappers shown only when ABNORMAL (false)
         FINDINGS.forEach(function (f) {
             var v = parseBitSelect(getVal(f.sel));
             var isAbnormal = v === false;
             showWrap(f.wrap, isAbnormal);
 
-            // If switching back to NORMAL, clear the inline anomaly fields
             if (!isAbnormal) {
                 clearInlineFields(f.organ);
             }
         });
 
-        // HPE details required only when YES (true)
         var hpe = parseBitSelect(getVal("pc_hpeStatus"));
         showWrap("wrap_pc_hpeDetails", hpe === true);
     }
@@ -246,10 +357,8 @@
     function init(root) {
         rootEl = root;
 
-        // Stamp the anomaly details template into each organ wrapper
         stampAnomalyTemplates();
 
-        // Wire conditional toggles
         [
             "pc_colonoscopyStatus",
             "pc_findingsAnus",
@@ -266,6 +375,9 @@
             var el = q(id);
             if (el) el.addEventListener("change", refreshConditionals);
         });
+
+        // Initialize medication table events
+        initMedicationEvents();
 
         refreshConditionals();
     }
@@ -286,6 +398,9 @@
         setVal("pc_complications", "");
         setVal("pc_complicationsDetails", "");
 
+        // Clear medication table
+        clearMedicationTable();
+
         setVal("pc_dischargePlan", "");
 
         refreshConditionals();
@@ -298,7 +413,6 @@
         setVal("pc_colonoscopyStatusDetails", data.ColonoscopyStatus_Details ?? "");
         setVal("pc_bowelPreparation", data.BowelPreparation ?? "");
 
-        // Map of server column name suffix → organ key
         var organMap = {
             "Anus": "Anus",
             "Rectum": "Rectum",
@@ -313,10 +427,8 @@
 
         Object.keys(organMap).forEach(function (key) {
             var organ = organMap[key];
-            // Set the Normal/Abnormal select
             setVal("pc_findings" + key, bitSelectValue(data["Findings_" + key]));
 
-            // Parse details and populate inline fields
             var detailsRaw = data["Findings_" + key + "Details"] ?? "";
             var obj = null;
 
@@ -335,13 +447,15 @@
         setVal("pc_complications", data.Complications ?? "");
         setVal("pc_complicationsDetails", data.Complications_Details ?? "");
 
+        // Fill medication table from JSON
+        fillMedicationTable(data.Medication_Details ?? data.medicationDetails ?? "");
+
         setVal("pc_dischargePlan", data.DischargePlan ?? "");
 
         refreshConditionals();
     }
 
     function collect() {
-        // Mandatorys
         var colonoscopyStatus = requireBitSelect("pc_colonoscopyStatus", "Colonoscopy Status is required.");
         var colonoscopyStatusDetails = getVal("pc_colonoscopyStatusDetails");
         if (colonoscopyStatus === false) {
@@ -352,23 +466,16 @@
 
         var bowelPrep = requireIntSelect("pc_bowelPreparation", "Bowel Preparedness is required.");
 
-        /**
-         * Collect finding for an organ.
-         * Reads anomaly details directly from the inline fields.
-         * ABNORMAL is allowed without filling the anomaly fields (not mandatory).
-         */
         function collectFinding(selId, organ, label) {
             var isNormal = requireBitSelect(selId, label + " is required.");
             var details = null;
 
             if (isNormal === false) {
-                // ABNORMAL – read inline fields directly
                 var obj = readInlineFields(organ);
                 if (obj) {
                     details = JSON.stringify(obj);
                 }
             }
-            // If NORMAL, details are cleared (null)
             return { isNormal: isNormal, details: details };
         }
 
@@ -393,6 +500,9 @@
         var complications = requireSelectText("pc_complications", "Procedure Complications is required.");
         var complicationsDetailsRaw = getVal("pc_complicationsDetails");
         var dischargePlan = requireSelectText("pc_dischargePlan", "Discharge Plan is required.");
+
+        // Collect medication data (optional – not mandatory)
+        var medicationDetails = collectMedicationData();
 
         return {
             ColonoscopyStatus: colonoscopyStatus,
@@ -424,12 +534,14 @@
             Complications: complications,
             Complications_Details: isEmpty(complicationsDetailsRaw) ? null : complicationsDetailsRaw,
 
+            Medication_Details: medicationDetails,
+
             DischargePlan: dischargePlan,
         };
     }
 
     // -----------------------------
-    // REGISTER TEMPLATE (key must match dropdown value)
+    // REGISTER TEMPLATE
     // -----------------------------
     var api = {
         type: "PATIENT COLONOSCOPY",
