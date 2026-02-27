@@ -96,7 +96,7 @@ BEGIN
         VALUES
         (
             @Patient_ID,
-            'PATIENT ASSESSMENT',
+            'ASSESSMENT',
             @PatientJourney_Date,
             @Staff_ID,
             @Staff_ID
