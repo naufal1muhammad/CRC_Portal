@@ -4,7 +4,3 @@ C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Database\bin\Debug
 C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Database\obj\Debug\CRC.Database.sqlproj.AssemblyReference.cache
 C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Database\obj\Debug\CRC.Database.dll
 C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Database\obj\Debug\CRC.Database.pdb
-C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Database\obj\Debug\Model.xml
-C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Database\obj\Debug\refactor.xml
-C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Database\obj\Debug\postdeploy.sql
-C:\Users\MuhammadNaufalSyedNa\Documents\GitHub\CRC_Portal\CRC.Database\obj\Debug\predeploy.sql
