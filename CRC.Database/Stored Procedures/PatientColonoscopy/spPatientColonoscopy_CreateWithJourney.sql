@@ -68,7 +68,7 @@ BEGIN
         VALUES
         (
             @Patient_ID,
-            'COLONOSCOPY',
+            'PATIENT COLONOSCOPY',
             @PatientJourney_Date,
             @Staff_ID,
             @Staff_ID

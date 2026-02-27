@@ -47,7 +47,7 @@ BEGIN
         VALUES
         (
             @Patient_ID,
-            'FOLLOW UP',
+            'PATIENT FOLLOW UP',
             @PatientJourney_Date,
             @Staff_ID,
             @Staff_ID
