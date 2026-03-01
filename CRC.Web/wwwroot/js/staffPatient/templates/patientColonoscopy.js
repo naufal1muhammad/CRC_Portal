@@ -105,7 +105,7 @@
     // -----------------------------------------------------------------
     // ANOMALY INLINE FIELDS (findings details stored as JSON)
     // -----------------------------------------------------------------
-    const ANOMALY_KEYS = ["TypeOfAnomaly", "Size", "Morphology", "Intervention", "Remarks"];
+    const ANOMALY_KEYS = ["TypeOfAnomaly", "Size", "Count", "Morphology", "Intervention", "Remarks"];
 
     function inlineFieldId(organ, fieldKey) {
         return "pcAnomaly_" + organ + "_" + fieldKey;
