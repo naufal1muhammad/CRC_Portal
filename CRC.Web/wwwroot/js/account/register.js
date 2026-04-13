@@ -2,6 +2,7 @@
 (function () {
     let staffLoaded = false;
     let staffCache = [];
+    let passwordPolicy = null;
 
     let usersCache = [];
 
@@ -14,7 +15,8 @@
     const ENDPOINTS = {
         staffList: '/Staff/GetStaffList',
         registerUser: '/Account/RegisterUser',
-        getUsers: '/Account/GetUsers'
+        getUsers: '/Account/GetUsers',
+        passwordPolicy: '/Account/GetPasswordPolicy'
     };
 
     function el(id) { return document.getElementById(id); }
@@ -98,6 +100,46 @@
         } catch {
             throw new Error(raw.slice(0, 200) || 'Response is not valid JSON.');
         }
+    }
+
+    // -----------------------------
+    // Password policy
+    // -----------------------------
+    async function loadPasswordPolicy() {
+        if (passwordPolicy) return;
+        try {
+            const res = await fetch(ENDPOINTS.passwordPolicy, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+            if (res.ok) {
+                passwordPolicy = await res.json();
+            }
+        } catch (err) {
+            console.error('Error loading password policy', err);
+        }
+    }
+
+    function validatePassword(password) {
+        if (!passwordPolicy) return [];
+        const errors = [];
+
+        if (password.length < passwordPolicy.requiredLength)
+            errors.push('Password must be at least ' + passwordPolicy.requiredLength + ' characters long.');
+        if (passwordPolicy.requireUppercase && !/[A-Z]/.test(password))
+            errors.push('Password must contain at least one uppercase letter (A-Z).');
+        if (passwordPolicy.requireLowercase && !/[a-z]/.test(password))
+            errors.push('Password must contain at least one lowercase letter (a-z).');
+        if (passwordPolicy.requireDigit && !/[0-9]/.test(password))
+            errors.push('Password must contain at least one digit (0-9).');
+        if (passwordPolicy.requireNonAlphanumeric && !/[^a-zA-Z0-9]/.test(password))
+            errors.push('Password must contain at least one special character (e.g., !@#$%^&*).');
+        if (passwordPolicy.requiredUniqueChars > 0) {
+            var unique = new Set(password).size;
+            if (unique < passwordPolicy.requiredUniqueChars)
+                errors.push('Password must contain at least ' + passwordPolicy.requiredUniqueChars + ' unique characters.');
+        }
+        return errors;
     }
 
     // -----------------------------
@@ -455,6 +497,12 @@
             return;
         }
 
+        var pwErrors = validatePassword(payload.password);
+        if (pwErrors.length > 0) {
+            setMessage(pwErrors.join(' '), false);
+            return;
+        }
+
         try {
             const res = await fetch(ENDPOINTS.registerUser, {
                 method: 'POST',
@@ -529,6 +577,7 @@
         if (btnAdd) btnAdd.addEventListener('click', openAddUserModal);
         if (searchEl) searchEl.addEventListener('input', (e) => applyUsersSearch(e.target.value));
 
+        loadPasswordPolicy();
         onUserTypeChanged();
         loadUsers();
     });

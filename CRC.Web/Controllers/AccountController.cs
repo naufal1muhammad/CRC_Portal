@@ -9,17 +9,51 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using System.Globalization;
 using System.Security.Claims;
+using Microsoft.Extensions.Options;
+using CRC.Web.Models;
 
 namespace CRC.Web.Controllers
 {
     public class AccountController : Controller
     {
         private readonly DatabaseHelper _db;
+        private readonly PasswordPolicyOptions _passwordPolicy;
         private static readonly PasswordHasher<string> _hasher = new PasswordHasher<string>();
 
-        public AccountController(DatabaseHelper db)
+        public AccountController(DatabaseHelper db, IOptions<PasswordPolicyOptions> passwordPolicyOptions)
         {
             _db = db;
+            _passwordPolicy = passwordPolicyOptions.Value;
+        }
+
+        private List<string> ValidatePasswordPolicy(string password)
+        {
+            var errors = new List<string>();
+            if (string.IsNullOrEmpty(password))
+            {
+                errors.Add("Password is required.");
+                return errors;
+            }
+
+            if (password.Length < _passwordPolicy.RequiredLength)
+                errors.Add($"Password must be at least {_passwordPolicy.RequiredLength} characters long.");
+
+            if (_passwordPolicy.RequireUppercase && !password.Any(char.IsUpper))
+                errors.Add("Password must contain at least one uppercase letter (A-Z).");
+
+            if (_passwordPolicy.RequireLowercase && !password.Any(char.IsLower))
+                errors.Add("Password must contain at least one lowercase letter (a-z).");
+
+            if (_passwordPolicy.RequireDigit && !password.Any(char.IsDigit))
+                errors.Add("Password must contain at least one digit (0-9).");
+
+            if (_passwordPolicy.RequireNonAlphanumeric && !password.Any(c => !char.IsLetterOrDigit(c)))
+                errors.Add("Password must contain at least one special character (e.g., !@#$%^&*).");
+
+            if (_passwordPolicy.RequiredUniqueChars > 0 && password.Distinct().Count() < _passwordPolicy.RequiredUniqueChars)
+                errors.Add($"Password must contain at least {_passwordPolicy.RequiredUniqueChars} unique characters.");
+
+            return errors;
         }
 
         // -------------------------
@@ -32,6 +66,22 @@ namespace CRC.Web.Controllers
         public IActionResult Register()
         {
             return View();
+        }
+
+        // GET: /Account/GetPasswordPolicy (for client-side validation)
+        [Authorize]
+        [HttpGet]
+        public IActionResult GetPasswordPolicy()
+        {
+            return Ok(new
+            {
+                requireDigit = _passwordPolicy.RequireDigit,
+                requireLowercase = _passwordPolicy.RequireLowercase,
+                requireNonAlphanumeric = _passwordPolicy.RequireNonAlphanumeric,
+                requireUppercase = _passwordPolicy.RequireUppercase,
+                requiredLength = _passwordPolicy.RequiredLength,
+                requiredUniqueChars = _passwordPolicy.RequiredUniqueChars
+            });
         }
 
         // DTO (request model) for registration
@@ -89,6 +139,12 @@ namespace CRC.Web.Controllers
                 string.IsNullOrWhiteSpace(model.Password))
             {
                 return BadRequest(new { success = false, message = "Please fill in all required fields." });
+            }
+
+            var passwordErrors = ValidatePasswordPolicy(model.Password);
+            if (passwordErrors.Count > 0)
+            {
+                return BadRequest(new { success = false, message = string.Join(" ", passwordErrors) });
             }
 
             try
@@ -339,7 +395,6 @@ namespace CRC.Web.Controllers
             public string CurrentPassword { get; set; } = "";
 
             [Required(ErrorMessage = "New password is required.")]
-            [MinLength(8, ErrorMessage = "New password must be at least 8 characters.")]
             [DataType(DataType.Password)]
             public string NewPassword { get; set; } = "";
 
@@ -454,6 +509,16 @@ namespace CRC.Web.Controllers
                 model.NewPassword == model.CurrentPassword)
             {
                 ModelState.AddModelError(nameof(model.NewPassword), "New password must be different from current password.");
+            }
+
+            // Validate new password against policy
+            if (!string.IsNullOrWhiteSpace(model.NewPassword))
+            {
+                var passwordErrors = ValidatePasswordPolicy(model.NewPassword);
+                foreach (var error in passwordErrors)
+                {
+                    ModelState.AddModelError(nameof(model.NewPassword), error);
+                }
             }
 
             if (!ModelState.IsValid)
