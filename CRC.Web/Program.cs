@@ -1,7 +1,11 @@
+using CRC.Web.Models;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc.Authorization;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.Configure<PasswordPolicyOptions>(
+    builder.Configuration.GetSection("Account:Password"));
 
 // Add services to the container.
 builder.Services.AddControllersWithViews(options =>

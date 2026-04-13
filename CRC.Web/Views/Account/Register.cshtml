@@ -1,4 +1,7 @@
-﻿@{
+﻿@using Microsoft.Extensions.Options
+@using CRC.Web.Models
+@inject IOptions<PasswordPolicyOptions> PasswordPolicyOptions
+@{
     ViewData["Title"] = "User Management";
     Layout = "_Layout";
 }
@@ -80,6 +83,18 @@
                         <div class="mb-3">
                             <label for="Password" class="form-label">Password</label>
                             <input id="Password" class="form-control" type="password" />
+                            <div class="form-text text-muted">
+                                @{
+                                    var pp = PasswordPolicyOptions.Value;
+                                    var hints = new List<string> { $"at least {pp.RequiredLength} characters" };
+                                    if (pp.RequireUppercase) hints.Add("an uppercase letter");
+                                    if (pp.RequireLowercase) hints.Add("a lowercase letter");
+                                    if (pp.RequireDigit) hints.Add("a digit");
+                                    if (pp.RequireNonAlphanumeric) hints.Add("a special character");
+                                    if (pp.RequiredUniqueChars > 1) hints.Add($"{pp.RequiredUniqueChars} unique characters");
+                                }
+                                Password must contain @string.Join(", ", hints).
+                            </div>
                         </div>
 
                         <div class="mb-3">
