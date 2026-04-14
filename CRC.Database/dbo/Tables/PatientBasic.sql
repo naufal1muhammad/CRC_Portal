@@ -29,9 +29,6 @@
 [Patient_iFOBTCompletionDate]    DATE         NULL,
 [Patient_iFOBTResults]           BIT          NULL,
 
--- For later workflow (not in UI yet)
-[Patient_IsApproved]             BIT          NULL,
-
     -- Discharge info (NULL = Active; NOT NULL = Discharged)
     [DischargeType_ID]                VARCHAR(100) NULL,
     [Patient_DischargeDate]           DATETIME     NULL,

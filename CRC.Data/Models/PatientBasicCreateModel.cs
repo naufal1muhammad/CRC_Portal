@@ -28,6 +28,4 @@ public sealed class PatientBasicCreateModel
     public bool? PatientIFOBTStatus { get; set; }
     public DateTime? PatientIFOBTCompletionDate { get; set; }
     public bool? PatientIFOBTResults { get; set; }
-
-    public bool PatientIsApproved { get; set; }
 }

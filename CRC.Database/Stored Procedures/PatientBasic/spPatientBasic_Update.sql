@@ -28,7 +28,6 @@ CREATE PROCEDURE [dbo].[spPatientBasic_Update]
     @Patient_iFOBTStatus             BIT = NULL,
     @Patient_iFOBTCompletionDate     DATE = NULL,
     @Patient_iFOBTResults            BIT = NULL,
-    @Patient_IsApproved              BIT = NULL,
 
     @DischargeType_ID              VARCHAR(100) = NULL,
     @Patient_DischargeDate         DATETIME     = NULL,
@@ -76,7 +75,6 @@ BEGIN
         [Patient_iFOBTStatus]            = @Patient_iFOBTStatus,
         [Patient_iFOBTCompletionDate]    = @iFOBTCompletionDateClean,
         [Patient_iFOBTResults]           = @iFOBTResultsClean,
-        [Patient_IsApproved]             = COALESCE(@Patient_IsApproved, [Patient_IsApproved]),
         [DischargeType_ID]              = @DischargeType_ID,
         [Patient_DischargeDate]         = @Patient_DischargeDate,
         [Patient_DischargeRemarks]      = @Patient_DischargeRemarks
