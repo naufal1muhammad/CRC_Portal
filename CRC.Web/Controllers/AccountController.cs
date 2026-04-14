@@ -18,12 +18,17 @@ namespace CRC.Web.Controllers
     {
         private readonly DatabaseHelper _db;
         private readonly PasswordPolicyOptions _passwordPolicy;
+        private readonly SessionTimeoutOptions _sessionTimeout;
         private static readonly PasswordHasher<string> _hasher = new PasswordHasher<string>();
 
-        public AccountController(DatabaseHelper db, IOptions<PasswordPolicyOptions> passwordPolicyOptions)
+        public AccountController(
+            DatabaseHelper db,
+            IOptions<PasswordPolicyOptions> passwordPolicyOptions,
+            IOptions<SessionTimeoutOptions> sessionTimeoutOptions)
         {
             _db = db;
             _passwordPolicy = passwordPolicyOptions.Value;
+            _sessionTimeout = sessionTimeoutOptions.Value;
         }
 
         private List<string> ValidatePasswordPolicy(string password)
@@ -81,6 +86,17 @@ namespace CRC.Web.Controllers
                 requireUppercase = _passwordPolicy.RequireUppercase,
                 requiredLength = _passwordPolicy.RequiredLength,
                 requiredUniqueChars = _passwordPolicy.RequiredUniqueChars
+            });
+        }
+
+        // GET: /Account/GetSessionTimeout (for client-side inactivity tracker)
+        [Authorize]
+        [HttpGet]
+        public IActionResult GetSessionTimeout()
+        {
+            return Ok(new
+            {
+                inactivityTimeoutSeconds = _sessionTimeout.InactivityTimeoutSeconds
             });
         }
 

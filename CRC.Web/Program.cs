@@ -7,6 +7,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<PasswordPolicyOptions>(
     builder.Configuration.GetSection("Account:Password"));
 
+builder.Services.Configure<SessionTimeoutOptions>(
+    builder.Configuration.GetSection("Account:SessionTimeout"));
+
+var sessionTimeout = builder.Configuration
+    .GetSection("Account:SessionTimeout")
+    .Get<SessionTimeoutOptions>() ?? new SessionTimeoutOptions();
+
 // Add services to the container.
 builder.Services.AddControllersWithViews(options =>
 {
@@ -20,6 +27,8 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.LoginPath = "/Account/Login";      // where to go if not logged in
         options.LogoutPath = "/Account/Logout";
         options.AccessDeniedPath = "/Account/AccessDenied";
+        options.ExpireTimeSpan = TimeSpan.FromSeconds(sessionTimeout.InactivityTimeoutSeconds);
+        options.SlidingExpiration = true;
     });
 builder.Services.AddAuthorization(options =>
 {
