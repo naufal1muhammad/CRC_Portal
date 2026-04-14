@@ -1,15 +1,18 @@
 # Build output
-bin/
-obj/
+**/bin/
+**/obj/
 
-# VS / Rider / tooling
+# SQL Server / SSDT outputs
+*.dacpac
+*.dbmdl
+*.jfm
+
+# User-specific IDE files
 *.user
 *.suo
 *.userprefs
 *.csproj.user
+
+# Visual Studio / Rider
 .vs/
-.bin/
-.obj/
-*.dbmdl
-*.jfm
-*.dacpac
+.idea/
