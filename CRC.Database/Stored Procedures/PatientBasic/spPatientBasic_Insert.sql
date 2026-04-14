@@ -26,7 +26,6 @@ CREATE PROCEDURE [dbo].[spPatientBasic_Insert]
 @Patient_iFOBTStatus             BIT = NULL,
 @Patient_iFOBTCompletionDate     DATE = NULL,
 @Patient_iFOBTResults            BIT = NULL,
-@Patient_IsApproved              BIT = NULL,
 
     @NewPatient_ID                   VARCHAR(100) OUTPUT,
     @User_ID                         INT = NULL
@@ -83,7 +82,6 @@ BEGIN
         [Patient_iFOBTStatus],
         [Patient_iFOBTCompletionDate],
         [Patient_iFOBTResults],
-        [Patient_IsApproved],
         [DischargeType_ID],
         [Patient_DischargeDate],
         [Patient_DischargeRemarks]
@@ -114,7 +112,6 @@ BEGIN
         @Patient_iFOBTStatus,
         @iFOBTCompletionDateClean,
         @iFOBTResultsClean,
-        @Patient_IsApproved,
         NULL,   -- DischargeType_ID
         NULL,   -- Patient_DischargeDate
         NULL    -- Patient_DischargeRemarks

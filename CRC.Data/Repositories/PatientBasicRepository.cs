@@ -54,9 +54,7 @@ public sealed class PatientBasicRepository
 
             new SqlParameter("@Patient_iFOBTStatus", SqlDbType.Bit) { Value = model.PatientIFOBTStatus.HasValue ? (object)model.PatientIFOBTStatus.Value : DBNull.Value },
             new SqlParameter("@Patient_iFOBTCompletionDate", SqlDbType.Date) { Value = model.PatientIFOBTCompletionDate.HasValue ? (object)model.PatientIFOBTCompletionDate.Value.Date : DBNull.Value },
-            new SqlParameter("@Patient_iFOBTResults", SqlDbType.Bit) { Value = model.PatientIFOBTResults.HasValue ? (object)model.PatientIFOBTResults.Value : DBNull.Value },
-
-            new SqlParameter("@Patient_IsApproved", SqlDbType.Bit) { Value = model.PatientIsApproved }
+            new SqlParameter("@Patient_iFOBTResults", SqlDbType.Bit) { Value = model.PatientIFOBTResults.HasValue ? (object)model.PatientIFOBTResults.Value : DBNull.Value }
         };
 
         var outParam = new SqlParameter("@NewPatient_ID", SqlDbType.VarChar, 100)
