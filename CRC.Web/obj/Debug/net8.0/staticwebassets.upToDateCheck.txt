@@ -33,6 +33,7 @@ wwwroot\js\functions\DataTable.js
 wwwroot\js\functions\DataTableDataManagement.js
 wwwroot\js\functions\GetPropertyValue.js
 wwwroot\js\functions\LoadingModal.js
+wwwroot\js\functions\SessionTimeout.js
 wwwroot\js\functions\SmartWizard.js
 wwwroot\js\functions\SrollTop.js
 wwwroot\js\functions\UrlVariable.js
