@@ -17,7 +17,7 @@
             script: "/js/staffPatient/templates/patientAssessment.js",
             get: () => ENDPOINTS.getPatientAssessment,
         },
-        "PATIENT COLONOSCOPY": {
+        "COLONOSCOPY": {
             script: "/js/staffPatient/templates/patientColonoscopy.js",
             get: () => ENDPOINTS.getPatientColonoscopy,
         },

@@ -25,7 +25,7 @@
             get: () => ENDPOINTS.getPatientAssessment,
             save: () => ENDPOINTS.savePatientAssessment,
         },
-        "PATIENT COLONOSCOPY": {
+        "COLONOSCOPY": {
             script: "/js/staffPatient/templates/patientColonoscopy.js",
             get: () => ENDPOINTS.getPatientColonoscopy,
             save: () => ENDPOINTS.savePatientColonoscopy,

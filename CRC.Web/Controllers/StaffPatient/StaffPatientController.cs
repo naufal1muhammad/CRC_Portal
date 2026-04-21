@@ -43,7 +43,7 @@ namespace CRC.Web.Controllers.StaffPatient
             if (jt.Equals("PATIENT ASSESSMENT", StringComparison.OrdinalIgnoreCase))
                 return PartialView("~/Views/StaffPatient/Templates/_PatientAssessment.cshtml");
 
-            if (jt.Equals("PATIENT COLONOSCOPY", StringComparison.OrdinalIgnoreCase))
+            if (jt.Equals("COLONOSCOPY", StringComparison.OrdinalIgnoreCase))
                 return PartialView("~/Views/StaffPatient/Templates/_PatientColonoscopy.cshtml");
 
             if (jt.Equals("PATIENT FOLLOW UP", StringComparison.OrdinalIgnoreCase))
@@ -503,7 +503,7 @@ namespace CRC.Web.Controllers.StaffPatient
         }
 
         // ------------------------------
-        // PATIENT COLONOSCOPY
+        // COLONOSCOPY
         // ------------------------------
 
         [Authorize(Policy = "AdminOrSuperOrStaff")]
