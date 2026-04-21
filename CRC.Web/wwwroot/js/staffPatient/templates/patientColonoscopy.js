@@ -544,7 +544,7 @@
     // REGISTER TEMPLATE
     // -----------------------------
     var api = {
-        type: "PATIENT COLONOSCOPY",
+        type: "COLONOSCOPY",
         rootSelector: "#tmplPatientColonoscopy",
         init: init,
         clear: clear,
@@ -552,5 +552,5 @@
         collect: collect,
     };
 
-    window.StaffPatientTemplates["PATIENT COLONOSCOPY"] = api;
+    window.StaffPatientTemplates["COLONOSCOPY"] = api;
 })();
