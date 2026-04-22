@@ -103,6 +103,7 @@
     <Build Include="Stored Procedures\Staff\spStaff_Insert.sql" />
     <Build Include="Stored Procedures\Staff\spStaff_Update.sql" />
     <Build Include="Stored Procedures\Staff\spStaff_Delete.sql" />
+    <Build Include="Stored Procedures\Staff\spStaff_GetPerformance.sql" />
     <Build Include="Stored Procedures\StaffDocument\spStaffDocument_List.sql" />
     <Build Include="Stored Procedures\StaffDocument\spStaffDocument_Insert.sql" />
     <Build Include="Stored Procedures\StaffDocument\spStaffDocument_GetById.sql" />
