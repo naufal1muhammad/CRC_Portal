@@ -65,6 +65,28 @@ namespace CRC.Data.Database
             return dt;
         }
 
+        public async Task<DataSet> ExecuteDataSetAsync(string storedProcedure, SqlParameter[]? parameters = null)
+        {
+            using var conn = new SqlConnection(_connectionString);
+            using var cmd = new SqlCommand(storedProcedure, conn)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            if (parameters is { Length: > 0 })
+            {
+                cmd.Parameters.AddRange(parameters);
+            }
+
+            await conn.OpenAsync();
+            await TryInjectUserIdAsync(conn, storedProcedure, cmd);
+
+            var ds = new DataSet();
+            using var adapter = new SqlDataAdapter(cmd);
+            adapter.Fill(ds);
+            return ds;
+        }
+
         public SqlConnection CreateConnection()
         {
             return new SqlConnection(_connectionString);

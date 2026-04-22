@@ -309,6 +309,24 @@
              id="tabPerformance"
              role="tabpanel"
              aria-labelledby="tab-performance">
+            <div class="p-3">
+                <h5 class="mb-3">Summary</h5>
+                <div class="row g-3">
+                    <div class="col-md-6" id="perfTotalColonoscopy"></div>
+                    <div class="col-md-6" id="perfTotalColonoscopyThisMonth"></div>
+                </div>
+
+                <h5 class="mt-4 mb-3">Total Hours Spent</h5>
+                <div id="perfHoursByType" class="row g-3"></div>
+
+                <h5 class="mt-4 mb-3">Complications</h5>
+                <div id="perfComplications" class="row g-3"></div>
+
+                <h5 class="mt-4 mb-3">Anomalies Detected</h5>
+                <div id="perfAnomalies" class="row g-3"></div>
+
+                <div id="perfMessage" class="text-danger small mt-3"></div>
+            </div>
         </div>
     </div>
 
