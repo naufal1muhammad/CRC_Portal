@@ -230,6 +230,9 @@
         try {
             const response = await fetch('/StaffPatient/UploadPatientDocuments', {
                 method: 'POST',
+                headers: {
+                    'X-CSRF-Token': $('input:hidden[name="__RequestVerificationToken"]').val()
+                },
                 body: formData
             });
 
@@ -266,7 +269,8 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': $('input:hidden[name="__RequestVerificationToken"]').val()
                 },
                 body: JSON.stringify({ documentId: docId })
             });

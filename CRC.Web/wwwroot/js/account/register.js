@@ -508,7 +508,8 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': $('input:hidden[name="__RequestVerificationToken"]').val()
                 },
                 body: JSON.stringify(payload)
             });

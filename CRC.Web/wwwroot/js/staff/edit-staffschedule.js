@@ -270,7 +270,11 @@
         try {
             const response = await fetch('/StaffSchedule/CreateRange', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': $('input:hidden[name="__RequestVerificationToken"]').val()
+                },
                 body: JSON.stringify({
                     staffId: staffId,
                     fromDate: v.fromDate,
@@ -315,7 +319,11 @@
         try {
             const response = await fetch('/StaffSchedule/Delete', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': $('input:hidden[name="__RequestVerificationToken"]').val()
+                },
                 body: JSON.stringify({ staffSlotId: staffSlotId })
             });
 

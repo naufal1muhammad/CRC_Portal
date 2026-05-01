@@ -350,7 +350,10 @@
 
         const res = await fetch('/Patient/SaveAppointment', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': $('input:hidden[name="__RequestVerificationToken"]').val()
+            },
             body: JSON.stringify(payload)
         });
 
@@ -371,7 +374,10 @@
 
         const res = await fetch('/Patient/DeleteAppointment', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': $('input:hidden[name="__RequestVerificationToken"]').val()
+            },
             body: JSON.stringify({ appointmentId })
         });
 

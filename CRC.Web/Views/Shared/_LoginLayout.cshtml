@@ -1,7 +1,5 @@
-﻿@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
-@{
+﻿@{
     Layout = null;
-    var antiforgeryTokens = Antiforgery.GetAndStoreTokens(Context);
 }
 
 <!DOCTYPE html>
@@ -9,9 +7,6 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="csrf-token" content="@antiforgeryTokens.RequestToken" />
-    <meta name="csrf-header" content="@antiforgeryTokens.HeaderName" />
-    <script src="~/js/common/csrf.js" asp-append-version="true"></script>
     <title>@ViewData["Title"]</title>
 
     <!-- ===============================================-->
@@ -71,6 +66,7 @@
     @await RenderSectionAsync("Stylesheets", required: false)
 </head>
 <body class="login-bg">
+    @Html.AntiForgeryToken()
     <div class="container-fluid d-flex justify-content-end align-items-start min-vh-100 p-4 p-md-5 login-wrap">
         <div class="w-100" style="max-width: 600px;">
             <div class="card shadow-sm border-0 login-card">

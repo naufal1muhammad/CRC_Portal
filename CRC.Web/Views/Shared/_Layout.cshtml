@@ -1,17 +1,10 @@
-﻿@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
-@{
-    var antiforgeryTokens = Antiforgery.GetAndStoreTokens(Context);
-}
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 @using System.Linq
 @using System.Security.Claims
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="csrf-token" content="@antiforgeryTokens.RequestToken" />
-    <meta name="csrf-header" content="@antiforgeryTokens.HeaderName" />
-    <script src="~/js/common/csrf.js" asp-append-version="true"></script>
     <title>@ViewData["Title"]</title>
 
     <!-- ===============================================-->
@@ -76,6 +69,7 @@
 </head>
 
 <body class="bg-light">
+    @Html.AntiForgeryToken()
     <div class="d-flex" id="layoutWrapper">
         <!-- Sidebar -->
         <nav class="flex-shrink-0 sidebar-main primary-color border-end">

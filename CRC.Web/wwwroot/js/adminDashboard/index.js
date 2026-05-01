@@ -57,7 +57,11 @@
     async function postJson(url, payload) {
         const res = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-Token': $('input:hidden[name="__RequestVerificationToken"]').val()
+            },
             body: JSON.stringify(payload)
         });
 
