@@ -114,7 +114,7 @@
             data.anomalies,
             item => item.typeOfAnomaly || 'Unspecified',
             item => item.patientCount ?? 0,
-            item => ((item.patientCount ?? 0) === 1 ? '1 patient' : (item.patientCount ?? 0) + ' patients'),
+            item => ((item.patientCount ?? 0) === 1 ? 'patient' : 'patients'),
             'No anomalies detected.'
         );
     }
