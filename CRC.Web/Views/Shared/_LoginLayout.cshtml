@@ -66,6 +66,7 @@
     @await RenderSectionAsync("Stylesheets", required: false)
 </head>
 <body class="login-bg">
+    @Html.AntiForgeryToken()
     <div class="container-fluid d-flex justify-content-end align-items-start min-vh-100 p-4 p-md-5 login-wrap">
         <div class="w-100" style="max-width: 600px;">
             <div class="card shadow-sm border-0 login-card">

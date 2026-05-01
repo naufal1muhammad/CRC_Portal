@@ -1,5 +1,6 @@
 using CRC.Web.Models;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Authorization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,9 +16,19 @@ var sessionTimeout = builder.Configuration
     .Get<SessionTimeoutOptions>() ?? new SessionTimeoutOptions();
 
 // Add services to the container.
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-CSRF-TOKEN";
+    options.Cookie.Name = "__Host-CSRF";
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.HttpOnly = true;
+    options.Cookie.Path = "/";
+});
 builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add(new AuthorizeFilter());
+    options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
 });
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CRC.Data.Database.DatabaseHelper>();

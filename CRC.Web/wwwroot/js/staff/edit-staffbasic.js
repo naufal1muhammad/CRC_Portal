@@ -834,6 +834,9 @@
 
             const response = await fetch('/Staff/SaveStaffWithDocuments', {
                 method: 'POST',
+                headers: {
+                    'X-CSRF-Token': $('input:hidden[name="__RequestVerificationToken"]').val()
+                },
                 body: formData
             });
 
