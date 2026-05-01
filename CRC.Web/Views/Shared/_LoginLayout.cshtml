@@ -1,5 +1,7 @@
-﻿@{
+﻿@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+@{
     Layout = null;
+    var antiforgeryTokens = Antiforgery.GetAndStoreTokens(Context);
 }
 
 <!DOCTYPE html>
@@ -7,6 +9,9 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content="@antiforgeryTokens.RequestToken" />
+    <meta name="csrf-header" content="@antiforgeryTokens.HeaderName" />
+    <script src="~/js/common/csrf.js" asp-append-version="true"></script>
     <title>@ViewData["Title"]</title>
 
     <!-- ===============================================-->
