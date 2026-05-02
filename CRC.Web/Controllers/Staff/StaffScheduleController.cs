@@ -4,6 +4,7 @@ using System.Data;
 using System.Globalization;
 using System.Threading.Tasks;
 using CRC.Data.Database;
+using CRC.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -14,10 +15,12 @@ namespace CRC.Web.Controllers.Staff
     public class StaffScheduleController : Controller
     {
         private readonly DatabaseHelper _db;
+        private readonly ILogger<StaffScheduleController> _logger;
 
-        public StaffScheduleController(DatabaseHelper db)
+        public StaffScheduleController(DatabaseHelper db, ILogger<StaffScheduleController> logger)
         {
             _db = db;
+            _logger = logger;
         }
 
         public sealed class CreateRangeRequest
@@ -89,11 +92,13 @@ namespace CRC.Web.Controllers.Staff
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException listing staff schedule for StaffId={StaffId}", staffId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "An unexpected error occurred." });
+                _logger.LogError(ex, "Unexpected error listing staff schedule for StaffId={StaffId}", staffId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
         }
 
@@ -160,11 +165,13 @@ namespace CRC.Web.Controllers.Staff
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException creating staff slot range for StaffId={StaffId}", model.StaffId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "An unexpected error occurred." });
+                _logger.LogError(ex, "Unexpected error creating staff slot range for StaffId={StaffId}", model.StaffId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
         }
 
@@ -188,11 +195,13 @@ namespace CRC.Web.Controllers.Staff
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException deleting staff slot StaffSlotId={StaffSlotId}", model.StaffSlotId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "An unexpected error occurred." });
+                _logger.LogError(ex, "Unexpected error deleting staff slot StaffSlotId={StaffSlotId}", model.StaffSlotId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
         }
     }

@@ -1,4 +1,5 @@
 ﻿using CRC.Data.Database;
+using CRC.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -10,10 +11,12 @@ namespace CRC.Web.Controllers.AdminDashboard
     public class AdminDashboardController : Controller
     {
         private readonly DatabaseHelper _db;
+        private readonly ILogger<AdminDashboardController> _logger;
 
-        public AdminDashboardController(DatabaseHelper db)
+        public AdminDashboardController(DatabaseHelper db, ILogger<AdminDashboardController> logger)
         {
             _db = db;
+            _logger = logger;
         }
 
         // GET: /AdminDashboard
@@ -154,11 +157,13 @@ namespace CRC.Web.Controllers.AdminDashboard
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException updating appointment status PatientAppointmentId={Id} Status={Status}", model.PatientAppointmentId, status);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error updating appointment status."));
             }
-            catch
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error updating appointment status." });
+                _logger.LogError(ex, "Unexpected error updating appointment status PatientAppointmentId={Id} Status={Status}", model.PatientAppointmentId, status);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error updating appointment status."));
             }
         }
     }

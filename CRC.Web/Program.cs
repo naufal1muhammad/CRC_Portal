@@ -1,9 +1,41 @@
+using CRC.Web.Infrastructure;
 using CRC.Web.Models;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Authorization;
+using Serilog;
+using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var logsDirectory = Path.Combine(builder.Environment.ContentRootPath, "Logs");
+Directory.CreateDirectory(logsDirectory);
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
+    .WriteTo.Logger(lc => lc
+        .Filter.ByExcluding(e => e.Properties.ContainsKey("AuditChannel"))
+        .WriteTo.File(
+            path: Path.Combine(logsDirectory, "app-.log"),
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 31,
+            shared: true,
+            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [Cid:{CorrelationId}] [User:{UserName}] [Ip:{RemoteIp}] {Message:lj} {Exception}{NewLine}"))
+    .WriteTo.Logger(lc => lc
+        .Filter.ByIncludingOnly(e => e.Properties.ContainsKey("AuditChannel"))
+        .WriteTo.File(
+            path: Path.Combine(logsDirectory, "audit-.log"),
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 365,
+            shared: true,
+            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [Cid:{CorrelationId}] [User:{UserName}] [Ip:{RemoteIp}] {Message:lj}{NewLine}"))
+    .WriteTo.Console()
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 builder.Services.Configure<PasswordPolicyOptions>(
     builder.Configuration.GetSection("Account:Password"));
@@ -70,6 +102,9 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseSerilogRequestLogging();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -77,4 +112,16 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Account}/{action=Login}/{id?}");
 
-app.Run();
+try
+{
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application terminated unexpectedly");
+    throw;
+}
+finally
+{
+    Log.CloseAndFlush();
+}

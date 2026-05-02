@@ -1,4 +1,5 @@
 ﻿using CRC.Data.Database;
+using CRC.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -11,11 +12,13 @@ namespace CRC.Web.Controllers.Appointment
     {
         private readonly DatabaseHelper _db;
         private readonly IWebHostEnvironment _env;
+        private readonly ILogger<AppointmentController> _logger;
 
-        public AppointmentController(DatabaseHelper db, IWebHostEnvironment env)
+        public AppointmentController(DatabaseHelper db, IWebHostEnvironment env, ILogger<AppointmentController> logger)
         {
             _db = db;
             _env = env;
+            _logger = logger;
         }
 
         // GET: /Appointment
@@ -240,11 +243,13 @@ namespace CRC.Web.Controllers.Appointment
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException updating appointment status PatientAppointmentId={Id} Status={Status}", model.PatientAppointmentId, status);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error updating appointment status."));
             }
-            catch
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error updating appointment status." });
+                _logger.LogError(ex, "Unexpected error updating appointment status PatientAppointmentId={Id} Status={Status}", model.PatientAppointmentId, status);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error updating appointment status."));
             }
         }
 

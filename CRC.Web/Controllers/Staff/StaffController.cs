@@ -10,6 +10,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using CRC.Data.Database;
+using CRC.Web.Infrastructure;
 
 namespace CRC.Web.Controllers.Staff
 {
@@ -18,11 +19,13 @@ namespace CRC.Web.Controllers.Staff
     {
         private readonly DatabaseHelper _db;
         private readonly IWebHostEnvironment _env;
+        private readonly ILogger<StaffController> _logger;
 
-        public StaffController(DatabaseHelper db, IWebHostEnvironment env)
+        public StaffController(DatabaseHelper db, IWebHostEnvironment env, ILogger<StaffController> logger)
         {
             _db = db;
             _env = env;
+            _logger = logger;
         }
 
         // GET: /Staff
@@ -300,11 +303,13 @@ namespace CRC.Web.Controllers.Staff
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException saving staff StaffId={StaffId}", model.StaffId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "An unexpected error occurred." });
+                _logger.LogError(ex, "Unexpected error saving staff StaffId={StaffId}", model.StaffId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
         }
 
@@ -583,12 +588,14 @@ namespace CRC.Web.Controllers.Staff
             {
                 // Cleanup any newly written files when DB failed
                 CleanupCreatedFiles(createdFiles);
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException saving staff with documents StaffId={StaffId}", staffId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 CleanupCreatedFiles(createdFiles);
-                return Ok(new { success = false, message = "An unexpected error occurred." });
+                _logger.LogError(ex, "Unexpected error saving staff with documents StaffId={StaffId}", staffId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
         }
 

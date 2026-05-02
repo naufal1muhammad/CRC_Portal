@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using CRC.Data.Database;
+using CRC.Web.Infrastructure;
 
 namespace CRC.Web.Controllers.Branch
 {
@@ -13,10 +14,12 @@ namespace CRC.Web.Controllers.Branch
     public class BranchController : Controller
     {
         private readonly DatabaseHelper _db;
+        private readonly ILogger<BranchController> _logger;
 
-        public BranchController(DatabaseHelper db)
+        public BranchController(DatabaseHelper db, ILogger<BranchController> logger)
         {
             _db = db;
+            _logger = logger;
         }
 
         // GET: /Branch
@@ -188,12 +191,13 @@ namespace CRC.Web.Controllers.Branch
             }
             catch (SqlException ex)
             {
-                // You can log ex here
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException saving branch BranchId={BranchId}", model?.BranchId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error saving branch."));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error saving branch." });
+                _logger.LogError(ex, "Unexpected error saving branch BranchId={BranchId}", model?.BranchId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error saving branch."));
             }
         }
 
