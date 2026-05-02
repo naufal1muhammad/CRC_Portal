@@ -36,7 +36,7 @@ function Write-WholePayloadToNewFile {
 }
 
 # Exclude anything under these folders (at any depth)
-$excludeRegex = '([\\/])(bin|obj|properties)([\\/])|([\\/])wwwroot([\\/])(lib|css|images|uploads)([\\/])'
+$excludeRegex = '([\\/])(bin|obj|properties|logs)([\\/])|([\\/])wwwroot([\\/])(lib|css|images|uploads)([\\/])'
 
 # 1) Only pick TOP-LEVEL items starting with the prefix
 $topLevelItems = Get-ChildItem -Path $InputFolder -Force |
