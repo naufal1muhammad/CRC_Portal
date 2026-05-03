@@ -8,7 +8,7 @@ namespace CRC.Web.Infrastructure
     /// events: login attempts, viewing/downloading sensitive resources, etc.
     public static class AuditLog
     {
-        private static readonly ILogger _logger = Log.ForContext("AuditChannel", true);
+        private static readonly Serilog.ILogger _logger = Log.ForContext("AuditChannel", true);
 
         public static void LoginSucceeded(HttpContext context, string username, int? userId, string userType)
         {
@@ -35,20 +35,6 @@ namespace CRC.Web.Infrastructure
             _logger.Write(LogEventLevel.Information,
                 "AUDIT Documents searched. Mode={Mode} Individual={Individual} DocType={DocType} Results={ResultCount}",
                 mode, individualName ?? "", documentType ?? "", resultCount);
-        }
-
-        public static void DocumentViewed(HttpContext context, string documentId, string fileName)
-        {
-            _logger.Write(LogEventLevel.Information,
-                "AUDIT Document viewed. DocumentId={DocumentId} FileName={FileName}",
-                documentId, fileName);
-        }
-
-        public static void DocumentDownloaded(HttpContext context, string documentId, string fileName)
-        {
-            _logger.Write(LogEventLevel.Information,
-                "AUDIT Document downloaded. DocumentId={DocumentId} FileName={FileName}",
-                documentId, fileName);
         }
     }
 }

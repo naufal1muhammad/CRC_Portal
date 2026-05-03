@@ -438,7 +438,7 @@ namespace CRC.Web.Controllers.Staff
                 Directory.CreateDirectory(uploadRoot);
             }
 
-            string staffId;
+            string staffId = string.Empty;
 
             try
             {

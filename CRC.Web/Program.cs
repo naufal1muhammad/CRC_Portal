@@ -102,11 +102,11 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
-app.UseMiddleware<CorrelationIdMiddleware>();
-app.UseSerilogRequestLogging();
-
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseSerilogRequestLogging();
 
 app.MapControllerRoute(
     name: "default",
