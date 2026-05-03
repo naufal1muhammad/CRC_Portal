@@ -231,13 +231,49 @@ namespace CRC.Web.Controllers.Appointment
 
             try
             {
-                var parameters = new[]
-                {
-            new SqlParameter("@PatientAppointment_ID", model.PatientAppointmentId),
-            new SqlParameter("@PatientAppointment_Status", status)
-        };
+                using var conn = _db.CreateConnection();
+                await conn.OpenAsync();
 
-                await _db.ExecuteNonQueryAsync("spPatientAppointment_UpdateStatus", parameters);
+                using var cmd = await _db.CreateStoredProcedureCommandAsync(
+                    conn,
+                    null,
+                    "spPatientAppointment_UpdateStatus",
+                    new[]
+                    {
+                        new SqlParameter("@PatientAppointment_ID", model.PatientAppointmentId),
+                        new SqlParameter("@PatientAppointment_Status", status)
+                    });
+
+                var outPatientId = new SqlParameter("@Out_Patient_ID", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
+                var outStaffId = new SqlParameter("@Out_Staff_ID", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
+                var outDate = new SqlParameter("@Out_Date", SqlDbType.Date) { Direction = ParameterDirection.Output };
+                var outStartTime = new SqlParameter("@Out_StartTime", SqlDbType.Time) { Direction = ParameterDirection.Output };
+                var outEndTime = new SqlParameter("@Out_EndTime", SqlDbType.Time) { Direction = ParameterDirection.Output };
+                var outTypeId = new SqlParameter("@Out_PjAppType_ID", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
+                var outBranchId = new SqlParameter("@Out_Branch_ID", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
+                var outStatus = new SqlParameter("@Out_Status", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
+                cmd.Parameters.Add(outPatientId);
+                cmd.Parameters.Add(outStaffId);
+                cmd.Parameters.Add(outDate);
+                cmd.Parameters.Add(outStartTime);
+                cmd.Parameters.Add(outEndTime);
+                cmd.Parameters.Add(outTypeId);
+                cmd.Parameters.Add(outBranchId);
+                cmd.Parameters.Add(outStatus);
+
+                await cmd.ExecuteNonQueryAsync();
+
+                string persistedPatientId = outPatientId.Value is string pid ? pid : string.Empty;
+                string persistedStaffId = outStaffId.Value is string sid ? sid : string.Empty;
+                DateTime persistedDate = outDate.Value is DateTime d ? d : default;
+                TimeSpan persistedStart = outStartTime.Value is TimeSpan st ? st : default;
+                TimeSpan persistedEnd = outEndTime.Value is TimeSpan et ? et : default;
+                string persistedTypeId = outTypeId.Value is string tid ? tid : string.Empty;
+                string persistedBranchId = outBranchId.Value is string bid ? bid : string.Empty;
+                string persistedStatus = outStatus.Value is string ps ? ps : status;
+
+                AuditLog.AppointmentUpdated(HttpContext, model.PatientAppointmentId, persistedPatientId, persistedStaffId,
+                    persistedDate, persistedStart, persistedEnd, persistedTypeId, persistedBranchId, persistedStatus);
 
                 return Ok(new { success = true });
             }
