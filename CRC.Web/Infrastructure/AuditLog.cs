@@ -36,5 +36,30 @@ namespace CRC.Web.Infrastructure
                 "AUDIT Documents searched. Mode={Mode} Individual={Individual} DocType={DocType} Results={ResultCount}",
                 mode, individualName ?? "", documentType ?? "", resultCount);
         }
+
+        public static void AppointmentCreated(HttpContext context, int appointmentId, string patientId, string staffId,
+            DateTime appointmentDate, TimeSpan startTime, TimeSpan endTime, string appointmentTypeId, string branchId, string status)
+        {
+            _logger.Write(LogEventLevel.Information,
+                "AUDIT Appointment created. AppointmentId={AppointmentId} PatientId={PatientId} StaffId={StaffId} Date={Date} From={StartTime} To={EndTime} TypeId={TypeId} BranchId={BranchId} Status={Status}",
+                appointmentId, patientId, staffId, appointmentDate.ToString("yyyy-MM-dd"),
+                startTime.ToString(@"hh\:mm"), endTime.ToString(@"hh\:mm"), appointmentTypeId, branchId, status);
+        }
+
+        public static void AppointmentUpdated(HttpContext context, int appointmentId, string patientId, string staffId,
+            DateTime appointmentDate, TimeSpan startTime, TimeSpan endTime, string appointmentTypeId, string branchId, string status)
+        {
+            _logger.Write(LogEventLevel.Information,
+                "AUDIT Appointment updated. AppointmentId={AppointmentId} PatientId={PatientId} StaffId={StaffId} Date={Date} From={StartTime} To={EndTime} TypeId={TypeId} BranchId={BranchId} Status={Status}",
+                appointmentId, patientId, staffId, appointmentDate.ToString("yyyy-MM-dd"),
+                startTime.ToString(@"hh\:mm"), endTime.ToString(@"hh\:mm"), appointmentTypeId, branchId, status);
+        }
+
+        public static void AppointmentDeleted(HttpContext context, int appointmentId)
+        {
+            _logger.Write(LogEventLevel.Warning,
+                "AUDIT Appointment deleted. AppointmentId={AppointmentId}",
+                appointmentId);
+        }
     }
 }
