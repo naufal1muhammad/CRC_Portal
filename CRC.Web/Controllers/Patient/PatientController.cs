@@ -1049,6 +1049,15 @@ namespace CRC.Web.Controllers.Patient
                 int finalAppointmentId = appointmentId;
                 bool isInsert = appointmentId <= 0;
 
+                string persistedPatientId = patientId;
+                string persistedStaffId = staffId;
+                DateTime persistedDate = apptDate;
+                TimeSpan persistedStart = startTime;
+                TimeSpan persistedEnd = endTime;
+                string persistedTypeId = pjAppTypeId;
+                string persistedBranchId = branchId;
+                string persistedStatus = status;
+
                 if (isInsert)
                 {
                     // INSERT
@@ -1103,7 +1112,33 @@ namespace CRC.Web.Controllers.Patient
                             new SqlParameter("@PatientAppointment_Status", status)
                         });
 
+                    var outPatientId = new SqlParameter("@Out_Patient_ID", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
+                    var outStaffId = new SqlParameter("@Out_Staff_ID", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
+                    var outDate = new SqlParameter("@Out_Date", SqlDbType.Date) { Direction = ParameterDirection.Output };
+                    var outStartTime = new SqlParameter("@Out_StartTime", SqlDbType.Time) { Direction = ParameterDirection.Output };
+                    var outEndTime = new SqlParameter("@Out_EndTime", SqlDbType.Time) { Direction = ParameterDirection.Output };
+                    var outTypeId = new SqlParameter("@Out_PjAppType_ID", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
+                    var outBranchId = new SqlParameter("@Out_Branch_ID", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
+                    var outStatus = new SqlParameter("@Out_Status", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
+                    cmd.Parameters.Add(outPatientId);
+                    cmd.Parameters.Add(outStaffId);
+                    cmd.Parameters.Add(outDate);
+                    cmd.Parameters.Add(outStartTime);
+                    cmd.Parameters.Add(outEndTime);
+                    cmd.Parameters.Add(outTypeId);
+                    cmd.Parameters.Add(outBranchId);
+                    cmd.Parameters.Add(outStatus);
+
                     await cmd.ExecuteNonQueryAsync();
+
+                    if (outPatientId.Value is string pid) persistedPatientId = pid;
+                    if (outStaffId.Value is string sid) persistedStaffId = sid;
+                    if (outDate.Value is DateTime d) persistedDate = d;
+                    if (outStartTime.Value is TimeSpan st) persistedStart = st;
+                    if (outEndTime.Value is TimeSpan et) persistedEnd = et;
+                    if (outTypeId.Value is string tid) persistedTypeId = tid;
+                    if (outBranchId.Value is string bid) persistedBranchId = bid;
+                    if (outStatus.Value is string ps) persistedStatus = ps;
 
                     // Release previous slots (if any)
                     using (var cmdClear = await _db.CreateStoredProcedureCommandAsync(
@@ -1141,8 +1176,8 @@ namespace CRC.Web.Controllers.Patient
                 }
                 else
                 {
-                    AuditLog.AppointmentUpdated(HttpContext, finalAppointmentId, patientId, staffId,
-                        apptDate, startTime, endTime, pjAppTypeId, branchId, status);
+                    AuditLog.AppointmentUpdated(HttpContext, finalAppointmentId, persistedPatientId, persistedStaffId,
+                        persistedDate, persistedStart, persistedEnd, persistedTypeId, persistedBranchId, persistedStatus);
                 }
 
                 return Ok(new { success = true, appointmentId = finalAppointmentId });
