@@ -1047,8 +1047,9 @@ namespace CRC.Web.Controllers.Patient
                 var endTime = sorted.Last().SlotEndTime;
 
                 int finalAppointmentId = appointmentId;
+                bool isInsert = appointmentId <= 0;
 
-                if (appointmentId <= 0)
+                if (isInsert)
                 {
                     // INSERT
                     using var cmd = await _db.CreateStoredProcedureCommandAsync(
@@ -1133,6 +1134,17 @@ namespace CRC.Web.Controllers.Patient
                 }
                 tx.Commit();
 
+                if (isInsert)
+                {
+                    AuditLog.AppointmentCreated(HttpContext, finalAppointmentId, patientId, staffId,
+                        apptDate, startTime, endTime, pjAppTypeId, branchId, status);
+                }
+                else
+                {
+                    AuditLog.AppointmentUpdated(HttpContext, finalAppointmentId, patientId, staffId,
+                        apptDate, startTime, endTime, pjAppTypeId, branchId, status);
+                }
+
                 return Ok(new { success = true, appointmentId = finalAppointmentId });
             }
             catch (SqlException ex)
@@ -1162,6 +1174,8 @@ namespace CRC.Web.Controllers.Patient
                 };
 
                 await _db.ExecuteNonQueryAsync("spPatientAppointment_Delete", parameters);
+
+                AuditLog.AppointmentDeleted(HttpContext, model.AppointmentId);
 
                 return Ok(new { success = true });
             }
