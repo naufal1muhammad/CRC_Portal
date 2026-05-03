@@ -1,4 +1,5 @@
 ﻿using CRC.Data.Database;
+using CRC.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -12,11 +13,13 @@ namespace CRC.Web.Controllers.Patient
     {
         private readonly DatabaseHelper _db;
         private readonly IWebHostEnvironment _env;
+        private readonly ILogger<PatientController> _logger;
 
-        public PatientController(DatabaseHelper db, IWebHostEnvironment env)
+        public PatientController(DatabaseHelper db, IWebHostEnvironment env, ILogger<PatientController> logger)
         {
             _db = db;
             _env = env;
+            _logger = logger;
         }
         //------------------------------------------------------
         //ACTIVE PATIENTS
@@ -1134,11 +1137,13 @@ namespace CRC.Web.Controllers.Patient
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException saving appointment AppointmentId={AppointmentId} PatientId={PatientId}", appointmentId, patientId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error saving appointment."));
             }
-            catch
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error saving appointment." });
+                _logger.LogError(ex, "Unexpected error saving appointment AppointmentId={AppointmentId} PatientId={PatientId}", appointmentId, patientId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error saving appointment."));
             }
         }
 
@@ -1162,11 +1167,13 @@ namespace CRC.Web.Controllers.Patient
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException deleting appointment AppointmentId={AppointmentId}", model.AppointmentId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error deleting appointment."));
             }
-            catch
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error deleting appointment." });
+                _logger.LogError(ex, "Unexpected error deleting appointment AppointmentId={AppointmentId}", model.AppointmentId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error deleting appointment."));
             }
         }
 

@@ -1,4 +1,5 @@
 ﻿using CRC.Data.Database;
+using CRC.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -12,11 +13,13 @@ namespace CRC.Web.Controllers.Documents
     {
         private readonly DatabaseHelper _db;
         private readonly IWebHostEnvironment _env;
+        private readonly ILogger<DocumentsController> _logger;
 
-        public DocumentsController(DatabaseHelper db, IWebHostEnvironment env)
+        public DocumentsController(DatabaseHelper db, IWebHostEnvironment env, ILogger<DocumentsController> logger)
         {
             _db = db;
             _env = env;
+            _logger = logger;
         }
 
         // GET: /Documents
@@ -134,13 +137,10 @@ namespace CRC.Web.Controllers.Documents
                     staffDocTypes
                 });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new
-                {
-                    success = false,
-                    message = "Error loading document lookups."
-                });
+                _logger.LogError(ex, "Unexpected error loading document lookups");
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error loading document lookups."));
             }
         }
 
@@ -196,11 +196,14 @@ namespace CRC.Web.Controllers.Documents
                     })
                     .ToList();
 
+                AuditLog.DocumentSearched(HttpContext, mode, individual, docType, list.Count);
+
                 return Ok(new { success = true, data = list });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error searching documents." });
+                _logger.LogError(ex, "Unexpected error searching documents Mode={Mode} Individual={Individual} DocType={DocType}", mode, individual, docType);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error searching documents."));
             }
         }
     }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Threading.Tasks;
 using CRC.Data.Database;
+using CRC.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -13,10 +14,12 @@ namespace CRC.Web.Controllers.Staff
     public class StaffPerformanceController : Controller
     {
         private readonly DatabaseHelper _db;
+        private readonly ILogger<StaffPerformanceController> _logger;
 
-        public StaffPerformanceController(DatabaseHelper db)
+        public StaffPerformanceController(DatabaseHelper db, ILogger<StaffPerformanceController> logger)
         {
             _db = db;
+            _logger = logger;
         }
 
         // GET: /StaffPerformance/Get?staffId=...
@@ -119,11 +122,13 @@ namespace CRC.Web.Controllers.Staff
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException loading staff performance for StaffId={StaffId}", trimmedStaffId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "An unexpected error occurred." });
+                _logger.LogError(ex, "Unexpected error loading staff performance for StaffId={StaffId}", trimmedStaffId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
         }
     }

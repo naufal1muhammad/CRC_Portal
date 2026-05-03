@@ -1,4 +1,5 @@
 ﻿using CRC.Data.Database;
+using CRC.Web.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -19,16 +20,19 @@ namespace CRC.Web.Controllers
         private readonly DatabaseHelper _db;
         private readonly PasswordPolicyOptions _passwordPolicy;
         private readonly SessionTimeoutOptions _sessionTimeout;
+        private readonly ILogger<AccountController> _logger;
         private static readonly PasswordHasher<string> _hasher = new PasswordHasher<string>();
 
         public AccountController(
             DatabaseHelper db,
             IOptions<PasswordPolicyOptions> passwordPolicyOptions,
-            IOptions<SessionTimeoutOptions> sessionTimeoutOptions)
+            IOptions<SessionTimeoutOptions> sessionTimeoutOptions,
+            ILogger<AccountController> logger)
         {
             _db = db;
             _passwordPolicy = passwordPolicyOptions.Value;
             _sessionTimeout = sessionTimeoutOptions.Value;
+            _logger = logger;
         }
 
         private List<string> ValidatePasswordPolicy(string password)
@@ -193,12 +197,13 @@ namespace CRC.Web.Controllers
             }
             catch (SqlException ex)
             {
-                // includes RAISERROR from sproc
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException during user registration Username={Username}", model.Username);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Unable to register user. Please verify the inputs and try again."));
             }
-            catch
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "An unexpected error occurred." });
+                _logger.LogError(ex, "Unexpected error during user registration Username={Username}", model.Username);
+                return Ok(ErrorResponse.ForUser(HttpContext));
             }
         }
 
@@ -260,6 +265,7 @@ namespace CRC.Web.Controllers
 
                 if (dt.Rows.Count == 0)
                 {
+                    AuditLog.LoginFailed(HttpContext, usernameInput, "UserNotFound");
                     ViewData["LoginError"] = "Invalid username or password.";
                     return View();
                 }
@@ -278,6 +284,7 @@ namespace CRC.Web.Controllers
                 var storedHash = row["PasswordHash"]?.ToString() ?? "";
                 if (string.IsNullOrWhiteSpace(storedHash))
                 {
+                    AuditLog.LoginFailed(HttpContext, usernameInput, "MissingPasswordHash");
                     ViewData["LoginError"] = "Invalid username or password.";
                     return View();
                 }
@@ -285,6 +292,7 @@ namespace CRC.Web.Controllers
                 var verify = _hasher.VerifyHashedPassword(username, storedHash, model.Password);
                 if (verify == PasswordVerificationResult.Failed)
                 {
+                    AuditLog.LoginFailed(HttpContext, usernameInput, "PasswordMismatch");
                     ViewData["LoginError"] = "Invalid username or password.";
                     return View();
                 }
@@ -338,11 +346,15 @@ namespace CRC.Web.Controllers
                     new AuthenticationProperties { IsPersistent = false }
                 );
 
+                int? auditUserId = int.TryParse(userId, out var parsedUserId) ? parsedUserId : (int?)null;
+                AuditLog.LoginSucceeded(HttpContext, username, auditUserId, ut);
+
                 return RedirectToLanding(principal);
             }
             catch (Exception ex)
             {
-                ViewData["LoginError"] = ex.Message;
+                _logger.LogError(ex, "Unexpected error during login attempt Username={Username}", model?.Username);
+                ViewData["LoginError"] = ErrorResponse.ForView(HttpContext, "We couldn't sign you in right now.");
                 return View();
             }
         }
@@ -564,12 +576,14 @@ namespace CRC.Web.Controllers
             }
             catch (SqlException ex)
             {
-                TempData["ErrorMessage"] = ex.Message;
+                _logger.LogError(ex, "SqlException updating password for UserId={UserId}", userId);
+                TempData["ErrorMessage"] = ErrorResponse.ForView(HttpContext, "We couldn't update your password.");
                 return View(model);
             }
-            catch
+            catch (Exception ex)
             {
-                TempData["ErrorMessage"] = "An unexpected error occurred.";
+                _logger.LogError(ex, "Unexpected error updating password for UserId={UserId}", userId);
+                TempData["ErrorMessage"] = ErrorResponse.ForView(HttpContext);
                 return View(model);
             }
         }
@@ -590,7 +604,9 @@ namespace CRC.Web.Controllers
         [HttpGet]
         public async Task<IActionResult> Logout()
         {
+            var username = User?.Identity?.Name ?? "anonymous";
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            AuditLog.Logout(HttpContext, username);
             return RedirectToAction("Login");
         }
     }

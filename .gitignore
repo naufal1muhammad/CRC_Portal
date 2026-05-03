@@ -16,3 +16,6 @@
 # Visual Studio / Rider
 .vs/
 .idea/
+
+# Serilog rolling log files
+CRC.Web/Logs/*.log

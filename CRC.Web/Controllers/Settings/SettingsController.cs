@@ -1,4 +1,5 @@
 ﻿using CRC.Data.Database;
+using CRC.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -10,10 +11,12 @@ namespace CRC.Web.Controllers.Settings
     public class SettingsController : Controller
     {
         private readonly DatabaseHelper _db;
+        private readonly ILogger<SettingsController> _logger;
 
-        public SettingsController(DatabaseHelper db)
+        public SettingsController(DatabaseHelper db, ILogger<SettingsController> logger)
         {
             _db = db;
+            _logger = logger;
         }
 
         // GET: /Settings
@@ -248,11 +251,13 @@ namespace CRC.Web.Controllers.Settings
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException saving discharge document settings DischargeTypeId={DischargeTypeId}", model.DischargeTypeId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error saving discharge document settings."));
             }
-            catch
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error saving discharge document settings." });
+                _logger.LogError(ex, "Unexpected error saving discharge document settings DischargeTypeId={DischargeTypeId}", model.DischargeTypeId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error saving discharge document settings."));
             }
         }
     }

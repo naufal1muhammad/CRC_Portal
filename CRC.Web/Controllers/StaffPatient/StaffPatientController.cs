@@ -1,4 +1,5 @@
 ﻿using CRC.Data.Database;
+using CRC.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -10,11 +11,13 @@ namespace CRC.Web.Controllers.StaffPatient
     {
         private readonly DatabaseHelper _db;
         private readonly IWebHostEnvironment _env;
+        private readonly ILogger<StaffPatientController> _logger;
 
-        public StaffPatientController(DatabaseHelper db, IWebHostEnvironment env)
+        public StaffPatientController(DatabaseHelper db, IWebHostEnvironment env, ILogger<StaffPatientController> logger)
         {
             _db = db;
             _env = env;
+            _logger = logger;
         }
 
         [Authorize(Policy = "StaffOnly")]
@@ -494,11 +497,13 @@ namespace CRC.Web.Controllers.StaffPatient
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException saving patient assessment PatientJourneyId={PatientJourneyId}", model.PatientJourneyId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error saving assessment."));
             }
-            catch
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error saving assessment." });
+                _logger.LogError(ex, "Unexpected error saving patient assessment PatientJourneyId={PatientJourneyId}", model.PatientJourneyId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error saving assessment."));
             }
         }
 
@@ -718,11 +723,13 @@ namespace CRC.Web.Controllers.StaffPatient
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException saving colonoscopy PatientJourneyId={PatientJourneyId}", model.PatientJourneyId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error saving colonoscopy."));
             }
-            catch
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error saving colonoscopy." });
+                _logger.LogError(ex, "Unexpected error saving colonoscopy PatientJourneyId={PatientJourneyId}", model.PatientJourneyId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error saving colonoscopy."));
             }
         }
 
@@ -854,11 +861,13 @@ namespace CRC.Web.Controllers.StaffPatient
             }
             catch (SqlException ex)
             {
-                return Ok(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "SqlException saving patient follow up PatientJourneyId={PatientJourneyId}", model.PatientJourneyId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error saving follow up."));
             }
-            catch
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error saving follow up." });
+                _logger.LogError(ex, "Unexpected error saving patient follow up PatientJourneyId={PatientJourneyId}", model.PatientJourneyId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error saving follow up."));
             }
         }
 
