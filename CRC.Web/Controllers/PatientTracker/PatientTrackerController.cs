@@ -54,13 +54,6 @@ namespace CRC.Web.Controllers.PatientTracker
             }
         }
 
-        // GET: /PatientTracker/GetTrackerData
-        // Returns a single payload with everything the page needs:
-        //   - appointment types (column headers for APPOINTMENT journey line)
-        //   - patient list (with basic info + IsStalled flag)
-        //   - latest appointment per (patient, type) for status overlay
-        //   - completed procedures per patient
-        //   - stalled count for the top "Stalled" card
         [HttpGet]
         public async Task<IActionResult> GetTrackerData()
         {
