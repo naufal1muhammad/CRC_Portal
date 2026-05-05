@@ -193,9 +193,13 @@
             ? `<div class="tracker-stalled-pill">Stalled</div>`
             : '';
 
+        const nameHtml = p.patientId
+            ? `<a href="/Patient/Edit/${encodeURIComponent(p.patientId)}" class="info-name-link">${escapeHtml(p.name || '-')}</a>`
+            : escapeHtml(p.name || '-');
+
         return `
             <div class="tracker-patient-info">
-                <div class="info-name">${escapeHtml(p.name || '-')}</div>
+                <div class="info-name">${nameHtml}</div>
                 <div class="info-row"><span class="info-label">Patient ID</span><span class="info-value">${escapeHtml(p.patientId || '-')}</span></div>
                 <div class="info-row"><span class="info-label">NRIC</span><span class="info-value">${escapeHtml(p.nric || '-')}</span></div>
                 <div class="info-row"><span class="info-label">Phone</span><span class="info-value">${escapeHtml(p.phone || '-')}</span></div>
