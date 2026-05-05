@@ -13,10 +13,12 @@
     // UI state
     let searchTerm = '';
     let activeTypeFilters = new Set(); // PjAppType_ID values; empty = no filter
+    let stalledFilterActive = false;
 
     // DOM
     let searchInput;
     let filterChipsEl;
+    let statusFilterChipsEl;
     let listEl;
     let stalledCountEl;
 
@@ -147,6 +149,8 @@
     }
 
     function patientMatchesFilters(p) {
+        if (stalledFilterActive && !p.isStalled) return false;
+
         if (activeTypeFilters.size === 0) return true;
 
         // A patient is shown if they have ANY appointment record for at least
@@ -285,6 +289,7 @@
     document.addEventListener('DOMContentLoaded', function () {
         searchInput = document.getElementById('trackerSearchInput');
         filterChipsEl = document.getElementById('trackerFilterChips');
+        statusFilterChipsEl = document.getElementById('trackerStatusFilterChips');
         listEl = document.getElementById('trackerPatientList');
         stalledCountEl = document.getElementById('stalledCount');
 
@@ -294,6 +299,16 @@
             searchTerm = (this.value || '').trim();
             renderPatientList();
         });
+
+        if (statusFilterChipsEl) {
+            statusFilterChipsEl.querySelectorAll('[data-status-filter="stalled"]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    stalledFilterActive = !stalledFilterActive;
+                    btn.classList.toggle('active', stalledFilterActive);
+                    renderPatientList();
+                });
+            });
+        }
 
         loadTrackerData();
     });

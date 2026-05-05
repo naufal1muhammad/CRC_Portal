@@ -303,8 +303,8 @@ html {
 }
 
 #patientTrackerPage .journey-cell.is-scheduled .journey-dot {
-    border-color: #1976d2;
-    background: #1976d2;
+    border-color: #ffc107;
+    background: #ffc107;
 }
 
 #patientTrackerPage .journey-cell.is-attended .journey-dot {
@@ -361,8 +361,8 @@ html {
 }
 
 #patientTrackerPage .jc-status.s-scheduled {
-    background: #e6f0fa;
-    color: #1761b0;
+    background: #fff3cd;
+    color: #b54708;
 }
 
 #patientTrackerPage .jc-status.s-attended {

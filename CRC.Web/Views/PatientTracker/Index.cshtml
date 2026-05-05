@@ -32,7 +32,7 @@
     <div class="card mb-3 shadow-sm">
         <div class="card-body">
             <div class="row g-3 align-items-end">
-                <div class="col-md-6 col-lg-5">
+                <div class="col-md-6 col-lg-4">
                     <label class="form-label small text-uppercase text-muted mb-1">Search</label>
                     <div class="input-group">
                         <span class="input-group-text bg-white"><i class="fas fa-search"></i></span>
@@ -43,10 +43,21 @@
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-7">
+                <div class="col-md-6 col-lg-6">
                     <label class="form-label small text-uppercase text-muted mb-1">Filter by Appointment Type</label>
                     <div id="trackerFilterChips" class="d-flex flex-wrap gap-2">
                         <span class="text-muted small">Loading filters...</span>
+                    </div>
+                </div>
+
+                <div class="col-md-12 col-lg-2">
+                    <label class="form-label small text-uppercase text-muted mb-1">Filter by Status</label>
+                    <div id="trackerStatusFilterChips" class="d-flex flex-wrap gap-2">
+                        <button type="button"
+                                class="tracker-filter-chip"
+                                data-status-filter="stalled">
+                            Stalled
+                        </button>
                     </div>
                 </div>
             </div>
