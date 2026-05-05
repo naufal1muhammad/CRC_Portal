@@ -88,6 +88,7 @@
     <Folder Include="Stored Procedures\PatientFollowUp" />
     <Folder Include="Stored Procedures\StaffSlots" />
     <Folder Include="Stored Procedures\AuditTrails" />
+    <Folder Include="Stored Procedures\PatientTracker" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="dbo\Tables\Users.sql" />
@@ -212,5 +213,10 @@
     <Build Include="Stored Procedures\AuditTrails\spAuditTrails_LookupUsers.sql" />
     <Build Include="Stored Procedures\AuditTrails\spAuditTrails_LookupCategories.sql" />
     <Build Include="Stored Procedures\AuditTrails\spAuditTrails_LookupActions.sql" />
+    <Build Include="Stored Procedures\PatientTracker\spPatientTracker_AppointmentTypes_List.sql" />
+    <Build Include="Stored Procedures\PatientTracker\spPatientTracker_Patients_List.sql" />
+    <Build Include="Stored Procedures\PatientTracker\spPatientTracker_Appointments_List.sql" />
+    <Build Include="Stored Procedures\PatientTracker\spPatientTracker_Procedures_List.sql" />
+    <Build Include="Stored Procedures\PatientTracker\spPatientTracker_StalledCount_Get.sql" />
   </ItemGroup>
 </Project>
