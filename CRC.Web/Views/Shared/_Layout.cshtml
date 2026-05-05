@@ -146,12 +146,11 @@
                            class="list-group-item list-group-item-action border-0 ps-4 @activeClass("Patient", "Discharged")">
                             <i class="fas fa-user-check me-2"></i> Discharged
                         </a>
+                        <a asp-controller="PatientTracker" asp-action="Index"
+                           class="list-group-item list-group-item-action @activeClass("PatientTracker", "Index")">
+                            <i class="fas fa-route me-2"></i> Tracker
+                        </a>
                     </div>
-
-                    <a asp-controller="PatientTracker" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("PatientTracker", "Index")">
-                        <i class="fas fa-route me-2"></i> Tracker
-                    </a>
 
                     <a asp-controller="Documents" asp-action="Index"
                        class="list-group-item list-group-item-action @activeClass("Documents", "Index")">
@@ -212,12 +211,11 @@
                            class="list-group-item list-group-item-action border-0 ps-4 @activeClass("Patient", "Discharged")">
                             <i class="fas fa-user-check me-2"></i> Discharged
                         </a>
+                        <a asp-controller="PatientTracker" asp-action="Index"
+                           class="list-group-item list-group-item-action @activeClass("PatientTracker", "Index")">
+                            <i class="fas fa-route me-2"></i> Tracker
+                        </a>
                     </div>
-
-                    <a asp-controller="PatientTracker" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("PatientTracker", "Index")">
-                        <i class="fas fa-route me-2"></i> Tracker
-                    </a>
                 }
 
                 @if (isStaff)
