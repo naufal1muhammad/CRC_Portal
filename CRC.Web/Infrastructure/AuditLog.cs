@@ -24,6 +24,34 @@ namespace CRC.Web.Infrastructure
                 username, reason);
         }
 
+        public static void LoginLockoutTriggered(HttpContext context, string username, int failedCount, DateTime? lockoutEndUtc)
+        {
+            _logger.Write(LogEventLevel.Warning,
+                "AUDIT Login lockout triggered. Username={Username} FailedCount={FailedCount} LockoutEndUtc={LockoutEndUtc}",
+                username, failedCount, lockoutEndUtc);
+        }
+
+        public static void LoginAttemptWhileLocked(HttpContext context, string username, DateTime lockoutEndUtc)
+        {
+            _logger.Write(LogEventLevel.Warning,
+                "AUDIT Login attempt while account locked. Username={Username} LockoutEndUtc={LockoutEndUtc}",
+                username, lockoutEndUtc);
+        }
+
+        public static void LoginRateLimited(HttpContext context, string remoteIp)
+        {
+            _logger.Write(LogEventLevel.Warning,
+                "AUDIT Login rate limited. RemoteIp={RemoteIp}",
+                remoteIp);
+        }
+
+        public static void AccountUnlocked(HttpContext context, int targetUserId, string targetUsername, string actorUsername)
+        {
+            _logger.Write(LogEventLevel.Information,
+                "AUDIT Account unlocked. TargetUserId={TargetUserId} TargetUsername={TargetUsername} ActorUsername={ActorUsername}",
+                targetUserId, targetUsername, actorUsername);
+        }
+
         public static void Logout(HttpContext context, string username)
         {
             _logger.Write(LogEventLevel.Information,

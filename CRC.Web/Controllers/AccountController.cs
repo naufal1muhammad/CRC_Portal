@@ -5,8 +5,10 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.SqlClient;
 using System.ComponentModel.DataAnnotations;
+using System.Data;
 using System.Text.Json.Serialization;
 using System.Globalization;
 using System.Security.Claims;
@@ -20,6 +22,7 @@ namespace CRC.Web.Controllers
         private readonly DatabaseHelper _db;
         private readonly PasswordPolicyOptions _passwordPolicy;
         private readonly SessionTimeoutOptions _sessionTimeout;
+        private readonly LoginLockoutOptions _lockoutOptions;
         private readonly ILogger<AccountController> _logger;
         private static readonly PasswordHasher<string> _hasher = new PasswordHasher<string>();
 
@@ -27,12 +30,69 @@ namespace CRC.Web.Controllers
             DatabaseHelper db,
             IOptions<PasswordPolicyOptions> passwordPolicyOptions,
             IOptions<SessionTimeoutOptions> sessionTimeoutOptions,
+            IOptions<LoginLockoutOptions> lockoutOptions,
             ILogger<AccountController> logger)
         {
             _db = db;
             _passwordPolicy = passwordPolicyOptions.Value;
             _sessionTimeout = sessionTimeoutOptions.Value;
+            _lockoutOptions = lockoutOptions.Value;
             _logger = logger;
+        }
+
+        private async Task RegisterFailedLoginAsync(string username, HttpContext httpContext)
+        {
+            try
+            {
+                using var conn = _db.CreateConnection();
+                await conn.OpenAsync();
+
+                using var cmd = new SqlCommand("dbo.spUsers_RegisterFailedLogin", conn)
+                {
+                    CommandType = CommandType.StoredProcedure
+                };
+
+                cmd.Parameters.Add(new SqlParameter("@Username", SqlDbType.VarChar, 100) { Value = username });
+                cmd.Parameters.Add(new SqlParameter("@MaxFailedAttempts", SqlDbType.Int) { Value = _lockoutOptions.MaxFailedAttempts });
+                cmd.Parameters.Add(new SqlParameter("@LockoutMinutes", SqlDbType.Int) { Value = _lockoutOptions.LockoutMinutes });
+                cmd.Parameters.Add(new SqlParameter("@AttemptWindowMinutes", SqlDbType.Int) { Value = _lockoutOptions.AttemptWindowMinutes });
+
+                var triggeredParam = new SqlParameter("@LockoutTriggered", SqlDbType.Bit) { Direction = ParameterDirection.Output };
+                var lockoutEndParam = new SqlParameter("@LockoutEndUtc", SqlDbType.DateTime) { Direction = ParameterDirection.Output };
+                var failedCountParam = new SqlParameter("@FailedLoginCount", SqlDbType.Int) { Direction = ParameterDirection.Output };
+                cmd.Parameters.Add(triggeredParam);
+                cmd.Parameters.Add(lockoutEndParam);
+                cmd.Parameters.Add(failedCountParam);
+
+                await cmd.ExecuteNonQueryAsync();
+
+                var triggered = triggeredParam.Value is bool b && b;
+                if (triggered)
+                {
+                    DateTime? lockoutEnd = lockoutEndParam.Value is DateTime dtEnd ? dtEnd : null;
+                    int failedCount = failedCountParam.Value is int fc ? fc : 0;
+                    AuditLog.LoginLockoutTriggered(httpContext, username, failedCount, lockoutEnd);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to register failed-login attempt for Username={Username}", username);
+            }
+        }
+
+        private async Task ResetFailedLoginsAsync(int userId)
+        {
+            try
+            {
+                await _db.ExecuteNonQueryAsync(
+                    "spUsers_ResetFailedLogins",
+                    new[] { new SqlParameter("@User_ID", userId) }
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to reset failed-login counters for UserId={UserId}", userId);
+            }
         }
 
         private List<string> ValidatePasswordPolicy(string password)
@@ -145,6 +205,18 @@ namespace CRC.Web.Controllers
 
             [JsonPropertyName("lastLogin")]
             public string LastLogin { get; set; } = "";
+
+            [JsonPropertyName("failedLoginCount")]
+            public int FailedLoginCount { get; set; }
+
+            [JsonPropertyName("lastFailedLoginAt")]
+            public string LastFailedLoginAt { get; set; } = "";
+
+            [JsonPropertyName("lockoutEndUtc")]
+            public string LockoutEndUtc { get; set; } = "";
+
+            [JsonPropertyName("isLocked")]
+            public bool IsLocked { get; set; }
         }
 
         // POST: /Account/RegisterUser (called via JS)
@@ -244,8 +316,13 @@ namespace CRC.Web.Controllers
         [AllowAnonymous]
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [EnableRateLimiting("login-ip")]
         public async Task<IActionResult> Login(LoginRequest model)
         {
+            // Generic message used for every failure path so we don't leak whether the
+            // username exists, whether the account is locked, or the specific reason.
+            const string genericLoginError = "Invalid username or password.";
+
             if (model == null ||
                 string.IsNullOrWhiteSpace(model.Username) ||
                 string.IsNullOrWhiteSpace(model.Password))
@@ -266,7 +343,7 @@ namespace CRC.Web.Controllers
                 if (dt.Rows.Count == 0)
                 {
                     AuditLog.LoginFailed(HttpContext, usernameInput, "UserNotFound");
-                    ViewData["LoginError"] = "Invalid username or password.";
+                    ViewData["LoginError"] = genericLoginError;
                     return View();
                 }
 
@@ -281,11 +358,31 @@ namespace CRC.Web.Controllers
     ? (row["StaffId"]?.ToString() ?? "")
     : "";
 
+                // Lockout check: if the account is currently locked, refuse before
+                // verifying the password (avoids password-oracle on locked accounts)
+                // and do not increment the failure counter.
+                DateTime? lockoutEndUtc = null;
+                if (row.Table.Columns.Contains("LockoutEndUtc") && row["LockoutEndUtc"] != DBNull.Value)
+                {
+                    var rawEnd = Convert.ToDateTime(row["LockoutEndUtc"]);
+                    if (rawEnd.Kind == DateTimeKind.Unspecified)
+                        rawEnd = DateTime.SpecifyKind(rawEnd, DateTimeKind.Utc);
+                    lockoutEndUtc = rawEnd;
+                }
+
+                if (lockoutEndUtc.HasValue && lockoutEndUtc.Value > DateTime.UtcNow)
+                {
+                    AuditLog.LoginAttemptWhileLocked(HttpContext, usernameInput, lockoutEndUtc.Value);
+                    ViewData["LoginError"] = genericLoginError;
+                    return View();
+                }
+
                 var storedHash = row["PasswordHash"]?.ToString() ?? "";
                 if (string.IsNullOrWhiteSpace(storedHash))
                 {
                     AuditLog.LoginFailed(HttpContext, usernameInput, "MissingPasswordHash");
-                    ViewData["LoginError"] = "Invalid username or password.";
+                    await RegisterFailedLoginAsync(usernameInput, HttpContext);
+                    ViewData["LoginError"] = genericLoginError;
                     return View();
                 }
 
@@ -293,12 +390,14 @@ namespace CRC.Web.Controllers
                 if (verify == PasswordVerificationResult.Failed)
                 {
                     AuditLog.LoginFailed(HttpContext, usernameInput, "PasswordMismatch");
-                    ViewData["LoginError"] = "Invalid username or password.";
+                    await RegisterFailedLoginAsync(usernameInput, HttpContext);
+                    ViewData["LoginError"] = genericLoginError;
                     return View();
                 }
 
                 if (int.TryParse(userId, out var uid))
                 {
+                    await ResetFailedLoginsAsync(uid);
                     await _db.ExecuteNonQueryAsync(
                         "spUsers_UpdateLastLogin",
                         new[] { new SqlParameter("@User_ID", uid) }
@@ -389,22 +488,95 @@ namespace CRC.Web.Controllers
                 };
             }
 
+            bool HasCol(string name) => dt.Columns.Contains(name);
+            DateTime? ReadDateTime(System.Data.DataRow r, string col)
+            {
+                if (!HasCol(col) || r[col] == DBNull.Value) return null;
+                var v = Convert.ToDateTime(r[col]);
+                if (v.Kind == DateTimeKind.Unspecified)
+                    v = DateTime.SpecifyKind(v, DateTimeKind.Utc);
+                return v;
+            }
+
+            var nowUtc = DateTime.UtcNow;
+
             var users = dt.Rows.Cast<System.Data.DataRow>()
-                .Select(r => new UserListItemDto
+                .Select(r =>
                 {
-                    UserId = Convert.ToInt32(r["User_ID"]),
-                    Name = r["User_Name"]?.ToString() ?? "",
-                    Username = r["Username"]?.ToString() ?? "",
-                    Email = r["User_Email"]?.ToString() ?? "",
-                    UserType = Convert.ToInt32(r["User_Type"]),
-                    UserTypeName = UserTypeName(r["User_Type"]),
-                    StaffId = r["Staff_ID"] == DBNull.Value ? "" : (r["Staff_ID"]?.ToString() ?? ""),
-                    CreatedAt = ToIso(r["Created_At"]),
-                    LastLogin = ToIso(r["Last_Login"])
+                    var lockoutEnd = ReadDateTime(r, "LockoutEndUtc");
+                    var lastFailed = ReadDateTime(r, "LastFailedLoginAt");
+                    var failedCount = HasCol("FailedLoginCount") && r["FailedLoginCount"] != DBNull.Value
+                        ? Convert.ToInt32(r["FailedLoginCount"])
+                        : 0;
+
+                    return new UserListItemDto
+                    {
+                        UserId = Convert.ToInt32(r["User_ID"]),
+                        Name = r["User_Name"]?.ToString() ?? "",
+                        Username = r["Username"]?.ToString() ?? "",
+                        Email = r["User_Email"]?.ToString() ?? "",
+                        UserType = Convert.ToInt32(r["User_Type"]),
+                        UserTypeName = UserTypeName(r["User_Type"]),
+                        StaffId = r["Staff_ID"] == DBNull.Value ? "" : (r["Staff_ID"]?.ToString() ?? ""),
+                        CreatedAt = ToIso(r["Created_At"]),
+                        LastLogin = ToIso(r["Last_Login"]),
+                        FailedLoginCount = failedCount,
+                        LastFailedLoginAt = lastFailed.HasValue ? lastFailed.Value.ToString("o") : "",
+                        LockoutEndUtc = lockoutEnd.HasValue ? lockoutEnd.Value.ToString("o") : "",
+                        IsLocked = lockoutEnd.HasValue && lockoutEnd.Value > nowUtc
+                    };
                 })
                 .ToList();
 
             return Ok(new { success = true, users });
+        }
+
+        public class UnlockUserRequest
+        {
+            public int UserId { get; set; }
+        }
+
+        // POST: /Account/UnlockUser (SuperUser only). Clears the lockout window and
+        // failed-attempt counter for the target account.
+        [Authorize(Policy = "SuperUserOnly")]
+        [HttpPost]
+        public async Task<IActionResult> UnlockUser([FromBody] UnlockUserRequest model)
+        {
+            if (model == null || model.UserId <= 0)
+                return BadRequest(new { success = false, message = "A valid user is required." });
+
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spUsers_GetById",
+                    new[] { new SqlParameter("@User_ID", model.UserId) }
+                );
+
+                if (dt.Rows.Count == 0)
+                    return BadRequest(new { success = false, message = "User not found." });
+
+                var targetUsername = dt.Rows[0]["Username"]?.ToString() ?? "";
+
+                await _db.ExecuteNonQueryAsync(
+                    "spUsers_Unlock",
+                    new[] { new SqlParameter("@User_ID", model.UserId) }
+                );
+
+                var actor = User?.Identity?.Name ?? "unknown";
+                AuditLog.AccountUnlocked(HttpContext, model.UserId, targetUsername, actor);
+
+                return Ok(new { success = true, message = "Account unlocked." });
+            }
+            catch (SqlException ex)
+            {
+                _logger.LogError(ex, "SqlException unlocking UserId={UserId}", model.UserId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Unable to unlock the account."));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error unlocking UserId={UserId}", model.UserId);
+                return Ok(ErrorResponse.ForUser(HttpContext));
+            }
         }
 
         // DTO for Change Password page

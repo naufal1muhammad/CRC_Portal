@@ -199,6 +199,9 @@
     <Build Include="Stored Procedures\Users\spUsers_UpdateLastLogin.sql" />
     <Build Include="Stored Procedures\Users\spUsers_UpdatePassword.sql" />
     <Build Include="Stored Procedures\Users\spUsers_GetById.sql" />
+    <Build Include="Stored Procedures\Users\spUsers_Unlock.sql" />
+    <Build Include="Stored Procedures\Users\spUsers_RegisterFailedLogin.sql" />
+    <Build Include="Stored Procedures\Users\spUsers_ResetFailedLogins.sql" />
     <Build Include="dbo\Tables\StaffSlots.sql" />
     <Build Include="Stored Procedures\StaffSlots\spStaffSlots_Delete.sql" />
     <Build Include="Stored Procedures\StaffSlots\spStaffSlots_CreateRange.sql" />
