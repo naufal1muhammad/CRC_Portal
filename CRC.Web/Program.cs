@@ -3,8 +3,10 @@ using CRC.Web.Models;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
 using Serilog.Events;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,9 +45,16 @@ builder.Services.Configure<PasswordPolicyOptions>(
 builder.Services.Configure<SessionTimeoutOptions>(
     builder.Configuration.GetSection("Account:SessionTimeout"));
 
+builder.Services.Configure<LoginLockoutOptions>(
+    builder.Configuration.GetSection("Account:LoginLockout"));
+
 var sessionTimeout = builder.Configuration
     .GetSection("Account:SessionTimeout")
     .Get<SessionTimeoutOptions>() ?? new SessionTimeoutOptions();
+
+var lockoutOptions = builder.Configuration
+    .GetSection("Account:LoginLockout")
+    .Get<LoginLockoutOptions>() ?? new LoginLockoutOptions();
 
 // Add services to the container.
 builder.Services.AddAntiforgery(options =>
@@ -76,6 +85,41 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
     });
+// Per-IP rate limiter for the login endpoint. Mitigates credential stuffing and
+// distributed brute-force attempts that target many usernames from a single IP.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        var ip = context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        AuditLog.LoginRateLimited(context.HttpContext, ip);
+
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        if (!context.HttpContext.Response.HasStarted)
+        {
+            context.HttpContext.Response.Headers["Retry-After"] = "60";
+            await context.HttpContext.Response.WriteAsync(
+                "Too many login attempts from this address. Please wait and try again.",
+                cancellationToken);
+        }
+    };
+
+    options.AddPolicy("login-ip", httpContext =>
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = lockoutOptions.IpRequestsPerMinute > 0 ? lockoutOptions.IpRequestsPerMinute : 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            AutoReplenishment = true
+        });
+    });
+});
+
 builder.Services.AddAuthorization(options =>
 {
     // UserType claim values:
@@ -104,6 +148,7 @@ app.UseRouting();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging();

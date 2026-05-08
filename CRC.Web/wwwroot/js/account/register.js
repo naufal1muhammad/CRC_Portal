@@ -16,7 +16,8 @@
         staffList: '/Staff/GetStaffList',
         registerUser: '/Account/RegisterUser',
         getUsers: '/Account/GetUsers',
-        passwordPolicy: '/Account/GetPasswordPolicy'
+        passwordPolicy: '/Account/GetPasswordPolicy',
+        unlockUser: '/Account/UnlockUser'
     };
 
     function el(id) { return document.getElementById(id); }
@@ -340,7 +341,7 @@
         // show loading row
         usersTableBody.innerHTML = `
         <tr>
-            <td colspan="8" class="text-center text-muted">Loading...</td>
+            <td colspan="10" class="text-center text-muted">Loading...</td>
         </tr>
     `;
 
@@ -361,7 +362,7 @@
 
                 usersTableBody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="text-center text-danger">${msg}</td>
+                    <td colspan="10" class="text-center text-danger">${msg}</td>
                 </tr>
             `;
 
@@ -374,7 +375,7 @@
             if (!result || result.success !== true) {
                 usersTableBody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="text-center text-danger">
+                    <td colspan="10" class="text-center text-danger">
                         ${(result && result.message) ? result.message : 'Error loading users.'}
                     </td>
                 </tr>
@@ -390,7 +391,7 @@
                 usersCache = [];
                 usersTableBody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="text-center text-muted">No users found.</td>
+                    <td colspan="10" class="text-center text-muted">No users found.</td>
                 </tr>
             `;
                 initUsersDataTable();
@@ -402,6 +403,16 @@
 
             users.forEach(u => {
                 const tr = document.createElement('tr');
+                const statusCell = u.isLocked
+                    ? `<span class="badge bg-danger">Locked${u.lockoutEndUtc ? ' until ' + formatDateTime(u.lockoutEndUtc) : ''}</span>`
+                    : (u.failedLoginCount > 0
+                        ? `<span class="badge bg-warning text-dark">${u.failedLoginCount} failed</span>`
+                        : `<span class="badge bg-success">Active</span>`);
+
+                const actionCell = (u.isLocked || (u.failedLoginCount && u.failedLoginCount > 0))
+                    ? `<button type="button" class="btn btn-sm btn-outline-primary btn-unlock" data-userid="${u.userId}" data-username="${u.username || ''}">Unlock</button>`
+                    : '';
+
                 tr.innerHTML = `
                 <td>${u.userId ?? ''}</td>
                 <td>${u.name ?? ''}</td>
@@ -411,6 +422,8 @@
                 <td>${u.staffId ?? ''}</td>
                 <td>${formatDateTime(u.createdAt)}</td>
                 <td>${formatDateTime(u.lastLogin)}</td>
+                <td>${statusCell}</td>
+                <td>${actionCell}</td>
             `;
                 usersTableBody.appendChild(tr);
             });
@@ -421,13 +434,65 @@
 
             usersTableBody.innerHTML = `
             <tr>
-                <td colspan="8" class="text-center text-danger">Error loading users.</td>
+                <td colspan="10" class="text-center text-danger">Error loading users.</td>
             </tr>
         `;
 
             setMessage(err.message || 'Error loading users.', false);
             initUsersDataTable();
         }
+    }
+
+    // -----------------------------
+    // Unlock
+    // -----------------------------
+    async function unlockUser(userId, username) {
+        if (!userId) return;
+
+        const label = username ? `"${username}"` : `user #${userId}`;
+        if (!window.confirm(`Unlock ${label}? This will clear failed-login attempts and the lockout window.`)) {
+            return;
+        }
+
+        try {
+            const res = await fetch(ENDPOINTS.unlockUser, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': $('input:hidden[name="__RequestVerificationToken"]').val()
+                },
+                body: JSON.stringify({ userId: userId })
+            });
+
+            const result = await readJsonSafe(res);
+
+            if (!res.ok || !result || result.success !== true) {
+                const m = (result && result.message) ? result.message : 'Failed to unlock user.';
+                showToast(m, false);
+                return;
+            }
+
+            showToast(result.message || 'Account unlocked.', true);
+            await loadUsers();
+        } catch (err) {
+            console.error('Unlock error', err);
+            showToast(err.message || 'An unexpected error occurred.', false);
+        }
+    }
+
+    function bindUnlockClicks() {
+        if (!usersTableBody) return;
+        usersTableBody.addEventListener('click', function (e) {
+            const target = e.target;
+            if (!(target instanceof HTMLElement)) return;
+            const btn = target.closest('.btn-unlock');
+            if (!btn) return;
+
+            const userId = parseInt(btn.getAttribute('data-userid') || '0', 10);
+            const username = btn.getAttribute('data-username') || '';
+            if (userId > 0) unlockUser(userId, username);
+        });
     }
 
     // -----------------------------
@@ -577,6 +642,8 @@
         if (btnReg) btnReg.addEventListener('click', registerUser);
         if (btnAdd) btnAdd.addEventListener('click', openAddUserModal);
         if (searchEl) searchEl.addEventListener('input', (e) => applyUsersSearch(e.target.value));
+
+        bindUnlockClicks();
 
         loadPasswordPolicy();
         onUserTypeChanged();
