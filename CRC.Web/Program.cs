@@ -116,7 +116,7 @@ builder.Services.AddRateLimiter(options =>
         var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = lockoutOptions.IpRequestsPerMinute > 0 ? lockoutOptions.IpRequestsPerMinute : 10,
+            PermitLimit = lockoutOptions.IpRequestsPerWindow > 0 ? lockoutOptions.IpRequestsPerWindow : 10,
             Window = TimeSpan.FromSeconds(ipRateLimitWindowSeconds),
             QueueLimit = 0,
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
