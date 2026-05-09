@@ -12,8 +12,9 @@ namespace CRC.Web.Models
         // A failure older than this window resets the counter.
         public int AttemptWindowMinutes { get; set; } = 15;
 
-        // Per-IP rate limit on the login endpoint.
-        public int IpRequestsPerMinute { get; set; } = 10;
+        // Per-IP rate limit on the login endpoint: maximum requests permitted
+        // within each IpRateLimitWindowSeconds window.
+        public int IpRequestsPerWindow { get; set; } = 10;
 
         // Window length (in seconds) for the per-IP rate limiter.
         // Drives both the FixedWindowRateLimiter window and the Retry-After
