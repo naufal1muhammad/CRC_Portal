@@ -89,5 +89,23 @@ namespace CRC.Web.Infrastructure
                 "AUDIT Appointment deleted. AppointmentId={AppointmentId}",
                 appointmentId);
         }
+
+        public static void StaffSlotRangeCreated(HttpContext context, string staffId,
+            DateTime fromDate, DateTime toDate, TimeSpan startTime, TimeSpan endTime,
+            int createdCount, int skippedExistingCount)
+        {
+            _logger.Write(LogEventLevel.Information,
+                "AUDIT Staff slot range created. StaffId={StaffId} FromDate={FromDate} ToDate={ToDate} StartTime={StartTime} EndTime={EndTime} Created={CreatedCount} SkippedExisting={SkippedExistingCount}",
+                staffId, fromDate.ToString("yyyy-MM-dd"), toDate.ToString("yyyy-MM-dd"),
+                startTime.ToString(@"hh\:mm"), endTime.ToString(@"hh\:mm"),
+                createdCount, skippedExistingCount);
+        }
+
+        public static void StaffSlotDeleted(HttpContext context, int staffSlotId)
+        {
+            _logger.Write(LogEventLevel.Warning,
+                "AUDIT Staff slot deleted. StaffSlotId={StaffSlotId}",
+                staffSlotId);
+        }
     }
 }

@@ -156,6 +156,9 @@ namespace CRC.Web.Controllers.Staff
                         skipped = Convert.ToInt32(row["SkippedExistingCount"]);
                 }
 
+                AuditLog.StaffSlotRangeCreated(HttpContext, model.StaffId, fromDate.Date, toDate.Date,
+                    startTime, endTime, created, skipped);
+
                 return Ok(new
                 {
                     success = true,
@@ -190,6 +193,8 @@ namespace CRC.Web.Controllers.Staff
                 };
 
                 await _db.ExecuteNonQueryAsync("dbo.spStaffSlots_Delete", parameters);
+
+                AuditLog.StaffSlotDeleted(HttpContext, model.StaffSlotId);
 
                 return Ok(new { success = true });
             }
