@@ -107,5 +107,28 @@ namespace CRC.Web.Infrastructure
                 "AUDIT Staff slot deleted. StaffSlotId={StaffSlotId}",
                 staffSlotId);
         }
+
+        public static void StaffCreated(HttpContext context, string staffId, string name, string nric,
+            string phone, string email, string staffTypeId, string staffBase)
+        {
+            _logger.Write(LogEventLevel.Information,
+                "AUDIT Staff created. StaffId={StaffId} Name={Name} NRIC={NRIC} Phone={Phone} Email={Email} StaffTypeId={StaffTypeId} StaffBase={StaffBase}",
+                staffId, name, nric, phone, email, staffTypeId, staffBase);
+        }
+
+        public static void StaffUpdated(HttpContext context, string staffId, string name, string nric,
+            string phone, string email, string staffTypeId, string staffBase)
+        {
+            _logger.Write(LogEventLevel.Information,
+                "AUDIT Staff updated. StaffId={StaffId} Name={Name} NRIC={NRIC} Phone={Phone} Email={Email} StaffTypeId={StaffTypeId} StaffBase={StaffBase}",
+                staffId, name, nric, phone, email, staffTypeId, staffBase);
+        }
+
+        public static void StaffDeleted(HttpContext context, string staffId)
+        {
+            _logger.Write(LogEventLevel.Warning,
+                "AUDIT Staff deleted. StaffId={StaffId}",
+                staffId);
+        }
     }
 }

@@ -235,6 +235,9 @@ namespace CRC.Web.Controllers.Staff
                         newStaffId = dt.Rows[0]["NewStaff_ID"]?.ToString() ?? "";
                     }
 
+                    AuditLog.StaffCreated(HttpContext, newStaffId, model.Name, model.NRIC,
+                        model.Phone, model.Email, model.StaffTypeId, model.StaffBase);
+
                     var missingDocs = await GetMissingMandatoryDocuments(model.StaffTypeId, newStaffId);
                     if (missingDocs.Count > 0)
                     {
@@ -281,6 +284,9 @@ namespace CRC.Web.Controllers.Staff
             };
 
                     await _db.ExecuteNonQueryAsync("spStaff_Update", updateParams);
+
+                    AuditLog.StaffUpdated(HttpContext, model.StaffId, model.Name, model.NRIC,
+                        model.Phone, model.Email, model.StaffTypeId, model.StaffBase);
 
                     var missingDocs = await GetMissingMandatoryDocuments(model.StaffTypeId, model.StaffId);
                     if (missingDocs.Count > 0)
@@ -571,6 +577,17 @@ namespace CRC.Web.Controllers.Staff
                     throw;
                 }
 
+                if (model.IsNew)
+                {
+                    AuditLog.StaffCreated(HttpContext, staffId, model.Name, model.NRIC,
+                        model.Phone, model.Email, model.StaffTypeId, model.StaffBase);
+                }
+                else
+                {
+                    AuditLog.StaffUpdated(HttpContext, staffId, model.Name, model.NRIC,
+                        model.Phone, model.Email, model.StaffTypeId, model.StaffBase);
+                }
+
                 // Delete physical files only AFTER successful commit
                 foreach (var fp in deleteFilePaths)
                 {
@@ -740,6 +757,8 @@ namespace CRC.Web.Controllers.Staff
                 };
 
                 await _db.ExecuteNonQueryAsync("spStaff_Delete", parameters);
+
+                AuditLog.StaffDeleted(HttpContext, model.StaffId);
 
                 return Ok(new { success = true, message = "Staff deleted successfully." });
             }
