@@ -87,6 +87,10 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 // Per-IP rate limiter for the login endpoint. Mitigates credential stuffing and
 // distributed brute-force attempts that target many usernames from a single IP.
+var ipRateLimitWindowSeconds = lockoutOptions.IpRateLimitWindowSeconds > 0
+    ? lockoutOptions.IpRateLimitWindowSeconds
+    : 60;
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -99,7 +103,8 @@ builder.Services.AddRateLimiter(options =>
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         if (!context.HttpContext.Response.HasStarted)
         {
-            context.HttpContext.Response.Headers["Retry-After"] = "60";
+            context.HttpContext.Response.Headers["Retry-After"] =
+                ipRateLimitWindowSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
             await context.HttpContext.Response.WriteAsync(
                 "Too many login attempts from this address. Please wait and try again.",
                 cancellationToken);
@@ -112,7 +117,7 @@ builder.Services.AddRateLimiter(options =>
         return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = lockoutOptions.IpRequestsPerMinute > 0 ? lockoutOptions.IpRequestsPerMinute : 10,
-            Window = TimeSpan.FromMinutes(1),
+            Window = TimeSpan.FromSeconds(ipRateLimitWindowSeconds),
             QueueLimit = 0,
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             AutoReplenishment = true

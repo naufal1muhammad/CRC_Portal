@@ -14,5 +14,10 @@ namespace CRC.Web.Models
 
         // Per-IP rate limit on the login endpoint.
         public int IpRequestsPerMinute { get; set; } = 10;
+
+        // Window length (in seconds) for the per-IP rate limiter.
+        // Drives both the FixedWindowRateLimiter window and the Retry-After
+        // response header, so clients receive an accurate retry hint.
+        public int IpRateLimitWindowSeconds { get; set; } = 60;
     }
 }
