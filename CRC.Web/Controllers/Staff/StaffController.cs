@@ -756,14 +756,50 @@ namespace CRC.Web.Controllers.Staff
                     new SqlParameter("@Staff_ID", model.StaffId)
                 };
 
-                await _db.ExecuteNonQueryAsync("spStaff_Delete", parameters);
+                // spStaff_Delete returns:
+                //   Result set 1: Status ('Success' | 'Blocked' | 'NotFound'), Message
+                //   Result set 2: FilePath rows for StaffDocument files to physically remove (only when Success)
+                var ds = await _db.ExecuteDataSetAsync("spStaff_Delete", parameters);
+
+                string status = string.Empty;
+                string message = string.Empty;
+
+                if (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
+                {
+                    var row = ds.Tables[0].Rows[0];
+                    status = row.Table.Columns.Contains("Status") ? row["Status"]?.ToString() ?? "" : "";
+                    message = row.Table.Columns.Contains("Message") ? row["Message"]?.ToString() ?? "" : "";
+                }
+
+                if (!string.Equals(status, "Success", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Ok(new
+                    {
+                        success = false,
+                        message = string.IsNullOrWhiteSpace(message) ? "Failed to delete staff." : message
+                    });
+                }
+
+                // Physically remove all StaffDocument files for this staff (best effort).
+                if (ds.Tables.Count > 1)
+                {
+                    foreach (DataRow fileRow in ds.Tables[1].Rows)
+                    {
+                        var filePath = fileRow["FilePath"]?.ToString();
+                        if (!string.IsNullOrWhiteSpace(filePath))
+                        {
+                            TryDeletePhysicalFile(filePath);
+                        }
+                    }
+                }
 
                 AuditLog.StaffDeleted(HttpContext, model.StaffId);
 
                 return Ok(new { success = true, message = "Staff deleted successfully." });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Unexpected error deleting staff StaffId={StaffId}", model.StaffId);
                 return Ok(new { success = false, message = "An unexpected error occurred." });
             }
         }

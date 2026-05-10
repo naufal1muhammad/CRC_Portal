@@ -11,13 +11,87 @@ BEGIN
     FROM [dbo].[Staff]
     WHERE [Staff_ID] = @Staff_ID;
 
-    DELETE FROM [dbo].[Staff]
-    WHERE [Staff_ID] = @Staff_ID;
-
-    DECLARE @RowsAffected INT = @@ROWCOUNT;
-
-    IF @RowsAffected > 0
+    IF @Staff_Name IS NULL
     BEGIN
+        SELECT
+            CAST('NotFound' AS VARCHAR(20))   AS [Status],
+            CAST('Staff not found.' AS VARCHAR(500)) AS [Message];
+
+        SELECT TOP 0 CAST(NULL AS VARCHAR(500)) AS [FilePath];
+        RETURN;
+    END
+
+    -- -----------------------------
+    -- Reference checks: block deletion when this Staff_ID is used
+    -- in PatientAppointment / PatientJourney / PatientJourneyAudit.
+    -- -----------------------------
+    DECLARE @InAppointments   BIT = 0;
+    DECLARE @InJourney        BIT = 0;
+    DECLARE @InJourneyAudit   BIT = 0;
+
+    IF EXISTS (SELECT 1 FROM [dbo].[PatientAppointment] WHERE [Staff_ID] = @Staff_ID)
+        SET @InAppointments = 1;
+
+    IF EXISTS (SELECT 1 FROM [dbo].[PatientJourney] WHERE [Staff_ID] = @Staff_ID)
+        SET @InJourney = 1;
+
+    IF EXISTS (SELECT 1 FROM [dbo].[PatientJourneyAudit] WHERE [Staff_ID] = @Staff_ID)
+        SET @InJourneyAudit = 1;
+
+    IF @InAppointments = 1 OR @InJourney = 1 OR @InJourneyAudit = 1
+    BEGIN
+        DECLARE @BlockedTables VARCHAR(500) = '';
+
+        IF @InAppointments = 1
+            SET @BlockedTables = @BlockedTables + ', Patient Appointments';
+        IF @InJourney = 1
+            SET @BlockedTables = @BlockedTables + ', Patient Journey';
+        IF @InJourneyAudit = 1
+            SET @BlockedTables = @BlockedTables + ', Patient Journey Audit';
+
+        IF LEN(@BlockedTables) >= 2
+            SET @BlockedTables = SUBSTRING(@BlockedTables, 3, LEN(@BlockedTables));
+
+        DECLARE @BlockedMessage VARCHAR(500) =
+            CONCAT(
+                'Cannot delete this staff because they are still referenced by: ',
+                @BlockedTables,
+                '.'
+            );
+
+        SELECT
+            CAST('Blocked' AS VARCHAR(20)) AS [Status],
+            CAST(@BlockedMessage AS VARCHAR(500)) AS [Message];
+
+        SELECT TOP 0 CAST(NULL AS VARCHAR(500)) AS [FilePath];
+        RETURN;
+    END
+
+    -- -----------------------------
+    -- Capture document file paths BEFORE deleting StaffDocument rows,
+    -- so the caller can physically remove them after the transaction commits.
+    -- -----------------------------
+    DECLARE @DocFiles TABLE ([FilePath] VARCHAR(500));
+
+    INSERT INTO @DocFiles ([FilePath])
+    SELECT [FilePath]
+    FROM [dbo].[StaffDocument]
+    WHERE [Staff_ID] = @Staff_ID
+      AND [FilePath] IS NOT NULL
+      AND LEN(LTRIM(RTRIM([FilePath]))) > 0;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        DELETE FROM [dbo].[StaffSlots]
+        WHERE [Staff_ID] = @Staff_ID;
+
+        DELETE FROM [dbo].[StaffDocument]
+        WHERE [Staff_ID] = @Staff_ID;
+
+        DELETE FROM [dbo].[Staff]
+        WHERE [Staff_ID] = @Staff_ID;
+
         -- -----------------------------
         -- Audit trail
         -- -----------------------------
@@ -35,8 +109,23 @@ BEGIN
             'Staff',
             CONCAT(
                 'Deleted Staff: Staff_ID=', @Staff_ID,
-                '; Name=', ISNULL(@Staff_Name, '')
+                '; Name=', ISNULL(@Staff_Name, ''),
+                '; CascadedStaffSlots=Yes',
+                '; CascadedStaffDocuments=Yes'
             )
         );
-    END
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+
+    SELECT
+        CAST('Success' AS VARCHAR(20)) AS [Status],
+        CAST('Staff deleted successfully.' AS VARCHAR(500)) AS [Message];
+
+    SELECT [FilePath] FROM @DocFiles;
 END;
