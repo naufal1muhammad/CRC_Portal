@@ -89,6 +89,9 @@ BEGIN
         DELETE FROM [dbo].[StaffDocument]
         WHERE [Staff_ID] = @Staff_ID;
 
+        DELETE FROM [dbo].[Users]
+        WHERE [Staff_ID] = @Staff_ID;
+
         DELETE FROM [dbo].[Staff]
         WHERE [Staff_ID] = @Staff_ID;
 
@@ -111,7 +114,8 @@ BEGIN
                 'Deleted Staff: Staff_ID=', @Staff_ID,
                 '; Name=', ISNULL(@Staff_Name, ''),
                 '; CascadedStaffSlots=Yes',
-                '; CascadedStaffDocuments=Yes'
+                '; CascadedStaffDocuments=Yes',
+                '; CascadedUsers=Yes'
             )
         );
 
