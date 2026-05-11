@@ -14,7 +14,6 @@ using CRC.Web.Infrastructure;
 
 namespace CRC.Web.Controllers.Staff
 {
-    [Authorize(Policy = "AdminOrSuper")]
     public class StaffController : Controller
     {
         private readonly DatabaseHelper _db;
@@ -30,6 +29,7 @@ namespace CRC.Web.Controllers.Staff
 
         // GET: /Staff
         [HttpGet]
+        [Authorize(Policy = "AdminOrSuper")]
         public IActionResult Index()
         {
             return View();
@@ -37,6 +37,7 @@ namespace CRC.Web.Controllers.Staff
 
         // GET: /Staff/Edit/{id?}
         [HttpGet]
+        [Authorize(Policy = "AdminOrSuper")]
         public IActionResult Edit(string? id)
         {
             ViewData["StaffId"] = id ?? string.Empty;
@@ -45,6 +46,7 @@ namespace CRC.Web.Controllers.Staff
 
         // GET: /Staff/GetActiveBranches
         [HttpGet]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetActiveBranches()
         {
             var dt = await _db.ExecuteDataTableAsync("spBranch_ListActive");
@@ -64,6 +66,7 @@ namespace CRC.Web.Controllers.Staff
 
         // GET: /Staff/GetStaffList
         [HttpGet]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetStaffList()
         {
             var dt = await _db.ExecuteDataTableAsync("spStaff_List");
@@ -87,12 +90,25 @@ namespace CRC.Web.Controllers.Staff
         }
 
         // GET: /Staff/GetStaff?staffId=...
+        // Admin/Super can fetch any staff. STAFF role can only fetch their own record
+        // (this endpoint is also used by /MyProfileStaff for the read-only profile page).
         [HttpGet]
+        [Authorize(Policy = "AdminOrSuperOrStaff")]
         public async Task<IActionResult> GetStaff(string staffId)
         {
             if (string.IsNullOrWhiteSpace(staffId))
             {
                 return Ok(new { success = true, data = (object?)null });
+            }
+
+            if (User.IsInRole("STAFF") && !User.IsInRole("ADMIN") && !User.IsInRole("SUPERUSER"))
+            {
+                var ownStaffId = User.FindFirst("StaffId")?.Value?.Trim() ?? string.Empty;
+                if (string.IsNullOrEmpty(ownStaffId) ||
+                    !string.Equals(ownStaffId, staffId.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    return Forbid();
+                }
             }
 
             var parameters = new[]
@@ -174,6 +190,7 @@ namespace CRC.Web.Controllers.Staff
 
         // POST: /Staff/SaveStaff
         [HttpPost]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> SaveStaff([FromBody] SaveStaffRequest model)
         {
             if (model == null)
@@ -322,6 +339,7 @@ namespace CRC.Web.Controllers.Staff
         // POST: /Staff/SaveStaffWithDocuments
         // Saves Staff (insert/update) and uploads any selected documents in the same request.
         [HttpPost]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> SaveStaffWithDocuments(
             [FromForm] SaveStaffRequest model,
             List<IFormFile>? files,
@@ -742,6 +760,7 @@ namespace CRC.Web.Controllers.Staff
 
         // POST: /Staff/DeleteStaff
         [HttpPost]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> DeleteStaff([FromBody] DeleteStaffRequest model)
         {
             if (model == null || string.IsNullOrWhiteSpace(model.StaffId))
@@ -871,6 +890,7 @@ namespace CRC.Web.Controllers.Staff
         // ----- Basic lookups -----
 
         [HttpGet]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetStaffLookups()
         {
             try
@@ -907,6 +927,7 @@ namespace CRC.Web.Controllers.Staff
         }
 
         [HttpGet]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetCitiesByState(int stateId)
         {
             if (stateId <= 0)
@@ -935,6 +956,7 @@ namespace CRC.Web.Controllers.Staff
         }
 
         [HttpGet]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetPostcodesByCity(int cityId)
         {
             if (cityId <= 0)
@@ -965,6 +987,7 @@ namespace CRC.Web.Controllers.Staff
         // ----- Documents -----
 
         [HttpGet]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetStaffDocumentTypes()
         {
             var dt = await _db.ExecuteDataTableAsync("spLU_STAFFDOCUMENTTYPE_List");
@@ -984,6 +1007,7 @@ namespace CRC.Web.Controllers.Staff
 
         // GET: /Staff/GetStaffDocuments?staffId=...
         [HttpGet]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetStaffDocuments(string staffId)
         {
             if (string.IsNullOrWhiteSpace(staffId))
@@ -1021,6 +1045,7 @@ namespace CRC.Web.Controllers.Staff
 
         // POST: /Staff/UploadStaffDocuments
         [HttpPost]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> UploadStaffDocuments(
             string staffId,
             string staffName,
@@ -1102,6 +1127,7 @@ namespace CRC.Web.Controllers.Staff
 
         // POST: /Staff/DeleteStaffDocument
         [HttpPost]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> DeleteStaffDocument([FromBody] DeleteStaffDocumentRequest model)
         {
             if (model == null || model.DocumentId <= 0)
@@ -1139,6 +1165,7 @@ namespace CRC.Web.Controllers.Staff
         }
 
         [HttpGet]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetStaffTypes()
         {
             var dt = await _db.ExecuteDataTableAsync("spLU_STAFFTYPE_List");
@@ -1157,6 +1184,7 @@ namespace CRC.Web.Controllers.Staff
         }
 
         [HttpGet]
+        [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetMandatoryDocumentsForStaffType(string staffTypeId)
         {
             if (string.IsNullOrWhiteSpace(staffTypeId))

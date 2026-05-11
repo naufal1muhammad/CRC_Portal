@@ -1,5 +1,298 @@
-﻿@*
-    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
-*@
 @{
+    ViewData["Title"] = "My Profile";
+    Layout = "_Layout";
+
+    var staffId = (string)(ViewData["StaffId"] ?? string.Empty);
+}
+
+<div class="container-fluid py-3" data-staff-id="@staffId">
+
+    <!-- Header -->
+    <div class="d-flex align-items-center mb-3">
+        <div>
+            <h2 id="staffHeaderName" class="mb-0">My Profile</h2>
+            <small id="staffHeaderId" class="text-muted">
+                @if (string.IsNullOrEmpty(staffId))
+                {
+                    @:Your user is not linked to a Staff record.
+                }
+                else
+                {
+                    @:ID: @staffId
+                }
+            </small>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs" id="myProfileTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active"
+                    id="tab-basic-details"
+                    data-bs-toggle="tab"
+                    data-bs-target="#tabBasicDetails"
+                    type="button"
+                    role="tab">
+                Basic Details
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link"
+                    id="tab-schedule"
+                    data-bs-toggle="tab"
+                    data-bs-target="#tabSchedule"
+                    type="button"
+                    role="tab">
+                Schedule
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link"
+                    id="tab-performance"
+                    data-bs-toggle="tab"
+                    data-bs-target="#tabPerformance"
+                    type="button"
+                    role="tab">
+                Performance
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab contents -->
+    <div class="tab-content border border-top-0 p-3 bg-white" id="myProfileTabContent">
+
+        <!-- Basic Details tab (read-only, no Documents section) -->
+        <div class="tab-pane fade show active"
+             id="tabBasicDetails"
+             role="tabpanel"
+             aria-labelledby="tab-basic-details">
+            <div id="basicDetailsContent">
+                <input type="hidden" id="StaffIdHidden" value="@staffId" />
+
+                <!-- Basic Section -->
+                <div class="card bg-light border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Basic</h5>
+
+                        <div class="row g-3">
+                            <div class="col-lg-6">
+                                <div class="mb-2">
+                                    <label for="StaffId" class="form-label">ID</label>
+                                    <input id="StaffId" type="text" class="form-control form-control-sm" readonly disabled />
+                                </div>
+
+                                <div class="mb-2">
+                                    <label for="StaffName" class="form-label">Name</label>
+                                    <input id="StaffName" type="text" class="form-control form-control-sm" style="text-transform: uppercase;" readonly disabled />
+                                </div>
+
+                                <div class="mb-2">
+                                    <label for="StaffNRIC" class="form-label">NRIC</label>
+                                    <input id="StaffNRIC" type="text" class="form-control form-control-sm" readonly disabled />
+                                </div>
+
+                                <div class="mb-2">
+                                    <label for="StaffBirthDate" class="form-label">Birth Date (mm/dd/yyyy)</label>
+                                    <input id="StaffBirthDate" type="date" class="form-control form-control-sm" readonly disabled />
+                                </div>
+
+                                <div class="mb-2">
+                                    <label for="StaffAge" class="form-label">Age</label>
+                                    <input id="StaffAge" type="number" class="form-control form-control-sm" readonly disabled />
+                                </div>
+                            </div>
+
+                            <div class="col-lg-6">
+                                <div class="mb-2">
+                                    <label for="StaffPhone" class="form-label">Phone</label>
+                                    <input id="StaffPhone" type="text" class="form-control form-control-sm" readonly disabled />
+                                </div>
+
+                                <div class="mb-2">
+                                    <label for="StaffEmail" class="form-label">Email</label>
+                                    <input id="StaffEmail" type="email" class="form-control form-control-sm" readonly disabled />
+                                </div>
+
+                                <div class="mb-2">
+                                    <label for="StaffGender" class="form-label">Gender</label>
+                                    <input id="StaffGender" type="text" class="form-control form-control-sm" readonly disabled />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Residential Address Section -->
+                <div class="card bg-light border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Residential</h5>
+
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="StaffResState" class="form-label">State</label>
+                                <input id="StaffResState" type="text" class="form-control form-control-sm" readonly disabled />
+                            </div>
+                            <div class="col-md-4">
+                                <label for="StaffResCity" class="form-label">City</label>
+                                <input id="StaffResCity" type="text" class="form-control form-control-sm" readonly disabled />
+                            </div>
+                            <div class="col-md-4">
+                                <label for="StaffResPostcode" class="form-label">Postcode</label>
+                                <input id="StaffResPostcode" type="text" class="form-control form-control-sm" readonly disabled />
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="StaffAddLine1" class="form-label">Address Line 1</label>
+                                <textarea id="StaffAddLine1" class="form-control form-control-sm" rows="2" readonly disabled></textarea>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="StaffAddLine2" class="form-label">Address Line 2</label>
+                                <textarea id="StaffAddLine2" class="form-control form-control-sm" rows="2" readonly disabled></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Employment Section -->
+                <div class="card bg-light border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Employment Section</h5>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="StaffBase" class="form-label">Base</label>
+                                <input id="StaffBase" type="text" class="form-control form-control-sm" readonly disabled />
+                            </div>
+                            <div class="col-md-6">
+                                <label for="StaffType" class="form-label">Staff Type</label>
+                                <input id="StaffType" type="text" class="form-control form-control-sm" readonly disabled />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="staffBasicMessage" class="text-danger small mb-2"></div>
+            </div>
+        </div>
+
+        <!-- Schedule tab -->
+        <div class="tab-pane fade"
+             id="tabSchedule"
+             role="tabpanel"
+             aria-labelledby="tab-schedule">
+
+            <div id="staffScheduleContent">
+                <div id="staffScheduleInfo" class="alert alert-info py-2 small d-none">
+                    Please save the staff first before managing schedule slots.
+                </div>
+
+                <!-- Create Slots -->
+                <div class="card bg-light border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Create Slots</h5>
+
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-3">
+                                <label for="ScheduleFromDate" class="form-label">From Date <span class="text-danger">*</span></label>
+                                <input id="ScheduleFromDate" type="date" class="form-control form-control-sm" />
+                            </div>
+                            <div class="col-md-3">
+                                <label for="ScheduleToDate" class="form-label">To Date <span class="text-danger">*</span></label>
+                                <input id="ScheduleToDate" type="date" class="form-control form-control-sm" />
+                            </div>
+                            <div class="col-md-2">
+                                <label for="ScheduleStartTime" class="form-label">Start Time <span class="text-danger">*</span></label>
+                                <input id="ScheduleStartTime" type="time" step="3600" class="form-control form-control-sm" />
+                            </div>
+                            <div class="col-md-2">
+                                <label for="ScheduleEndTime" class="form-label">End Time <span class="text-danger">*</span></label>
+                                <input id="ScheduleEndTime" type="time" step="3600" class="form-control form-control-sm" />
+                            </div>
+                            <div class="col-md-2 d-grid">
+                                <button id="btnCreateStaffSlots" type="button" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-plus me-1"></i> Create Slots
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="staffScheduleMessage" class="small mt-2"></div>
+                    </div>
+                </div>
+
+                <!-- Slots Grid -->
+                <div class="card bg-light border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-2">
+                            <h5 class="card-title mb-0">Slots</h5>
+
+                            <div class="d-flex flex-wrap gap-2 align-items-end">
+                                <div>
+                                    <label for="ScheduleFilterFrom" class="form-label mb-0 small">Filter From</label>
+                                    <input id="ScheduleFilterFrom" type="date" class="form-control form-control-sm" />
+                                </div>
+                                <div>
+                                    <label for="ScheduleFilterTo" class="form-label mb-0 small">Filter To</label>
+                                    <input id="ScheduleFilterTo" type="date" class="form-control form-control-sm" />
+                                </div>
+                                <button id="btnFilterSlots" type="button" class="btn btn-outline-secondary btn-sm">
+                                    <i class="fas fa-filter me-1"></i> Apply
+                                </button>
+                                <button id="btnClearFilterSlots" type="button" class="btn btn-outline-secondary btn-sm">
+                                    <i class="fas fa-times me-1"></i> Clear
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table id="staffSlotsTable" class="table table-striped table-sm table-bordered align-middle w-100">
+                                <thead class="table-secondary">
+                                    <tr>
+                                        <th scope="col" class="text-nowrap">Date</th>
+                                        <th scope="col" class="text-nowrap">Start Time</th>
+                                        <th scope="col" class="text-nowrap">End Time</th>
+                                        <th scope="col" class="text-nowrap">Status</th>
+                                        <th scope="col" class="text-center" style="width: 140px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance tab -->
+        <div class="tab-pane fade"
+             id="tabPerformance"
+             role="tabpanel"
+             aria-labelledby="tab-performance">
+            <div class="p-3">
+                <h5 class="mb-3">Summary</h5>
+                <div class="row g-3">
+                    <div class="col-md-6" id="perfTotalColonoscopy"></div>
+                    <div class="col-md-6" id="perfTotalColonoscopyThisMonth"></div>
+                </div>
+
+                <h5 class="mt-4 mb-3">Total Hours Spent</h5>
+                <div id="perfHoursByType" class="row g-3"></div>
+
+                <h5 class="mt-4 mb-3">Complications</h5>
+                <div id="perfComplications" class="row g-3"></div>
+
+                <h5 class="mt-4 mb-3">Anomalies Detected</h5>
+                <div id="perfAnomalies" class="row g-3"></div>
+
+                <div id="perfMessage" class="text-danger small mt-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/myprofileStaff/index.js"></script>
+    <script src="~/js/staff/edit-staffschedule.js"></script>
+    <script src="~/js/staff/edit-staffperformance.js"></script>
 }

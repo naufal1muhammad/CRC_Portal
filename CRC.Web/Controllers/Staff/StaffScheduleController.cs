@@ -37,12 +37,25 @@ namespace CRC.Web.Controllers.Staff
             public int StaffSlotId { get; set; }
         }
 
+        private bool IsStaffSelfBlocked(string staffId)
+        {
+            if (!User.IsInRole("STAFF") || User.IsInRole("ADMIN") || User.IsInRole("SUPERUSER"))
+                return false;
+
+            var ownStaffId = User.FindFirst("StaffId")?.Value?.Trim() ?? string.Empty;
+            return string.IsNullOrEmpty(ownStaffId) ||
+                   !string.Equals(ownStaffId, (staffId ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
         // GET: /StaffSchedule/List?staffId=...&fromDate=yyyy-MM-dd&toDate=yyyy-MM-dd
         [HttpGet]
         public async Task<IActionResult> List(string staffId, string? fromDate = null, string? toDate = null)
         {
             if (string.IsNullOrWhiteSpace(staffId))
                 return Ok(new { success = true, data = Array.Empty<object>() });
+
+            if (IsStaffSelfBlocked(staffId))
+                return Forbid();
 
             DateTime? from = null;
             DateTime? to = null;
@@ -117,6 +130,9 @@ namespace CRC.Web.Controllers.Staff
             {
                 return Ok(new { success = false, message = "Please fill in all required fields." });
             }
+
+            if (IsStaffSelfBlocked(model.StaffId))
+                return Forbid();
 
             if (!DateTime.TryParseExact(model.FromDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var fromDate) ||
                 !DateTime.TryParseExact(model.ToDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var toDate))
