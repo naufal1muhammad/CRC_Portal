@@ -28,6 +28,16 @@ namespace CRC.Web.Controllers.Staff
         {
             var trimmedStaffId = (staffId ?? string.Empty).Trim();
 
+            if (User.IsInRole("STAFF") && !User.IsInRole("ADMIN") && !User.IsInRole("SUPERUSER"))
+            {
+                var ownStaffId = User.FindFirst("StaffId")?.Value?.Trim() ?? string.Empty;
+                if (string.IsNullOrEmpty(ownStaffId) ||
+                    !string.Equals(ownStaffId, trimmedStaffId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Forbid();
+                }
+            }
+
             if (string.IsNullOrEmpty(trimmedStaffId))
             {
                 return Ok(new
