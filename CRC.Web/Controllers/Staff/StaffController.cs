@@ -101,14 +101,9 @@ namespace CRC.Web.Controllers.Staff
                 return Ok(new { success = true, data = (object?)null });
             }
 
-            if (User.IsInRole("STAFF") && !User.IsInRole("ADMIN") && !User.IsInRole("SUPERUSER"))
+            if (!User.CanAccessStaff(staffId))
             {
-                var ownStaffId = User.FindFirst("StaffId")?.Value?.Trim() ?? string.Empty;
-                if (string.IsNullOrEmpty(ownStaffId) ||
-                    !string.Equals(ownStaffId, staffId.Trim(), StringComparison.OrdinalIgnoreCase))
-                {
-                    return Forbid();
-                }
+                return Forbid();
             }
 
             var parameters = new[]

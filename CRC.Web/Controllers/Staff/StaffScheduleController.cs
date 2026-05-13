@@ -37,14 +37,22 @@ namespace CRC.Web.Controllers.Staff
             public int StaffSlotId { get; set; }
         }
 
-        private bool IsStaffSelfBlocked(string staffId)
+        // Resolves the owning Staff_ID for a slot. Returns null when the slot doesn't exist.
+        // Used by Delete to enforce ownership without trusting a client-supplied staffId.
+        private async Task<string?> GetSlotOwnerAsync(int staffSlotId)
         {
-            if (!User.IsInRole("STAFF") || User.IsInRole("ADMIN") || User.IsInRole("SUPERUSER"))
-                return false;
+            var parameters = new[]
+            {
+                new SqlParameter("@StaffSlot_ID", SqlDbType.Int) { Value = staffSlotId }
+            };
 
-            var ownStaffId = User.FindFirst("StaffId")?.Value?.Trim() ?? string.Empty;
-            return string.IsNullOrEmpty(ownStaffId) ||
-                   !string.Equals(ownStaffId, (staffId ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase);
+            var dt = await _db.ExecuteDataTableAsync("dbo.spStaffSlots_GetOwner", parameters);
+            if (dt.Rows.Count == 0)
+                return null;
+
+            var ownerCol = dt.Columns.Contains("Staff_ID") ? "Staff_ID" : dt.Columns[0].ColumnName;
+            var value = dt.Rows[0][ownerCol];
+            return value == DBNull.Value ? null : value?.ToString();
         }
 
         // GET: /StaffSchedule/List?staffId=...&fromDate=yyyy-MM-dd&toDate=yyyy-MM-dd
@@ -54,7 +62,7 @@ namespace CRC.Web.Controllers.Staff
             if (string.IsNullOrWhiteSpace(staffId))
                 return Ok(new { success = true, data = Array.Empty<object>() });
 
-            if (IsStaffSelfBlocked(staffId))
+            if (!User.CanAccessStaff(staffId))
                 return Forbid();
 
             DateTime? from = null;
@@ -131,7 +139,7 @@ namespace CRC.Web.Controllers.Staff
                 return Ok(new { success = false, message = "Please fill in all required fields." });
             }
 
-            if (IsStaffSelfBlocked(model.StaffId))
+            if (!User.CanAccessStaff(model.StaffId))
                 return Forbid();
 
             if (!DateTime.TryParseExact(model.FromDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var fromDate) ||
@@ -203,6 +211,16 @@ namespace CRC.Web.Controllers.Staff
 
             try
             {
+                // Ownership check: resolve the owning Staff_ID server-side rather than
+                // trusting any client-supplied identifier. Without this, a STAFF user could
+                // enumerate StaffSlot_ID (sequential PK) and delete other staff's slots.
+                var ownerStaffId = await GetSlotOwnerAsync(model.StaffSlotId);
+                if (ownerStaffId == null)
+                    return Ok(new { success = false, message = "Slot not found." });
+
+                if (!User.CanAccessStaff(ownerStaffId))
+                    return Forbid();
+
                 var parameters = new[]
                 {
                     new SqlParameter("@StaffSlot_ID", SqlDbType.Int) { Value = model.StaffSlotId }
