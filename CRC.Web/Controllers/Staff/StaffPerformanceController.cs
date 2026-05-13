@@ -28,14 +28,12 @@ namespace CRC.Web.Controllers.Staff
         {
             var trimmedStaffId = (staffId ?? string.Empty).Trim();
 
-            if (User.IsInRole("STAFF") && !User.IsInRole("ADMIN") && !User.IsInRole("SUPERUSER"))
+            // ADMIN/SUPERUSER always pass (even with empty staffId, where the empty-state
+            // placeholder below is rendered). A pure STAFF user must match their own
+            // StaffId claim; empty or mismatched staffIds are rejected.
+            if (!User.CanAccessStaff(trimmedStaffId))
             {
-                var ownStaffId = User.FindFirst("StaffId")?.Value?.Trim() ?? string.Empty;
-                if (string.IsNullOrEmpty(ownStaffId) ||
-                    !string.Equals(ownStaffId, trimmedStaffId, StringComparison.OrdinalIgnoreCase))
-                {
-                    return Forbid();
-                }
+                return Forbid();
             }
 
             if (string.IsNullOrEmpty(trimmedStaffId))
