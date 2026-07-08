@@ -1,175 +1,60 @@
-﻿@{
+@*
+    CRC portal login / identity layout.
+    A logo plate sits above a split card: the branded panel (CRC identity) on the
+    left, and the page's form (RenderBody) on the right. Shared by every auth view —
+    Login and AccessDenied both get the same shell for free.
+
+    Use it from any auth view, e.g.:
+        @{ Layout = "_LoginLayout"; }
+    Each view supplies only its form/heading; the logo and brand panel live here.
+*@
+@{
     Layout = null;
 }
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>@ViewData["Title"]</title>
-
-    <!-- ===============================================-->
-    <!--    Favicons-->
-    <!-- ===============================================-->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" sizes="32x32" href="~/images/nucentra-icon.png" />
-    <meta name="theme-color" content="#ffffff">
-    <script src="~/lib/falcon/public/assets/js/config.js"></script>
-    <script src="~/lib/falcon/public/vendors/simplebar/simplebar.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/chart/chart.min.js"></script>
-
-    <!-- ===============================================-->
-    <!--    Stylesheets-->
-    <!-- ===============================================-->
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/nouislider/nouislider.min.css">
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/simplebar/simplebar.min.css">
-    <link rel="stylesheet" href="~/lib/falcon/public/assets/css/theme-rtl.min.css" id="style-rtl">
-    <link rel="stylesheet" href="~/lib/falcon/public/assets/css/theme.min.css" id="style-default">
-    <link rel="stylesheet" href="~/lib/falcon/public/assets/css/user-rtl.min.css" id="user-style-rtl">
-    <link rel="stylesheet" href="~/lib/falcon/public/assets/css/user.min.css" id="user-style-default">
-    <script>
-        var isRTL = JSON.parse(localStorage.getItem('isRTL'));
-        if (isRTL) {
-            var linkDefault = document.getElementById('style-default');
-            var userLinkDefault = document.getElementById('user-style-default');
-            linkDefault.setAttribute('disabled', true);
-            userLinkDefault.setAttribute('disabled', true);
-            document.querySelector('html').setAttribute('dir', 'rtl');
-        } else {
-            var linkRTL = document.getElementById('style-rtl');
-            var userLinkRTL = document.getElementById('user-style-rtl');
-            linkRTL.setAttribute('disabled', true);
-            userLinkRTL.setAttribute('disabled', true);
-        }
-    </script>
-
-    <!-- ===============================================-->
-    <!--    Extras-->
-    <!-- ===============================================-->
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/bootstrap-icons/bootstrap-icons.css">
-    <link rel="stylesheet" href="~/lib/smartwizard/dist/css/smart_wizard_all.min.css">
+    <title>@ViewData["Title"] - CRC Portal</title>
+    <link rel="stylesheet" href="~/lib/fortawesome/fontawesome-free/css/all.min.css">
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="~/lib/admin-lte/css/adminlte.min.css">
     <link rel="stylesheet" href="~/lib/toastify-js/src/toastify.css">
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/choices/choices.min.css">
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/datatables.net-bs5/dataTables.bootstrap5.min.css">
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/datatables.net-buttons/css/buttons.bootstrap5.min.css">
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/datatables.net-responsive/css/responsive.bootstrap5.min.css">
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/dropzone/dropzone.min.css">
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/flatpickr/flatpickr.min.css">
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/flatpickr/plugins/monthSelect/style.css">
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/overlayscrollbars/OverlayScrollbars.min.css">
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/select2/select2.min.css">
-    <link rel="stylesheet" href="~/lib/falcon/public/vendors/select2-bootstrap-5-theme/select2-bootstrap-5-theme.min.css">
-    <link rel="stylesheet" href="~/lib/jstree/themes/default/style.min.css" />
-    <link rel="stylesheet" href="~/lib/highlight/styles/github-dark-dimmed.min.css" />
     <link rel="stylesheet" href="~/css/site.css">
 
     @await RenderSectionAsync("Stylesheets", required: false)
 </head>
-<body class="login-bg">
-    @Html.AntiForgeryToken()
-    <div class="container-fluid d-flex justify-content-end align-items-start min-vh-100 p-4 p-md-5 login-wrap">
-        <div class="w-100" style="max-width: 600px;">
-            <div class="card shadow-sm border-0 login-card">
-                <div class="card-body p-4 primary-color">
-                    <img class="d-block mx-auto mb-4"
-                         src="~/images/nucentra-logo.png"
-                         alt="Nucentra Logo" height="115" width="350" />
 
-                    @RenderBody()
-                </div>
+<body class="hold-transition identity-page">
+    <div class="identity-shell">
+        <img src="~/images/nucentra-logo.png" alt="CRC Portal" class="identity-logo">
+
+        <div class="identity-card">
+            <aside class="identity-brand">
+                <h2 class="identity-brand-title">CRC PORTAL</h2>
+                <p class="identity-brand-subtitle">Nucentra Digital Healthcare Portal</p>
+                <p class="identity-brand-note">
+                    The information you are about to access is strictly confidential and intended
+                    solely for authorised personnel. Any unauthorised access or use may be subject
+                    to legal and disciplinary proceedings.
+                </p>
+            </aside>
+
+            <div class="identity-form">
+                @RenderBody()
             </div>
         </div>
     </div>
 
-    <!-- Scripts -->
-    <!-- ===============================================-->
-    <!--    JavaScripts-->
-    <!-- ===============================================-->
-    <script src="~/lib/falcon/public/vendors/popper/popper.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/bootstrap/bootstrap.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/anchorjs/anchor.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/is/is.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/nouislider/nouislider.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/fontawesome/all.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/lodash/lodash.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/list.js/list.min.js"></script>
-    <script src="~/lib/falcon/public/assets/js/theme.js"></script>
-
-    <!-- ===============================================-->
-    <!--    Extras-->
-    <!-- ===============================================-->
-    <script src="~/lib/falcon/public/vendors/jquery/jquery.min.js"></script>
-    <script src="~/lib/jquery-csv/jquery.csv.min.js"></script>
-    <script src="~/lib/moment.js/moment.min.js"></script>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/lib/admin-lte/js/adminlte.min.js"></script>
     <script src="~/lib/toastify-js/src/toastify.js"></script>
-    <script src="~/lib/saveSvgAsPng/saveSvgAsPng.js"></script>
-    <script src="~/lib/smartwizard/dist/js/jquery.smartWizard.min.js"></script>
-    <script src="~/lib/bs-custom-file-input/bs-custom-file-input.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/choices/choices.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/dropzone/dropzone.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/d3/d3.v7.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/echarts/echarts.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/lottie/lottie.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/jszip/jszip.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/pdfmake/pdfmake.js"></script>
-    <script src="~/lib/falcon/public/vendors/pdfmake/vfs_fonts.js"></script>
-    <script src="~/lib/falcon/public/vendors/datatables.net/jquery.dataTables.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/datatables.net-bs5/dataTables.bootstrap5.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/datatables.net-buttons/js/dataTables.buttons.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/datatables.net-buttons/js/buttons.bootstrap5.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/datatables.net-buttons/js/buttons.print.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/datatables.net-buttons/js/buttons.html5.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/datatables.net-fixedcolumns/dataTables.fixedColumns.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/datatables.net-responsive/js/dataTables.responsive.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/datatables.net-responsive/js/responsive.bootstrap5.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/datatables-plugins/sorting/datetime-moment.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/overlayscrollbars/OverlayScrollbars.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/prism/prism.js"></script>
-    <script src="~/lib/falcon/public/vendors/select2/select2.min.js"> </script>
-    <script src="~/lib/falcon/public/vendors/select2/select2.full.min.js"> </script>
-    <script src="~/lib/falcon/public/vendors/validator/validator.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/dayjs/dayjs.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/flatpickr/flatpickr.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/flatpickr/plugins/monthSelect/index.js"></script>
-    <script src="~/lib/falcon/public/assets/js/flatpickr.js"></script>
-    <script src="~/lib/apexcharts/dist/apexcharts.js"></script>
-    <script src="~/lib/falcon/public/vendors/countup/countUp.umd.js"></script>
-    <script src="~/lib/falcon/public/vendors/typed.js/typed.js"></script>
-    <script src="~/lib/jstree/jstree.min.js"></script>
-    <script src="~/lib/highlight/highlight.min.js"></script>
-    <script src="~/lib/highlight/languages/sql.min.js"></script>
-    <script src="~/lib/xlsx/package/dist/xlsx.full.min.js"></script>
-
-    <!-- ===============================================-->
-    <!--    Custom-->
-    <!-- ===============================================-->
-    <script src="~/js/functions/GetPropertyValue.js"></script>
     <script src="~/js/classes/Resource.js"></script>
     <script src="~/js/common/toast.js"></script>
-    <script src="~/js/common/form.js"></script>
-    <script src="~/js/common/modalFalcon.js"></script>
-    <script src="~/js/common/logger.js"></script>
-    <script src="~/js/functions/ConfirmationModalFalcon.js"></script>
-    <script src="~/js/functions/Crud.js"></script>
-    <script src="~/js/functions/DataTable.js"></script>
-    <script src="~/js/functions/DataTableDataManagement.js"></script>
-    <script src="~/js/functions/SmartWizard.js"></script>
-    <script src="~/js/functions/SrollTop.js"></script>
-    <script src="~/js/functions/UrlVariable.js"></script>
     <script src="~/js/functions/SessionTimeout.js"></script>
-    <script src="~/js/functions/LoadingModal.js"></script>
-    <script src="~/js/helpers/FormValidatorFalcon.js"></script>
-    <script src="~/js/builders/customs/ApplicationGroupSelection.js"></script>
-    <script src="~/js/builders/inputs/DataListElement.js"></script>
-    <script src="~/js/builders/inputs/DateElement.js"></script>
-    <script src="~/js/builders/inputs/SelectElement.js"></script>
-    <script src="~/js/builders/inputs/SelectBooleanElement.js"></script>
-    <script src="~/js/builders/customs/FilterNextSelectElement.js"></script>
-    <script src="~/js/builders/DataTableFalcon.js"></script>
-    <script src="~/js/builders/ListCheckbox.js"></script>
-    <script src="~/js/builders/ListGroup.js"></script>
-    <script src="~/js/builders/ListSelection.js"></script>
-    <script src="~/js/builders/MatrixCheckbox.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
 
     @await RenderSectionAsync("Scripts", required: false)

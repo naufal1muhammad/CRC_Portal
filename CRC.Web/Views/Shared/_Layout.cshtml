@@ -1,11 +1,16 @@
-﻿<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html>
+<html data-bs-theme="light" lang="en" dir="ltr">
 <head>
 @using System.Linq
 @using System.Security.Claims
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"]</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- ===============================================-->
+    <!--    Document Title-->
+    <!-- ===============================================-->
+    <title>@ViewData["Title"] - CRC Portal</title>
 
     <!-- ===============================================-->
     <!--    Favicons-->
@@ -48,6 +53,10 @@
     <!-- ===============================================-->
     <link rel="stylesheet" href="~/fonts/opensans.css">
     <link rel="stylesheet" href="~/lib/falcon/public/vendors/bootstrap-icons/bootstrap-icons.css">
+    @* FontAwesome via the CSS webfont (same build the login pages use). The SVG/JS framework
+       only converts icons present at load, leaving DataTables / modal icons injected later blank;
+       the webfont renders every icon purely in CSS, static or dynamic. *@
+    <link rel="stylesheet" href="~/lib/fortawesome/fontawesome-free/css/all.min.css">
     <link rel="stylesheet" href="~/lib/smartwizard/dist/css/smart_wizard_all.min.css">
     <link rel="stylesheet" href="~/lib/toastify-js/src/toastify.css">
     <link rel="stylesheet" href="~/lib/falcon/public/vendors/choices/choices.min.css">
@@ -68,244 +77,320 @@
 
 </head>
 
-<body class="bg-light">
+<body>
     @Html.AntiForgeryToken()
-    <div class="d-flex" id="layoutWrapper">
-        <!-- Sidebar -->
-        <nav class="flex-shrink-0 sidebar-main primary-color border-end">
-            <div class="p-3 border-bottom">
-                <a asp-controller="Dashboard" asp-action="Index"
-                   class="d-block text-decoration-none">
-                    <img src="~/images/nucentra-logo.png"
-                         alt="CRC Web Portal"
-                         class="img-fluid"
-                         style="width: 100%; height: 80px; object-fit: contain;" />
-                </a>
-            </div>
+    @{
+        string currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
+        string currentAction = ViewContext.RouteData.Values["action"]?.ToString() ?? "";
 
-            <div class="list-group list-group-flush">
-                @{
-                    string currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
-                    string currentAction = ViewContext.RouteData.Values["action"]?.ToString() ?? "";
+        // Active when the controller matches (any action).
+        Func<string, string> activeController = controller =>
+        string.Equals(currentController, controller, StringComparison.OrdinalIgnoreCase)
+        ? "active"
+        : "";
 
-                    Func<string, string, string> activeClass = (controller, action) =>
-                    string.Equals(currentController, controller, StringComparison.OrdinalIgnoreCase)
-                    ? "active"
-                    : "";
+        // Active only when both controller and action match (for sibling links on one controller).
+        Func<string, string, string> activeExact = (controller, action) =>
+        string.Equals(currentController, controller, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(currentAction, action, StringComparison.OrdinalIgnoreCase)
+        ? "active"
+        : "";
 
-                    // --- Roles (based on ClaimTypes.Role we added during Login) ---
-                    bool isSuper = User.IsInRole("SUPERUSER");
-                    bool isAdmin = User.IsInRole("ADMIN");
-                    bool isStaff = User.IsInRole("STAFF");
+        // --- Roles (based on ClaimTypes.Role we added during Login) ---
+        bool isSuper = User.IsInRole("SUPERUSER");
+        bool isAdmin = User.IsInRole("ADMIN");
+        bool isStaff = User.IsInRole("STAFF");
 
-                    // Patient collapsible section active state
-                    bool isPatientSectionActive =
-                    string.Equals(currentController, "Patient", StringComparison.OrdinalIgnoreCase);
+        // Patient collapsible section active state
+        bool isPatientSectionActive =
+        string.Equals(currentController, "Patient", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(currentController, "PatientTracker", StringComparison.OrdinalIgnoreCase);
+
+        // Role-appropriate home page for the brand links
+        string homeController = isAdmin ? "AdminDashboard" : isStaff ? "StaffDashboard" : "Dashboard";
+
+        var fullName = User.FindFirst("FullName")?.Value ?? User.Identity?.Name ?? "User";
+
+        var displayRole =
+        isSuper ? "SUPERUSER" :
+        isAdmin ? "ADMIN" :
+        isStaff ? "STAFF" :
+        "";
+    }
+    <!-- ===============================================-->
+    <!--    Main Content-->
+    <!-- ===============================================-->
+    <main class="main" id="top">
+        <div class="container" data-layout="container">
+            <script>
+                var isFluid = true;
+                if (isFluid) {
+                    var container = document.querySelector('[data-layout]');
+                    container.classList.remove('container');
+                    container.classList.add('container-fluid');
                 }
-
-                @if (isSuper)
-                {
-                    <a asp-controller="Dashboard" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("Dashboard", "Index")">
-                        @* <span class="badge rounded-pill text-bg-dark me-2">1</span> *@<i class="fas fa-home me-2"></i> Dashboard
-                    </a>
-
-                    <a asp-controller="Staff" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("Staff", "Index")">
-                        <i class="fas fa-user-md me-2"></i> Staff
-                    </a>
-
-                    <a asp-controller="Branch" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("Branch", "Index")">
-                        <i class="fas fa-building me-2"></i> Branch
-                    </a>
-
-                    <a asp-controller="Appointment" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("Appointment", "Index")">
-                        <i class="fas fa-calendar me-2"></i> Appointments
-                    </a>
-
-                    <a class="list-group-item list-group-item-action d-flex align-items-center justify-content-between sidebar-branch-toggle @(isPatientSectionActive ? "" : "collapsed")"
-                       data-bs-toggle="collapse"
-                       href="#sidebarPatientCollapse"
-                       role="button"
-                       aria-expanded="@(isPatientSectionActive.ToString().ToLower())"
-                       aria-controls="sidebarPatientCollapse">
-                        <span>
-                            <i class="fas fa-code-branch me-2"></i> Patient
-                        </span>
-                        <i class="fas fa-chevron-down small branch-toggle-icon"></i>
-                    </a>
-
-                    <div class="collapse @(isPatientSectionActive ? "show" : "")" id="sidebarPatientCollapse">
-                        <a asp-controller="Patient" asp-action="Active"
-                           class="list-group-item list-group-item-action border-0 ps-4 @activeClass("Patient", "Active")">
-                            <i class="fas fa-user-injured me-2"></i> Active
-                        </a>
-                        <a asp-controller="Patient" asp-action="Discharged"
-                           class="list-group-item list-group-item-action border-0 ps-4 @activeClass("Patient", "Discharged")">
-                            <i class="fas fa-user-check me-2"></i> Discharged
-                        </a>
-                        <a asp-controller="PatientTracker" asp-action="Index"
-                           class="list-group-item list-group-item-action border-0 ps-4 @activeClass("PatientTracker", "Index")">
-                            <i class="fas fa-route me-2"></i> Tracker
-                        </a>
-                    </div>
-
-                    <a asp-controller="Documents" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("Documents", "Index")">
-                        <i class="fas fa-folder-open me-2"></i> Documents
-                    </a>
-
-                    <a asp-controller="Settings" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("Settings", "Index")">
-                        <i class="fas fa-gear me-2"></i> Settings
-                    </a>
-
-                    <a asp-controller="Account" asp-action="Register"
-                       class="list-group-item list-group-item-action @activeClass("Account", "Register")">
-                        <i class="fas fa-user-plus me-2"></i> User Management
-                    </a>
-
-                    <a asp-controller="AuditTrails" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("AuditTrails", "Index")">
-                        <i class="fas fa-clipboard-list me-2"></i> Audit Trails
-                    </a>
-                }
-
-                @if (isAdmin)
-                {
-                    <a asp-controller="AdminDashboard" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("AdminDashboard", "Index")">
-                        <i class="fas fa-home me-2"></i> Dashboard
-                    </a>
-
-                    <a asp-controller="Staff" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("Staff", "Index")">
-                        <i class="fas fa-user-md me-2"></i> Staff
-                    </a>
-
-                    <a asp-controller="Appointment" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("Appointment", "Index")">
-                        <i class="fas fa-calendar me-2"></i> Appointments
-                    </a>
-
-                    <a class="list-group-item list-group-item-action d-flex align-items-center justify-content-between sidebar-branch-toggle @(isPatientSectionActive ? "" : "collapsed")"
-                       data-bs-toggle="collapse"
-                       href="#sidebarPatientCollapse"
-                       role="button"
-                       aria-expanded="@(isPatientSectionActive.ToString().ToLower())"
-                       aria-controls="sidebarPatientCollapse">
-                        <span>
-                            <i class="fas fa-code-branch me-2"></i> Patient
-                        </span>
-                        <i class="fas fa-chevron-down small branch-toggle-icon"></i>
-                    </a>
-
-                    <div class="collapse @(isPatientSectionActive ? "show" : "")" id="sidebarPatientCollapse">
-                        <a asp-controller="Patient" asp-action="Active"
-                           class="list-group-item list-group-item-action border-0 ps-4 @activeClass("Patient", "Active")">
-                            <i class="fas fa-user-injured me-2"></i> Active
-                        </a>
-                        <a asp-controller="Patient" asp-action="Discharged"
-                           class="list-group-item list-group-item-action border-0 ps-4 @activeClass("Patient", "Discharged")">
-                            <i class="fas fa-user-check me-2"></i> Discharged
-                        </a>
-                        <a asp-controller="PatientTracker" asp-action="Index"
-                           class="list-group-item list-group-item-action border-0 ps-4 @activeClass("PatientTracker", "Index")">
-                            <i class="fas fa-route me-2"></i> Tracker
-                        </a>
-                    </div>
-                }
-
-                @if (isStaff)
-                {
-                    <a asp-controller="StaffDashboard" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("StaffDashboard", "Index")">
-                        <i class="fas fa-home me-2"></i> Dashboard
-                    </a>
-
-                    <a asp-controller="MyProfileStaff" asp-action="Index"
-                       class="list-group-item list-group-item-action @activeClass("MyProfileStaff", "Index")">
-                        <i class="fas fa-id-card me-2"></i> My Profile
-                    </a>
-                }
-
-                <!-- Spacer -->
-                <div class="flex-grow-1"></div>
-
-                <!-- Logout (everyone who is logged in) -->
-                @if (User?.Identity?.IsAuthenticated == true)
-                {
-                    <a asp-controller="Account" asp-action="Logout"
-                       class="list-group-item list-group-item-action text-danger mt-auto">
-                        <i class="fas fa-sign-out-alt me-2"></i> Logout
-                    </a>
-                }
-            </div>
-
-        </nav>
-
-        <!-- Main content -->
-        <div class="flex-grow-1 d-flex flex-column">
-
-            <!-- Top bar -->
-            <header class="navbar navbar-expand navbar-light bg-light px-3">
-                <div class="ms-auto d-flex align-items-center">
-                    @{
-                        var fullName = User.FindFirst("FullName")?.Value ?? User.Identity?.Name ?? "User";
-
-                        var displayRole =
-                        User.IsInRole("SUPERUSER") ? "SUPERUSER" :
-                        User.IsInRole("ADMIN") ? "ADMIN" :
-                        User.IsInRole("STAFF") ? "STAFF" :
-                        "";
+            </script>
+            <nav class="navbar navbar-light navbar-vertical navbar-expand-xl">
+                <script>
+                    var navbarStyle = localStorage.getItem("navbarStyle");
+                    if (navbarStyle && navbarStyle !== 'transparent') {
+                        document.querySelector('.navbar-vertical').classList.add(`navbar-${navbarStyle}`);
                     }
-                    @if (User?.Identity?.IsAuthenticated == true)
-                    {
-                        <div class="dropdown">
-                            <button class="btn btn-link text-decoration-none dropdown-toggle p-0 d-flex align-items-center"
-                                    type="button"
-                                    data-bs-toggle="dropdown"
-                                    aria-expanded="false">
-                                <span class="me-2 text-muted">
-                                    <i class="fas fa-user-circle me-1"></i> @fullName @(!string.IsNullOrEmpty(displayRole) ? $"({displayRole})" : "")
-                                </span>
-                            </button>
-
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li>
-                                    <a class="dropdown-item" asp-controller="Account" asp-action="ChangePassword">
-                                        <i class="fas fa-key me-2"></i> Change Password
-                                    </a>
-                                </li>
-                                <li><hr class="dropdown-divider" /></li>
-                                <li>
-                                    <a class="dropdown-item text-danger" asp-controller="Account" asp-action="Logout">
-                                        <i class="fas fa-sign-out-alt me-2"></i> Logout
-                                    </a>
-                                </li>
-                            </ul>
+                </script>
+                <div class="d-flex align-items-center">
+                    <div class="toggle-icon-wrapper">
+                        <button class="btn navbar-toggler-humburger-icon navbar-vertical-toggle" data-bs-toggle="tooltip" data-bs-placement="left" title="Toggle Navigation"><span class="navbar-toggle-icon"><span class="toggle-line"></span></span></button>
+                    </div>
+                    <a class="navbar-brand" asp-controller="@homeController" asp-action="Index">
+                        <div class="d-flex align-items-center py-3">
+                            <span class="font-sans-serif">nucentra</span>
                         </div>
-                    }
+                    </a>
                 </div>
-            </header>
+                <div class="collapse navbar-collapse" id="navbarVerticalCollapse">
+                    <div class="navbar-vertical-content scrollbar">
+                        <ul class="navbar-nav flex-column mb-3" id="navbarVerticalNav">
+                            @if (isSuper)
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link @activeController("Dashboard")" asp-controller="Dashboard" asp-action="Index">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-home"></span></span>
+                                            <span class="nav-link-text ps-1">Dashboard</span>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link @activeController("Staff")" asp-controller="Staff" asp-action="Index">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-user-md"></span></span>
+                                            <span class="nav-link-text ps-1">Staff</span>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link @activeController("Branch")" asp-controller="Branch" asp-action="Index">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-building"></span></span>
+                                            <span class="nav-link-text ps-1">Branch</span>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link @activeController("Appointment")" asp-controller="Appointment" asp-action="Index">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-calendar"></span></span>
+                                            <span class="nav-link-text ps-1">Appointments</span>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link dropdown-indicator @(isPatientSectionActive ? "" : "collapsed")" href="#sidebarPatientCollapse" role="button" data-bs-toggle="collapse" aria-expanded="@(isPatientSectionActive.ToString().ToLower())" aria-controls="sidebarPatientCollapse">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-user-injured"></span></span>
+                                            <span class="nav-link-text ps-1">Patient</span>
+                                        </div>
+                                    </a>
+                                    <ul class="nav collapse @(isPatientSectionActive ? "show" : "")" id="sidebarPatientCollapse">
+                                        <li class="nav-item">
+                                            <a class="nav-link @activeExact("Patient", "Active")" asp-controller="Patient" asp-action="Active">
+                                                <div class="d-flex align-items-center">
+                                                    <span class="nav-link-text ps-1">Active</span>
+                                                </div>
+                                            </a>
+                                        </li>
+                                        <li class="nav-item">
+                                            <a class="nav-link @activeExact("Patient", "Discharged")" asp-controller="Patient" asp-action="Discharged">
+                                                <div class="d-flex align-items-center">
+                                                    <span class="nav-link-text ps-1">Discharged</span>
+                                                </div>
+                                            </a>
+                                        </li>
+                                        <li class="nav-item">
+                                            <a class="nav-link @activeController("PatientTracker")" asp-controller="PatientTracker" asp-action="Index">
+                                                <div class="d-flex align-items-center">
+                                                    <span class="nav-link-text ps-1">Tracker</span>
+                                                </div>
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link @activeController("Documents")" asp-controller="Documents" asp-action="Index">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-folder-open"></span></span>
+                                            <span class="nav-link-text ps-1">Documents</span>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link @activeController("Settings")" asp-controller="Settings" asp-action="Index">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-gear"></span></span>
+                                            <span class="nav-link-text ps-1">Settings</span>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link @activeExact("Account", "Register")" asp-controller="Account" asp-action="Register">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-user-plus"></span></span>
+                                            <span class="nav-link-text ps-1">User Management</span>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link @activeController("AuditTrails")" asp-controller="AuditTrails" asp-action="Index">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-clipboard-list"></span></span>
+                                            <span class="nav-link-text ps-1">Audit Trails</span>
+                                        </div>
+                                    </a>
+                                </li>
+                            }
 
-            <!-- Page content -->
-            <main class="flex-grow-1 p-3">
-                <div class="container-fluid">
-                    @RenderBody()
+                            @if (isAdmin)
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link @activeController("AdminDashboard")" asp-controller="AdminDashboard" asp-action="Index">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-home"></span></span>
+                                            <span class="nav-link-text ps-1">Dashboard</span>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link @activeController("Staff")" asp-controller="Staff" asp-action="Index">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-user-md"></span></span>
+                                            <span class="nav-link-text ps-1">Staff</span>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link @activeController("Appointment")" asp-controller="Appointment" asp-action="Index">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-calendar"></span></span>
+                                            <span class="nav-link-text ps-1">Appointments</span>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link dropdown-indicator @(isPatientSectionActive ? "" : "collapsed")" href="#sidebarPatientCollapse" role="button" data-bs-toggle="collapse" aria-expanded="@(isPatientSectionActive.ToString().ToLower())" aria-controls="sidebarPatientCollapse">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-user-injured"></span></span>
+                                            <span class="nav-link-text ps-1">Patient</span>
+                                        </div>
+                                    </a>
+                                    <ul class="nav collapse @(isPatientSectionActive ? "show" : "")" id="sidebarPatientCollapse">
+                                        <li class="nav-item">
+                                            <a class="nav-link @activeExact("Patient", "Active")" asp-controller="Patient" asp-action="Active">
+                                                <div class="d-flex align-items-center">
+                                                    <span class="nav-link-text ps-1">Active</span>
+                                                </div>
+                                            </a>
+                                        </li>
+                                        <li class="nav-item">
+                                            <a class="nav-link @activeExact("Patient", "Discharged")" asp-controller="Patient" asp-action="Discharged">
+                                                <div class="d-flex align-items-center">
+                                                    <span class="nav-link-text ps-1">Discharged</span>
+                                                </div>
+                                            </a>
+                                        </li>
+                                        <li class="nav-item">
+                                            <a class="nav-link @activeController("PatientTracker")" asp-controller="PatientTracker" asp-action="Index">
+                                                <div class="d-flex align-items-center">
+                                                    <span class="nav-link-text ps-1">Tracker</span>
+                                                </div>
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </li>
+                            }
+
+                            @if (isStaff)
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link @activeController("StaffDashboard")" asp-controller="StaffDashboard" asp-action="Index">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-home"></span></span>
+                                            <span class="nav-link-text ps-1">Dashboard</span>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link @activeController("MyProfileStaff")" asp-controller="MyProfileStaff" asp-action="Index">
+                                        <div class="d-flex align-items-center">
+                                            <span class="nav-link-icon"><span class="nav-icon fas fa-id-card"></span></span>
+                                            <span class="nav-link-text ps-1">My Profile</span>
+                                        </div>
+                                    </a>
+                                </li>
+                            }
+                        </ul>
+                    </div>
                 </div>
-            </main>
+            </nav>
+            <div class="content">
+                <nav class="navbar navbar-light navbar-glass navbar-top navbar-expand">
+                    <button class="btn navbar-toggler-humburger-icon navbar-toggler me-1 me-sm-3" type="button" data-bs-toggle="collapse" data-bs-target="#navbarVerticalCollapse" aria-controls="navbarVerticalCollapse" aria-expanded="false" aria-label="Toggle Navigation"><span class="navbar-toggle-icon"><span class="toggle-line"></span></span></button>
+                    <a id="main-url" class="navbar-brand me-1 me-sm-3" asp-controller="@homeController" asp-action="Index">
+                        <div class="d-flex align-items-center">
+                            <span class="font-sans-serif">CRC</span>
+                        </div>
+                    </a>
+                    <ul class="navbar-nav navbar-nav-icons ms-auto flex-row align-items-center">
+                        <li class="nav-item px-2">
+                            <div class="theme-control-toggle fa-icon-wait">
+                                <input class="form-check-input ms-0 theme-control-toggle-input" id="themeControlToggle" type="checkbox" data-theme-control="theme" value="dark" />
+                                <label class="mb-0 theme-control-toggle-label theme-control-toggle-light" for="themeControlToggle" data-bs-toggle="tooltip" data-bs-placement="left" title="Switch to light theme"><span class="fas fa-sun fs-0"></span></label>
+                                <label class="mb-0 theme-control-toggle-label theme-control-toggle-dark" for="themeControlToggle" data-bs-toggle="tooltip" data-bs-placement="left" title="Switch to dark theme"><span class="fas fa-moon fs-0"></span></label>
+                            </div>
+                        </li>
+                        @if (User?.Identity?.IsAuthenticated == true)
+                        {
+                            <li class="nav-item dropdown">
+                                <a class="nav-link pe-0 ps-2" id="navbarDropdownUser" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    <div class="avatar avatar-xl">
+                                        <img class="rounded-circle" src="~/lib/falcon/public/assets/img/team/avatar.png" alt="" />
+                                    </div>
+                                </a>
+                                <div class="dropdown-menu dropdown-caret dropdown-menu-end py-0" aria-labelledby="navbarDropdownUser">
+                                    <div class="bg-white dark__bg-1000 rounded-2 py-2">
+                                        <span class="dropdown-item-text fw-bold d-block">
+                                            @fullName @(!string.IsNullOrEmpty(displayRole) ? $"({displayRole})" : "")
+                                        </span>
+                                        <div class="dropdown-divider"></div>
+                                        <a class="dropdown-item" asp-controller="Account" asp-action="ChangePassword">
+                                            <i class="fas fa-key me-2"></i> Change Password
+                                        </a>
+                                        <div class="dropdown-divider"></div>
+                                        <a class="dropdown-item text-danger" asp-controller="Account" asp-action="Logout">
+                                            <i class="fas fa-sign-out-alt me-2"></i> Logout
+                                        </a>
+                                    </div>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                </nav>
 
-            <!-- Footer -->
-            <footer class="bg-light border-top text-center py-2 small text-muted">
-                &copy; @DateTime.Now.Year - Nucentra Digital Healthcare Portal
-            </footer>
+                @RenderBody()
+
+                <footer class="footer">
+                    <div class="row g-0 justify-content-between fs--1 mt-4 mb-3">
+                        <div class="col-12 col-sm-auto text-center">
+                            <p class="mb-0 text-600"><strong>Copyright &copy; @DateTime.Now.Year</strong> - Nucentra Digital Healthcare Portal. All rights reserved.</p>
+                        </div>
+                    </div>
+                </footer>
+            </div>
         </div>
-    </div>
+    </main>
+    <!-- ===============================================-->
+    <!--    End of Main Content-->
+    <!-- ===============================================-->
 
-    <!-- Scripts -->
     <!-- ===============================================-->
     <!--    JavaScripts-->
     <!-- ===============================================-->
@@ -314,7 +399,6 @@
     <script src="~/lib/falcon/public/vendors/anchorjs/anchor.min.js"></script>
     <script src="~/lib/falcon/public/vendors/is/is.min.js"></script>
     <script src="~/lib/falcon/public/vendors/nouislider/nouislider.min.js"></script>
-    <script src="~/lib/falcon/public/vendors/fontawesome/all.min.js"></script>
     <script src="~/lib/falcon/public/vendors/lodash/lodash.min.js"></script>
     <script src="~/lib/falcon/public/vendors/list.js/list.min.js"></script>
     <script src="~/lib/falcon/public/assets/js/theme.js"></script>

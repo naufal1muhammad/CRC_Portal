@@ -14,104 +14,100 @@ html {
 .btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
     box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
 }
-
-.primary-color {
-    background-color: #f5f2fc;
-}
 /* #endregion */
 
 
-/* #region Login Page */
-/* Background image */
-.login-bg {
+/* #region Identity / authentication pages (used by _LoginLayout.cshtml).
+   A logo plate sits above a split card: a branded panel on the left and the
+   page's form on the right. Shared by Login and AccessDenied. */
+.identity-page {
     min-height: 100vh;
-    background-image: url('/images/login-bg.png');
-    background-repeat: no-repeat;
-    background-position: left center;
-    background-size: cover;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, #eef2f7 0%, #dbe2ec 100%);
+    padding: 1.5rem;
 }
 
-/* Make card readable on top of background */
-.login-card {
-    background: rgba(255,255,255,0.92);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+/* Column stack: logo plate above the split card. */
+.identity-shell {
+    width: 100%;
+    max-width: 820px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
-/* On small screens, center it again */
-@media (max-width: 768px) {
-    .login-wrap {
-        justify-content: center !important;
-        align-items: center !important;
-    }
-}
-/* #endregion */
-
-
-/* #region Sidebar */
-.sidebar-main {
-    width: 250px;
-    min-height: 100vh;
+.identity-logo {
+    display: block;
+    width: 320px;
+    max-width: 80%;
+    height: auto;
+    background: #fff;
+    padding: 1rem 1.5rem;
+    border-radius: 0.75rem;
+    box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.25);
+    margin-bottom: 1.75rem;
 }
 
-    /* Brand at the top */
-    .sidebar-main .navbar-brand {
-        color: #2b2355;
-        font-weight: 900;
-        letter-spacing: 0.03em;
-        font-size: 1.25rem;
+/* The split card: brand panel (left) + form panel (right). */
+.identity-card {
+    width: 100%;
+    display: flex;
+    background: #fff;
+    border-radius: 0.75rem;
+    box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.18);
+    overflow: hidden;
+}
+
+.identity-brand {
+    flex: 0 0 42%;
+    max-width: 42%;
+    padding: 2.5rem 2rem;
+    color: #fff;
+    background: linear-gradient(160deg, #2b7cf0 0%, #1546b0 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.identity-brand-title {
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.75rem;
+}
+
+.identity-brand-subtitle {
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.4;
+    margin-bottom: 1.25rem;
+}
+
+.identity-brand-note {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.85);
+    margin-bottom: 0;
+}
+
+.identity-form {
+    flex: 1 1 auto;
+    padding: 2.5rem 2.25rem;
+}
+
+/* Stack the split card on small screens (brand panel on top). */
+@media (max-width: 575.98px) {
+    .identity-card {
+        flex-direction: column;
     }
 
-        .sidebar-main .navbar-brand:hover {
-            color: #000;
-            text-decoration: none;
-        }
-
-    /* Menu items */
-    .sidebar-main .list-group-item {
-        background-color: transparent;
-        border: 0;
-        color: #2b2355;
-        font-weight: 600;
-        font-size: 0.95rem;
-        padding-top: 0.6rem;
-        padding-bottom: 0.6rem;
+    .identity-brand {
+        flex: 1 1 auto;
+        max-width: 100%;
     }
-
-        /* Icons – keep a neat aligned width */
-        .sidebar-main .list-group-item i {
-            width: 18px;
-        }
-
-        /* Active item */
-        .sidebar-main .list-group-item.active {
-            background-color: rgba(43, 35, 85, 0.14);
-            color: #1f1a3a;
-            border: 0;
-        }
-
-        /* Hover state (but not disabled/active) */
-        .sidebar-main .list-group-item:hover:not(.disabled):not(.active) {
-            background-color: rgba(43, 35, 85, 0.08);
-            color: #1f1a3a;
-        }
-
-    /* Section header (e.g. "Branch") */
-    .sidebar-main .text-muted.text-uppercase.small {
-        color: #6b61a8;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-    }
-
-    /* Logout */
-    .sidebar-main .list-group-item.text-danger {
-        color: red !important;
-        font-weight: 700;
-    }
-
-        .sidebar-main .list-group-item.text-danger:hover {
-            background-color: rgba(43, 35, 85, 0.08);
-        }
+}
 /* #endregion */
 
 

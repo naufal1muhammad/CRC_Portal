@@ -1,9 +1,17 @@
-﻿@{
+@{
     ViewData["Title"] = "Access Denied";
     Layout = "_LoginLayout";
 }
-<div class="container py-5">
-    <div class="alert alert-danger">
-        You do not have permission to access this page.
-    </div>
+
+<div class="mb-4">
+    <h1 class="h3 fw-bold mb-1">Access Denied</h1>
+    <p class="text-muted mb-0">You are not authorised to view this page</p>
 </div>
+
+<div class="alert alert-danger">
+    You do not have permission to access this page.
+</div>
+
+<a class="btn btn-primary w-100" asp-controller="Account" asp-action="Login">
+    <i class="fas fa-sign-in-alt me-1"></i> Back to Login
+</a>
