@@ -90,6 +90,7 @@
     <Folder Include="Stored Procedures\AuditTrails" />
     <Folder Include="Stored Procedures\PatientTracker" />
     <Folder Include="Scripts" />
+    <Folder Include="Scripts\Tools" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="dbo\Tables\Users.sql" />
@@ -230,5 +231,10 @@
          source-controlled but not compiled as schema objects. -->
     <PostDeploy Include="Scripts\Script.PostDeployment.sql" />
     <None Include="Scripts\Seed_Lookups.sql" />
+    <None Include="Scripts\Seed_Location.sql" />
+    <!-- The generator for Seed_Location.sql. Carried as None purely so it stays
+         visible in Solution Explorer beside the file it writes; it is not
+         compiled, not deployed, and never runs during a publish. -->
+    <None Include="Scripts\Tools\New-SeedLocation.ps1" />
   </ItemGroup>
 </Project>

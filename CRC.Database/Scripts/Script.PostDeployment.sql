@@ -16,4 +16,7 @@
     -------------------------------------------------------------------------------
 */
 
+-- Smallest seed first, so a publish log reads in a sensible order. Nothing here
+-- depends on it: dbo.LU_LOCATION has no foreign key to the other lookup tables.
 :r .\Seed_Lookups.sql
+:r .\Seed_Location.sql
