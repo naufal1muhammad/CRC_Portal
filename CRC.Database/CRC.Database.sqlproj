@@ -89,6 +89,7 @@
     <Folder Include="Stored Procedures\StaffSlots" />
     <Folder Include="Stored Procedures\AuditTrails" />
     <Folder Include="Stored Procedures\PatientTracker" />
+    <Folder Include="Scripts" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="dbo\Tables\Users.sql" />
@@ -222,5 +223,12 @@
     <Build Include="Stored Procedures\PatientTracker\spPatientTracker_Appointments_List.sql" />
     <Build Include="Stored Procedures\PatientTracker\spPatientTracker_Procedures_List.sql" />
     <Build Include="Stored Procedures\PatientTracker\spPatientTracker_StalledCount_Get.sql" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- SSDT allows only one PostDeploy script (Script.PostDeployment.sql); it :r-includes the
+         individual seed files, which are carried in the project as None so they are
+         source-controlled but not compiled as schema objects. -->
+    <PostDeploy Include="Scripts\Script.PostDeployment.sql" />
+    <None Include="Scripts\Seed_Lookups.sql" />
   </ItemGroup>
 </Project>
