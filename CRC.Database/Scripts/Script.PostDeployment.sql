@@ -13,10 +13,16 @@
 
     The seed files are carried in the project as <None> items: source-controlled,
     but not compiled as schema objects.
+
+    ORDER: lookups -> location -> users. That is a convention here, not a
+    requirement — none of the three depends on another. dbo.LU_LOCATION has no
+    foreign key to the other lookup tables, and dbo.Users has no foreign keys at
+    all (Staff_ID is a plain VARCHAR column, and only User_Type 3 users carry one).
+    Smallest first simply makes a publish log read sensibly, and the account that
+    can log in is created last, once the data it will look at is in place.
     -------------------------------------------------------------------------------
 */
 
--- Smallest seed first, so a publish log reads in a sensible order. Nothing here
--- depends on it: dbo.LU_LOCATION has no foreign key to the other lookup tables.
 :r .\Seed_Lookups.sql
 :r .\Seed_Location.sql
+:r .\Seed_Users.sql

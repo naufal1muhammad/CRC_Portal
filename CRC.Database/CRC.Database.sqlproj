@@ -232,6 +232,7 @@
     <PostDeploy Include="Scripts\Script.PostDeployment.sql" />
     <None Include="Scripts\Seed_Lookups.sql" />
     <None Include="Scripts\Seed_Location.sql" />
+    <None Include="Scripts\Seed_Users.sql" />
     <!-- The generator for Seed_Location.sql. Carried as None purely so it stays
          visible in Solution Explorer beside the file it writes; it is not
          compiled, not deployed, and never runs during a publish. -->
