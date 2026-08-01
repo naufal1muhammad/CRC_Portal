@@ -29,7 +29,7 @@ BEGIN
         @FileName,
         @FilePath,
         @ContentType,
-        CONVERT(VARCHAR(100), GETDATE(), 120)
+        CONVERT(VARCHAR(100), GETUTCDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Singapore Standard Time', 120)
     );
 
     DECLARE @InsertedPatientDocumentId INT = CONVERT(INT, SCOPE_IDENTITY());

@@ -29,7 +29,7 @@ BEGIN
         @FileName,
         @FilePath,
         @ContentType,
-        GETDATE()
+        CAST(GETUTCDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Singapore Standard Time' AS DATETIME)
     );
 
     DECLARE @InsertedStaffDocumentId INT = CONVERT(INT, SCOPE_IDENTITY());
