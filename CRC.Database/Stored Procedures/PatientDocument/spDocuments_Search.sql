@@ -19,6 +19,7 @@ BEGIN
     IF (@Mode = 'PATIENT')
     BEGIN
         SELECT
+            d.[PatientDocument_ID] AS [DocumentId],
             d.[Patient_ID] AS [Id],
             pb.[Patient_Name] AS [Name],
             COALESCE(NULLIF(LTRIM(RTRIM(t.[PatientDocumentType_Name])), ''), NULLIF(LTRIM(RTRIM(d.[PatientDocumentType_ID])), '')) AS [DocumentType],
@@ -46,6 +47,7 @@ BEGIN
     ELSE IF (@Mode = 'STAFF')
     BEGIN
         SELECT
+            d.[StaffDocument_ID] AS [DocumentId],
             d.[Staff_ID] AS [Id],
             s.[Staff_Name] AS [Name],
             COALESCE(NULLIF(LTRIM(RTRIM(t.[StaffDocumentType_Name])), ''), NULLIF(LTRIM(RTRIM(d.[StaffDocumentType_ID])), '')) AS [DocumentType],
@@ -73,6 +75,7 @@ BEGIN
     ELSE
     BEGIN
         SELECT
+            CAST(NULL AS INT) AS [DocumentId],
             CAST(NULL AS VARCHAR(100)) AS [Id],
             CAST(NULL AS VARCHAR(200)) AS [Name],
             CAST(NULL AS VARCHAR(200)) AS [DocumentType],

@@ -157,6 +157,25 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Nothing under /uploads is ever served again. Patient and staff documents live in a PRIVATE Azure
+// Blob container (Services/AzureBlobDocumentStorage.cs) and are reached only through the
+// authenticated *DocumentUrl endpoints, which mint a 5-minute read SAS.
+//
+// This branch exists because UseStaticFiles() runs BEFORE authentication and performs no
+// authorisation check of its own: any file that ends up under wwwroot is public, permanently, to
+// anyone holding the URL. Files uploaded by earlier versions are STILL PHYSICALLY PRESENT on the
+// Azure App Service disk — a publish never deletes them ("Remove additional files at destination"
+// is deliberately off, to protect logs) — so this 404 is what actually makes them unreachable.
+// Do not remove it, and do not narrow it to a sub-path.
+app.UseWhen(
+    ctx => ctx.Request.Path.StartsWithSegments("/uploads", StringComparison.OrdinalIgnoreCase),
+    branch => branch.Run(ctx =>
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return Task.CompletedTask;
+    }));
+
 app.UseStaticFiles();
 
 app.UseRouting();

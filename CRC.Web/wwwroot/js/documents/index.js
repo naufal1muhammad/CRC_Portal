@@ -208,6 +208,11 @@
 
         tableBody.innerHTML = '';
 
+        // The mode is read once, here, and baked into every row. renderResults always runs straight after
+        // the search that produced these rows, so this is the mode they were fetched with — and freezing it
+        // means flipping the Patient/Staff radio afterwards cannot send a click to the wrong table.
+        const mode = getCurrentMode();
+
         data.forEach(row => {
             const tr = document.createElement('tr');
 
@@ -215,17 +220,21 @@
             const name = row.name || '';
             const docType = row.documentType || '';
             const fileName = row.fileName || '';
-            const filePath = row.filePath || '#';
+            const documentId = row.documentId || 0;
             const uploadedOn = row.uploadedOn || '';
 
+            // The link carries only a document id and a mode. It is resolved at click time to a 5-minute
+            // read SAS URL minted by the server, so no durable file URL is ever placed in the DOM: the
+            // container is private and there is nothing in the page for anyone to copy, bookmark or share.
             tr.innerHTML = `
                 <td>${id}</td>
                 <td>${name}</td>
                 <td>${docType}</td>
                 <td>
-                    <a href="${filePath}"
-                       target="_blank"
-                       rel="noopener noreferrer">
+                    <a href="#"
+                       class="doc-open"
+                       data-id="${documentId}"
+                       data-mode="${mode}">
                         ${fileName}
                     </a>
                 </td>
@@ -237,6 +246,50 @@
 
         // now turn the table into a DataTable
         initDataTable();
+    }
+
+    async function openDocument(mode, docId) {
+        if (!mode || !docId || docId <= 0) return;
+
+        if (msg) {
+            msg.textContent = '';
+            msg.classList.remove('text-danger', 'text-success');
+        }
+
+        try {
+            const response = await fetch(
+                '/Documents/DocumentUrl?mode=' + encodeURIComponent(mode) + '&id=' + encodeURIComponent(docId),
+                {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+
+            if (!response.ok) {
+                if (msg) {
+                    msg.textContent = 'Server error while opening document.';
+                    msg.classList.add('text-danger');
+                }
+                return;
+            }
+
+            const result = await response.json();
+
+            if (!result.success) {
+                if (msg) {
+                    msg.textContent = result.message || 'Failed to open document.';
+                    msg.classList.add('text-danger');
+                }
+                return;
+            }
+
+            window.open(result.url, '_blank', 'noopener,noreferrer');
+        } catch (err) {
+            console.error('Error opening document', err);
+            if (msg) {
+                msg.textContent = 'An unexpected error occurred while opening document.';
+                msg.classList.add('text-danger');
+            }
+        }
     }
 
     async function performSearch() {
@@ -361,6 +414,24 @@
                 clearFilters();
             });
         }
+
+        // Delegated, and deliberately bound to `document`: the rows this handler serves are rebuilt by
+        // renderResults and then again by DataTables on every paging, sorting and search interaction, so a
+        // handler bound per row would be gone after the first page change. `document` outlives all of it.
+        document.addEventListener('click', function (e) {
+            const openLink = e.target.closest('.doc-open');
+            if (!openLink) return;
+
+            e.preventDefault();
+
+            const idStr = openLink.getAttribute('data-id');
+            const docId = idStr ? parseInt(idStr, 10) : 0;
+            const mode = openLink.getAttribute('data-mode') || '';
+
+            if (docId > 0) {
+                openDocument(mode, docId);
+            }
+        });
     }
 
     document.addEventListener('DOMContentLoaded', function () {

@@ -19,3 +19,7 @@
 
 # Serilog rolling log files
 CRC.Web/Logs/*.log
+
+# Uploaded documents never belong in source control. They now live in a private Azure Blob
+# container (see DOCUMENTSTORAGE.md); this rule is a backstop in case a stale build drops files here.
+CRC.Web/wwwroot/uploads/
