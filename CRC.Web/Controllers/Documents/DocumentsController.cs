@@ -13,18 +13,19 @@ namespace CRC.Web.Controllers.Documents
     public class DocumentsController : Controller
     {
         private readonly DatabaseHelper _db;
-        private readonly IWebHostEnvironment _env;
+
+        // IWebHostEnvironment is deliberately gone: its only purpose here was resolving the web root so a
+        // document could be read back from wwwroot/uploads. Documents live in a private blob container now
+        // and this controller never touches the file system.
         private readonly IDocumentStorage _documentStorage;
         private readonly ILogger<DocumentsController> _logger;
 
         public DocumentsController(
             DatabaseHelper db,
-            IWebHostEnvironment env,
             IDocumentStorage documentStorage,
             ILogger<DocumentsController> logger)
         {
             _db = db;
-            _env = env;
             _documentStorage = documentStorage;
             _logger = logger;
         }

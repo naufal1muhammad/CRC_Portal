@@ -85,6 +85,10 @@ this order:
 4. Create **Staff** (a `User_Type = 3` account requires a staff record to point at).
 5. Configure the **document settings** — patient documents per discharge type, staff documents per staff type.
 
+The documents themselves are not stored in this database — only their metadata and a blob key. See
+[`DOCUMENTSTORAGE.md`](DOCUMENTSTORAGE.md) for where the files actually live and what to configure before the
+first upload works.
+
 ## Adding a lookup value later
 
 A publish only ever **INSERTs missing rows**. It never updates and never deletes an existing one.
