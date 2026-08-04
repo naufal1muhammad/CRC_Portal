@@ -164,5 +164,43 @@ namespace CRC.Web.Infrastructure
                 "AUDIT Patient documents purged. PatientId={PatientId} BlobCount={BlobCount}",
                 patientId, blobCount);
         }
+
+        // The staff counterparts of the four methods above. Staff documents are CVs, NRIC scans, MMC
+        // registration certificates and indemnity memberships — personal data on the same footing as a
+        // patient's file, kept in the same private container, and so audited at the same levels.
+        public static void StaffDocumentUploaded(HttpContext context, string staffId, int documentId,
+            string docTypeId, string blobName, string fileName, long sizeBytes)
+        {
+            _logger.Write(LogEventLevel.Information,
+                "AUDIT Staff document uploaded. StaffId={StaffId} DocumentId={DocumentId} DocTypeId={DocTypeId} BlobName={BlobName} FileName={FileName} SizeBytes={SizeBytes}",
+                staffId, documentId, docTypeId, blobName, fileName, sizeBytes);
+        }
+
+        // A download is really the minting of a short-lived read SAS for one document — the bytes are then
+        // fetched from storage directly, where the application can no longer see them. This line is the only
+        // record that someone was handed access to that staff member's file.
+        public static void StaffDocumentDownloaded(HttpContext context, string staffId, int documentId, string fileName)
+        {
+            _logger.Write(LogEventLevel.Information,
+                "AUDIT Staff document downloaded. StaffId={StaffId} DocumentId={DocumentId} FileName={FileName}",
+                staffId, documentId, fileName);
+        }
+
+        public static void StaffDocumentDeleted(HttpContext context, string staffId, int documentId, string blobName)
+        {
+            _logger.Write(LogEventLevel.Warning,
+                "AUDIT Staff document deleted. StaffId={StaffId} DocumentId={DocumentId} BlobName={BlobName}",
+                staffId, documentId, blobName);
+        }
+
+        // Written by the staff cascade delete: every document belonging to the staff member was removed from
+        // the private container along with the staff record. BlobCount is the number of keys spStaff_Delete
+        // handed back for removal.
+        public static void StaffDocumentsPurged(HttpContext context, string staffId, int blobCount)
+        {
+            _logger.Write(LogEventLevel.Warning,
+                "AUDIT Staff documents purged. StaffId={StaffId} BlobCount={BlobCount}",
+                staffId, blobCount);
+        }
     }
 }

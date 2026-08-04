@@ -606,12 +606,11 @@
                     li.setAttribute('data-doc-id', d.documentId);
 
                     const safeName = d.fileName || '';
-                    const safePath = d.filePath || '#';
                     const uploaded = d.uploadedOn || '';
 
                     const left = document.createElement('div');
                     left.innerHTML = `
-                        <a href="${safePath}" target="_blank" rel="noopener noreferrer">
+                        <a href="#" class="staff-doc-open" data-id="${d.documentId}">
                             ${safeName}
                         </a>
                         <br />
@@ -675,11 +674,52 @@
         showDocumentsMessage('Document will be deleted when you click Save.', false);
     }
 
+    // The document link carries only an id. It is resolved at click time to a 5-minute read SAS URL minted
+    // by the server, so no durable file URL is ever placed in the DOM: the container is private and there is
+    // nothing in the page for anyone to copy, bookmark or share.
+    async function openDocument(docId) {
+        if (!docId || docId <= 0) return;
+
+        try {
+            const response = await fetch('/Staff/GetStaffDocumentUrl?id=' + encodeURIComponent(docId), {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+
+            if (!response.ok) {
+                showDocumentsMessage('Server error while opening document.', true);
+                return;
+            }
+
+            const result = await response.json();
+
+            if (!result.success) {
+                showDocumentsMessage(result.message || 'Failed to open document.', true);
+                return;
+            }
+
+            window.open(result.url, '_blank', 'noopener,noreferrer');
+        } catch (err) {
+            console.error('Error opening staff document', err);
+            showDocumentsMessage('An unexpected error occurred while opening document.', true);
+        }
+    }
+
     function attachDocumentsHandlers() {
         // Delete handler
         document.addEventListener('click', function (e) {
             const target = e.target;
             if (!target) return;
+
+            const openLink = target.closest('.staff-doc-open');
+            if (openLink) {
+                e.preventDefault();
+                const openIdStr = openLink.getAttribute('data-id');
+                const openDocId = openIdStr ? parseInt(openIdStr, 10) : 0;
+                if (openDocId > 0) {
+                    openDocument(openDocId);
+                }
+            }
 
             const deleteBtn = target.closest('.btn-staff-doc-delete');
             if (deleteBtn) {

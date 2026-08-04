@@ -1,29 +1,31 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using CRC.Data.Database;
 using CRC.Web.Infrastructure;
+using CRC.Web.Services;
 
 namespace CRC.Web.Controllers.Staff
 {
     public class StaffController : Controller
     {
         private readonly DatabaseHelper _db;
-        private readonly IWebHostEnvironment _env;
+        private readonly IDocumentStorage _documentStorage;
         private readonly ILogger<StaffController> _logger;
 
-        public StaffController(DatabaseHelper db, IWebHostEnvironment env, ILogger<StaffController> logger)
+        // IWebHostEnvironment is deliberately gone: its only consumer was the web-root helper that resolved
+        // the old on-disk document folder. Staff documents now live in the private blob container, and this
+        // controller no longer knows anything about the local filesystem.
+        public StaffController(DatabaseHelper db, IDocumentStorage documentStorage, ILogger<StaffController> logger)
         {
             _db = db;
-            _env = env;
+            _documentStorage = documentStorage;
             _logger = logger;
         }
 
@@ -332,7 +334,7 @@ namespace CRC.Web.Controllers.Staff
         }
 
         // POST: /Staff/SaveStaffWithDocuments
-        // Saves Staff (insert/update) and uploads any selected documents in the same request.
+        // Saves Staff (insert/update) and stores any selected documents in the same request.
         [HttpPost]
         [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> SaveStaffWithDocuments(
@@ -383,7 +385,7 @@ namespace CRC.Web.Controllers.Staff
             // Mandatory documents for Staff Type
             var mandatoryDocs = await GetMandatoryDocsByStaffType(model.StaffTypeId);
 
-            // Document types that will exist after this save (existing - pending deletes + new uploads)
+            // Document types that will exist after this save (existing - pending deletes + new files)
             var resultingDocTypeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             if (!model.IsNew)
@@ -410,7 +412,7 @@ namespace CRC.Web.Controllers.Staff
                 }
             }
 
-            // New uploads in this request
+            // New files in this request
             if (docTypeIds != null)
             {
                 foreach (var t in docTypeIds)
@@ -447,15 +449,45 @@ namespace CRC.Web.Controllers.Staff
             docTypeNames ??= new List<string>();
             files ??= new List<IFormFile>();
 
-            var createdFiles = new List<string>();
-            var deleteFilePaths = new List<string>();
-
-            var webRoot = GetWebRootPath();
-            var uploadRoot = Path.Combine(webRoot, "uploads", "staff");
-            if (!Directory.Exists(uploadRoot))
+            // Validate the WHOLE batch before anything is written anywhere. A bad file at the end of a
+            // selection must not leave the earlier ones already sitting in the container, and a rejection here
+            // costs nothing because neither the transaction nor a single upload has started yet.
+            foreach (var candidate in files)
             {
-                Directory.CreateDirectory(uploadRoot);
+                if (candidate is null)
+                {
+                    return Ok(new
+                    {
+                        success = false,
+                        message = "One of the selected files could not be read.",
+                        staffId = model.IsNew ? string.Empty : model.StaffId
+                    });
+                }
+
+                var (ok, validationMessage) = DocumentValidation.Validate(candidate);
+                if (!ok)
+                {
+                    return Ok(new
+                    {
+                        success = false,
+                        message = validationMessage,
+                        staffId = model.IsNew ? string.Empty : model.StaffId
+                    });
+                }
             }
+
+            // Two ledgers, because blob storage has no transaction of its own:
+            //   uploadedBlobs   — keys written during THIS request, deleted again if the transaction fails.
+            //   deleteBlobNames — keys of documents the user removed, deleted only AFTER the commit succeeds.
+            // The asymmetry is the point. Storage is compensated by hand in both directions, and each
+            // direction waits for the outcome that makes its removal safe.
+            var uploadedBlobs = new List<string>();
+            var deleteBlobNames = new List<string>();
+
+            // Audit lines for the documents added and removed, held back until the commit. Writing them inside
+            // the transaction would record changes that a rollback then erases.
+            var pendingUploadAudits = new List<(string BlobName, string FileName, string DocTypeId, long SizeBytes)>();
+            var pendingDeleteAudits = new List<(int DocumentId, string BlobName)>();
 
             string staffId = string.Empty;
 
@@ -525,7 +557,9 @@ namespace CRC.Web.Controllers.Staff
                         await ExecNonQueryAsync(conn, tx, "spStaff_Update", updateParams);
                     }
 
-                    // Get file paths for docs to be deleted (and delete DB rows). Do NOT delete physical files yet.
+                    // Capture the blob keys of the docs being deleted (and delete the DB rows). Do NOT remove
+                    // anything from storage yet — the transaction may still roll the rows back, and a deleted
+                    // blob cannot be un-deleted.
                     foreach (var docId in deleteSet)
                     {
                         var dtDoc = await ExecDataTableAsync(conn, tx, "spStaffDocument_GetById",
@@ -533,10 +567,11 @@ namespace CRC.Web.Controllers.Staff
 
                         if (dtDoc.Rows.Count > 0)
                         {
-                            var filePath = dtDoc.Rows[0]["FilePath"]?.ToString() ?? "";
-                            if (!string.IsNullOrWhiteSpace(filePath))
+                            var blobName = dtDoc.Rows[0]["BlobName"]?.ToString() ?? "";
+                            if (!string.IsNullOrWhiteSpace(blobName))
                             {
-                                deleteFilePaths.Add(filePath);
+                                deleteBlobNames.Add(blobName);
+                                pendingDeleteAudits.Add((docId, blobName));
                             }
                         }
 
@@ -544,29 +579,43 @@ namespace CRC.Web.Controllers.Staff
                             new[] { new SqlParameter("@StaffDocument_ID", docId) });
                     }
 
-                    // Upload new documents (if any)
+                    // Upload new documents (if any).
+                    //
+                    // THE ORDERING PROBLEM, and why the blob writes sit inside the transaction rather than before
+                    // it. The blob key is staff/{Staff_ID}/{guid}{ext}, but for a NEW staff member the
+                    // Staff_ID does not exist until spStaff_Insert has run — and spStaff_Insert only runs
+                    // inside this transaction. So the upload cannot be hoisted out of the transaction the way
+                    // the validation was: the key it needs has not been generated yet.
+                    //
+                    // The transaction therefore opens first, spStaff_Insert/spStaff_Update runs to obtain
+                    // staffId, and only then do the bytes go to the container. What that costs is that a blob
+                    // can be written and the transaction can still fail afterwards, so the guarantee is kept
+                    // by compensation instead of by ordering: every key lands in uploadedBlobs as it is
+                    // written, and the catch block below deletes all of them if anything throws. The
+                    // alternative — pre-generating a Staff_ID in the application — would move id generation
+                    // out of spStaff_Insert, where it belongs, to buy a rollback that a best-effort delete
+                    // already provides.
                     for (int i = 0; i < files.Count; i++)
                     {
                         var file = files[i];
-                        if (file == null || file.Length == 0) continue;
 
                         string tId = (i < docTypeIds.Count) ? docTypeIds[i] : string.Empty;
                         string tName = (i < docTypeNames.Count) ? docTypeNames[i] : string.Empty;
 
-                        var originalFileName = Path.GetFileName(file.FileName);
-                        var uniqueFileName = $"{Guid.NewGuid():N}_{originalFileName}";
-                        var physicalPath = Path.Combine(uploadRoot, uniqueFileName);
+                        var safeFileName = DocumentValidation.SafeFileName(file.FileName);
+                        var contentType = file.ContentType ?? "application/octet-stream";
 
-                        // Write to disk BEFORE inserting DB row. If DB fails, we will delete the file on rollback.
-                        await using (var stream = new FileStream(physicalPath, FileMode.Create))
+                        // Server-generated key: staff/{Staff_ID}/{guid}{ext}. Nothing the user typed becomes
+                        // part of it, and the bytes are streamed straight to the container — never to disk.
+                        var blobName = DocumentValidation.BuildBlobName("staff", staffId, file.FileName);
+
+                        await using (var stream = file.OpenReadStream())
                         {
-                            await file.CopyToAsync(stream);
+                            await _documentStorage.UploadAsync(stream, blobName, contentType);
                         }
 
-                        createdFiles.Add(physicalPath);
-
-                        var relativePath = $"/uploads/staff/{uniqueFileName}";
-                        var contentType = file.ContentType ?? "application/octet-stream";
+                        uploadedBlobs.Add(blobName);
+                        pendingUploadAudits.Add((blobName, safeFileName, tId, file.Length));
 
                         var insertDocParams = new[]
                         {
@@ -574,8 +623,8 @@ namespace CRC.Web.Controllers.Staff
                             new SqlParameter("@Staff_Name",            (object?)model.Name ?? DBNull.Value),
                             new SqlParameter("@StaffDocumentType_ID",  (object?)tId ?? DBNull.Value),
                             new SqlParameter("@StaffDocumentType_Name",(object?)tName ?? DBNull.Value),
-                            new SqlParameter("@FileName",              originalFileName),
-                            new SqlParameter("@FilePath",              relativePath),
+                            new SqlParameter("@FileName",              safeFileName),
+                            new SqlParameter("@BlobName",              blobName),
                             new SqlParameter("@ContentType",           contentType)
                         };
 
@@ -601,10 +650,23 @@ namespace CRC.Web.Controllers.Staff
                         model.Phone, model.Email, model.StaffTypeId, model.StaffBase);
                 }
 
-                // Delete physical files only AFTER successful commit
-                foreach (var fp in deleteFilePaths)
+                // The document audit lines are written here, not in the loop above, because until the commit
+                // returned there was no guarantee any of those rows would survive.
+                foreach (var upload in pendingUploadAudits)
                 {
-                    TryDeletePhysicalFile(fp);
+                    // DocumentId is 0 because spStaffDocument_Insert writes its own AuditTrails row but does
+                    // not hand the new identity back to the caller; the blob key is what ties this audit line
+                    // to the row it describes.
+                    AuditLog.StaffDocumentUploaded(HttpContext, staffId, 0, upload.DocTypeId,
+                        upload.BlobName, upload.FileName, upload.SizeBytes);
+                }
+
+                // Remove the storage for deleted documents only AFTER a successful commit.
+                await TryDeleteBlobsAsync(deleteBlobNames);
+
+                foreach (var removed in pendingDeleteAudits)
+                {
+                    AuditLog.StaffDocumentDeleted(HttpContext, staffId, removed.DocumentId, removed.BlobName);
                 }
 
                 return Ok(new
@@ -616,14 +678,17 @@ namespace CRC.Web.Controllers.Staff
             }
             catch (SqlException ex)
             {
-                // Cleanup any newly written files when DB failed
-                CleanupCreatedFiles(createdFiles);
+                // The transaction is already rolled back, so the DB is clean — but the blobs written above are
+                // not, because storage took no part in it. Compensate by deleting exactly the keys this
+                // request created. Cleanup failures are logged inside the helper and never rethrown: the
+                // caller must see the ORIGINAL failure, not whatever went wrong while tidying up after it.
+                await TryDeleteBlobsAsync(uploadedBlobs);
                 _logger.LogError(ex, "SqlException saving staff with documents StaffId={StaffId}", staffId);
                 return Ok(ErrorResponse.ForUser(HttpContext));
             }
             catch (Exception ex)
             {
-                CleanupCreatedFiles(createdFiles);
+                await TryDeleteBlobsAsync(uploadedBlobs);
                 _logger.LogError(ex, "Unexpected error saving staff with documents StaffId={StaffId}", staffId);
                 return Ok(ErrorResponse.ForUser(HttpContext));
             }
@@ -675,14 +740,6 @@ namespace CRC.Web.Controllers.Staff
             return list;
         }
 
-        private string GetWebRootPath()
-        {
-            if (!string.IsNullOrWhiteSpace(_env.WebRootPath))
-                return _env.WebRootPath;
-
-            return Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-        }
-
         private async Task<DataTable> ExecDataTableAsync(SqlConnection conn, SqlTransaction tx, string storedProc, SqlParameter[]? parameters)
         {
             using var cmd = await _db.CreateStoredProcedureCommandAsync(conn, tx, storedProc, parameters);
@@ -699,57 +756,34 @@ namespace CRC.Web.Controllers.Staff
             return await cmd.ExecuteNonQueryAsync();
         }
 
-        private static void CleanupCreatedFiles(List<string> createdFiles)
+        /// <summary>
+        /// Removes blobs best-effort, one at a time, swallowing and logging every failure. This is the single
+        /// compensation path for storage, used in both directions: to undo blob writes after a failed transaction,
+        /// and to reclaim storage after a successful one.
+        /// <para>
+        /// Nothing here is allowed to throw. In the rollback case an exception would replace the real failure
+        /// with a cleanup failure and the user would be told the wrong thing; in the post-commit case the rows
+        /// are already gone and the user has already been told the delete worked. Either way the only casualty
+        /// of a failed delete is an orphaned blob, which is an operational clean-up job — hence a warning in
+        /// app-*.log rather than a faulted request.
+        /// </para>
+        /// </summary>
+        private async Task TryDeleteBlobsAsync(IEnumerable<string> blobNames)
         {
-            if (createdFiles == null || createdFiles.Count == 0) return;
+            if (blobNames == null) return;
 
-            foreach (var fp in createdFiles)
+            foreach (var blobName in blobNames)
             {
+                if (string.IsNullOrWhiteSpace(blobName)) continue;
+
                 try
                 {
-                    if (string.IsNullOrWhiteSpace(fp)) continue;
-                    if (System.IO.File.Exists(fp))
-                    {
-                        System.IO.File.Delete(fp);
-                    }
+                    await _documentStorage.DeleteAsync(blobName);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // best effort
+                    _logger.LogWarning(ex, "Failed to delete staff document blob {BlobName}", blobName);
                 }
-            }
-        }
-
-        private void TryDeletePhysicalFile(string filePath)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(filePath)) return;
-
-                var candidatePath = filePath.Trim().TrimStart('~').TrimStart('/', '\\');
-
-                // If it's already a physical path
-                if (Path.IsPathRooted(candidatePath))
-                {
-                    if (System.IO.File.Exists(candidatePath))
-                        System.IO.File.Delete(candidatePath);
-                    return;
-                }
-
-                // Treat as web-relative path like /uploads/staff/xxx.pdf or \uploads\staff\xxx.pdf
-                var rel = candidatePath
-                    .Replace('/', Path.DirectorySeparatorChar)
-                    .Replace('\\', Path.DirectorySeparatorChar);
-                var physicalPath = Path.Combine(GetWebRootPath(), rel);
-
-                if (System.IO.File.Exists(physicalPath))
-                {
-                    System.IO.File.Delete(physicalPath);
-                }
-            }
-            catch
-            {
-                // best effort
             }
         }
 
@@ -772,7 +806,7 @@ namespace CRC.Web.Controllers.Staff
 
                 // spStaff_Delete returns:
                 //   Result set 1: Status ('Success' | 'Blocked' | 'NotFound'), Message
-                //   Result set 2: FilePath rows for StaffDocument files to physically remove (only when Success)
+                //   Result set 2: BlobName rows for the StaffDocument blobs to remove (only when Success)
                 var ds = await _db.ExecuteDataSetAsync("spStaff_Delete", parameters);
 
                 string status = string.Empty;
@@ -794,19 +828,25 @@ namespace CRC.Web.Controllers.Staff
                     });
                 }
 
-                // Physically remove all StaffDocument files for this staff (best effort).
+                // Remove every StaffDocument blob for this staff member (best effort). The rows are already
+                // gone; leaving the blobs would retain personal data after the record it belonged to was
+                // deleted, which is the more serious half of an orphan.
+                var blobNames = new List<string>();
                 if (ds.Tables.Count > 1)
                 {
                     foreach (DataRow fileRow in ds.Tables[1].Rows)
                     {
-                        var filePath = fileRow["FilePath"]?.ToString();
-                        if (!string.IsNullOrWhiteSpace(filePath))
+                        var blobName = fileRow["BlobName"]?.ToString();
+                        if (!string.IsNullOrWhiteSpace(blobName))
                         {
-                            TryDeletePhysicalFile(filePath);
+                            blobNames.Add(blobName);
                         }
                     }
                 }
 
+                await TryDeleteBlobsAsync(blobNames);
+
+                AuditLog.StaffDocumentsPurged(HttpContext, model.StaffId, blobNames.Count);
                 AuditLog.StaffDeleted(HttpContext, model.StaffId);
 
                 return Ok(new { success = true, message = "Staff deleted successfully." });
@@ -1019,6 +1059,10 @@ namespace CRC.Web.Controllers.Staff
 
             var list = new List<object>();
 
+            // Metadata only — the blob key is deliberately NOT projected. The container is private, so a
+            // storage key is useless to the browser and is exactly the kind of detail that should never leave
+            // the server. The file itself is fetched through GetStaffDocumentUrl, which mints a short-lived
+            // read SAS for one document at click time.
             foreach (DataRow row in dt.Rows)
             {
                 list.Add(new
@@ -1029,7 +1073,6 @@ namespace CRC.Web.Controllers.Staff
                     staffDocumentTypeId = row["StaffDocumentType_ID"]?.ToString() ?? "",
                     staffDocumentTypeName = row["StaffDocumentType_Name"]?.ToString() ?? "",
                     fileName = row["FileName"]?.ToString() ?? "",
-                    filePath = row["FilePath"]?.ToString() ?? "",
                     contentType = row["ContentType"]?.ToString() ?? "",
                     uploadedOn = row["UploadedOn"]?.ToString() ?? ""
                 });
@@ -1039,8 +1082,20 @@ namespace CRC.Web.Controllers.Staff
         }
 
         // POST: /Staff/UploadStaffDocuments
+        //
+        // NO PAGE CURRENTLY CALLS THIS. Grepping every view and every .js file finds no caller —
+        // js/staff/edit-staffbasic.js does all of its document work through SaveStaffWithDocuments. It is kept
+        // and migrated because it is nonetheless a LIVE, AUTHENTICATED HTTP ENDPOINT: leaving it on the old
+        // disk path would leave the public-file hole open behind an unused door. Deleting it is the owner's
+        // call, not this change's.
+        //
+        // The request size limits are raised on purpose: several 20 MB documents have to fit inside a single
+        // multipart body, and the ASP.NET Core default of roughly 30 MB would reject a two-file batch outright,
+        // before any of the code below ever runs.
         [HttpPost]
         [Authorize(Policy = "AdminOrSuper")]
+        [RequestSizeLimit(120_000_000)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 120_000_000)]
         public async Task<IActionResult> UploadStaffDocuments(
             string staffId,
             string staffName,
@@ -1061,11 +1116,21 @@ namespace CRC.Web.Controllers.Staff
             docTypeIds ??= new List<string>();
             docTypeNames ??= new List<string>();
 
-            // Adjust path as per your project
-            var uploadRoot = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "staff");
-            if (!Directory.Exists(uploadRoot))
+            // Validate the WHOLE batch first, in a pass of its own. A bad file has to fail BEFORE any blob is
+            // written — otherwise the files that happened to be validated earlier are already in the container
+            // when the request is rejected, and a refused upload leaves orphaned staff data behind.
+            foreach (var candidate in files)
             {
-                Directory.CreateDirectory(uploadRoot);
+                if (candidate is null)
+                {
+                    return Ok(new { success = false, message = "One of the selected files could not be read." });
+                }
+
+                var (ok, message) = DocumentValidation.Validate(candidate);
+                if (!ok)
+                {
+                    return Ok(new { success = false, message });
+                }
             }
 
             try
@@ -1073,23 +1138,19 @@ namespace CRC.Web.Controllers.Staff
                 for (int i = 0; i < files.Count; i++)
                 {
                     var file = files[i];
-                    if (file == null || file.Length == 0) continue;
 
                     string docTypeId = (i < docTypeIds.Count) ? docTypeIds[i] : string.Empty;
                     string docTypeName = (i < docTypeNames.Count) ? docTypeNames[i] : string.Empty;
 
-                    var originalFileName = Path.GetFileName(file.FileName);
-                    var uniqueFileName = $"{Guid.NewGuid():N}_{originalFileName}";
-
-                    var filePath = Path.Combine(uploadRoot, uniqueFileName);
-
-                    using (var stream = new FileStream(filePath, FileMode.Create))
-                    {
-                        await file.CopyToAsync(stream);
-                    }
-
-                    var relativePath = $"/uploads/staff/{uniqueFileName}";
+                    var safeFileName = DocumentValidation.SafeFileName(file.FileName);
                     var contentType = file.ContentType ?? "application/octet-stream";
+
+                    // Server-generated key: staff/{Staff_ID}/{guid}{ext}. Nothing the user typed becomes part
+                    // of it, and the bytes are streamed straight to the container — never to disk.
+                    var blobName = DocumentValidation.BuildBlobName("staff", staffId, file.FileName);
+
+                    await using var stream = file.OpenReadStream();
+                    await _documentStorage.UploadAsync(stream, blobName, contentType);
 
                     var parameters = new[]
                     {
@@ -1097,19 +1158,87 @@ namespace CRC.Web.Controllers.Staff
                 new SqlParameter("@Staff_Name",           (object?)staffName ?? DBNull.Value),
                 new SqlParameter("@StaffDocumentType_ID", (object?)docTypeId ?? DBNull.Value),
                 new SqlParameter("@StaffDocumentType_Name",(object?)docTypeName ?? DBNull.Value),
-                new SqlParameter("@FileName",             originalFileName),
-                new SqlParameter("@FilePath",             relativePath),
+                new SqlParameter("@FileName",             safeFileName),
+                new SqlParameter("@BlobName",             blobName),
                 new SqlParameter("@ContentType",          contentType)
             };
 
                     await _db.ExecuteNonQueryAsync("spStaffDocument_Insert", parameters);
+
+                    // DocumentId is 0 because spStaffDocument_Insert writes its own AuditTrails row but does
+                    // not hand the new identity back to the caller; the blob key is what ties this audit line
+                    // to the row it describes.
+                    AuditLog.StaffDocumentUploaded(HttpContext, staffId, 0, docTypeId ?? string.Empty,
+                        blobName, safeFileName, file.Length);
                 }
 
                 return Ok(new { success = true, message = "Files uploaded successfully." });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error uploading staff documents." });
+                _logger.LogError(ex, "Error uploading staff documents for StaffId={StaffId}", staffId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error uploading staff documents."));
+            }
+        }
+
+        // GET: /Staff/GetStaffDocumentUrl?id=...
+        //
+        // Mints a short-lived read SAS URL for ONE document so the browser can fetch it straight from the
+        // private container.
+        //
+        // The design, plainly: the container is private, so this five-minute URL is the ONLY way the browser
+        // ever reaches the bytes. It is minted per click by this authenticated action, handed back once, never
+        // persisted to the database and never rendered into the page's HTML. That is exactly what the old
+        // static-file document links got wrong: static files are served ahead of authentication and get no
+        // authorisation check at all, so every one of those links was public, and stayed public.
+        //
+        // The policy is "AdminOrSuper" — NOT the patient side's "AdminOrSuperOrStaff". Every other staff
+        // document action in this controller uses AdminOrSuper, and a download must not be reachable by a role
+        // that cannot already list the document.
+        [Authorize(Policy = "AdminOrSuper")]
+        [HttpGet]
+        public async Task<IActionResult> GetStaffDocumentUrl(int id)
+        {
+            if (id <= 0)
+            {
+                return Ok(new { success = false, message = "Invalid document ID." });
+            }
+
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spStaffDocument_GetById",
+                    new[] { new SqlParameter("@StaffDocument_ID", id) }
+                );
+
+                if (dt.Rows.Count == 0)
+                {
+                    return Ok(new { success = false, message = "Document not found." });
+                }
+
+                var row = dt.Rows[0];
+                var blobName = row["BlobName"]?.ToString();
+                var fileName = row["FileName"]?.ToString() ?? string.Empty;
+                var staffId = row["Staff_ID"]?.ToString() ?? string.Empty;
+
+                if (string.IsNullOrWhiteSpace(blobName))
+                {
+                    return Ok(new { success = false, message = "Document not found." });
+                }
+
+                var url = _documentStorage.GetReadSasUrl(blobName, TimeSpan.FromMinutes(5));
+
+                // Minting a SAS for a staff record IS a read of personal data, so it belongs on the audit
+                // channel — and it has to be written before the URL leaves the server, because the download
+                // itself happens against storage where the application can no longer observe it.
+                AuditLog.StaffDocumentDownloaded(HttpContext, staffId, id, fileName);
+
+                return Ok(new { success = true, url = url.ToString(), fileName });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating download URL for StaffDocumentId={StaffDocumentId}", id);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error opening document."));
             }
         }
 
@@ -1121,6 +1250,11 @@ namespace CRC.Web.Controllers.Staff
 
 
         // POST: /Staff/DeleteStaffDocument
+        //
+        // NO PAGE CURRENTLY CALLS THIS either — js/staff/edit-staffbasic.js marks documents for deletion and
+        // lets SaveStaffWithDocuments remove them inside its transaction. Migrated rather than deleted for the
+        // same reason as UploadStaffDocuments above: it is a live authenticated endpoint, and removing a
+        // public endpoint is the owner's decision.
         [HttpPost]
         [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> DeleteStaffDocument([FromBody] DeleteStaffDocumentRequest model)
@@ -1132,7 +1266,18 @@ namespace CRC.Web.Controllers.Staff
 
             try
             {
-                var deletedFilePathParameter = new SqlParameter("@DeletedFilePath", SqlDbType.VarChar, 500)
+                // Read the row first, only so the audit line can name the staff member the document belonged
+                // to — spStaffDocument_Delete hands back the blob key and nothing else.
+                var lookup = await _db.ExecuteDataTableAsync(
+                    "spStaffDocument_GetById",
+                    new[] { new SqlParameter("@StaffDocument_ID", model.DocumentId) }
+                );
+
+                var staffId = lookup.Rows.Count > 0
+                    ? lookup.Rows[0]["Staff_ID"]?.ToString() ?? string.Empty
+                    : string.Empty;
+
+                var deletedBlobNameParameter = new SqlParameter("@DeletedBlobName", SqlDbType.VarChar, 500)
                 {
                     Direction = ParameterDirection.Output
                 };
@@ -1140,22 +1285,29 @@ namespace CRC.Web.Controllers.Staff
                 var parameters = new[]
                 {
                     new SqlParameter("@StaffDocument_ID", model.DocumentId),
-                    deletedFilePathParameter
+                    deletedBlobNameParameter
                 };
 
                 await _db.ExecuteNonQueryAsync("spStaffDocument_Delete", parameters);
 
-                var deletedFilePath = deletedFilePathParameter.Value?.ToString();
-                if (!string.IsNullOrWhiteSpace(deletedFilePath))
+                // NULL means no row was deleted, so there is nothing in storage to remove.
+                var deletedBlobName = deletedBlobNameParameter.Value == DBNull.Value
+                    ? null
+                    : deletedBlobNameParameter.Value?.ToString();
+
+                if (!string.IsNullOrWhiteSpace(deletedBlobName))
                 {
-                    TryDeletePhysicalFile(deletedFilePath);
+                    await TryDeleteBlobsAsync(new[] { deletedBlobName });
+
+                    AuditLog.StaffDocumentDeleted(HttpContext, staffId, model.DocumentId, deletedBlobName);
                 }
 
                 return Ok(new { success = true, message = "Document deleted successfully." });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "An unexpected error occurred." });
+                _logger.LogError(ex, "Error deleting staff document StaffDocumentId={StaffDocumentId}", model.DocumentId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error deleting staff document."));
             }
         }
 
