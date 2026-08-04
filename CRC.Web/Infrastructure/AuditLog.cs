@@ -130,5 +130,39 @@ namespace CRC.Web.Infrastructure
                 "AUDIT Staff deleted. StaffId={StaffId}",
                 staffId);
         }
+
+        public static void PatientDocumentUploaded(HttpContext context, string patientId, int documentId,
+            string docTypeId, string blobName, string fileName, long sizeBytes)
+        {
+            _logger.Write(LogEventLevel.Information,
+                "AUDIT Patient document uploaded. PatientId={PatientId} DocumentId={DocumentId} DocTypeId={DocTypeId} BlobName={BlobName} FileName={FileName} SizeBytes={SizeBytes}",
+                patientId, documentId, docTypeId, blobName, fileName, sizeBytes);
+        }
+
+        // A download is really the minting of a short-lived read SAS for one document — the bytes are then
+        // fetched from storage directly, where the application can no longer see them. This line is the only
+        // record that someone was handed access to that patient's file.
+        public static void PatientDocumentDownloaded(HttpContext context, string patientId, int documentId, string fileName)
+        {
+            _logger.Write(LogEventLevel.Information,
+                "AUDIT Patient document downloaded. PatientId={PatientId} DocumentId={DocumentId} FileName={FileName}",
+                patientId, documentId, fileName);
+        }
+
+        public static void PatientDocumentDeleted(HttpContext context, string patientId, int documentId, string blobName)
+        {
+            _logger.Write(LogEventLevel.Warning,
+                "AUDIT Patient document deleted. PatientId={PatientId} DocumentId={DocumentId} BlobName={BlobName}",
+                patientId, documentId, blobName);
+        }
+
+        // Written by the patient cascade delete: every document belonging to the patient was removed from the
+        // private container along with the patient record.
+        public static void PatientDocumentsPurged(HttpContext context, string patientId, int blobCount)
+        {
+            _logger.Write(LogEventLevel.Warning,
+                "AUDIT Patient documents purged. PatientId={PatientId} BlobCount={BlobCount}",
+                patientId, blobCount);
+        }
     }
 }

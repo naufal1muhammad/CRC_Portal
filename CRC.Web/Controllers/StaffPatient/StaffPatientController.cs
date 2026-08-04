@@ -1,5 +1,6 @@
 ﻿using CRC.Data.Database;
 using CRC.Web.Infrastructure;
+using CRC.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -10,13 +11,13 @@ namespace CRC.Web.Controllers.StaffPatient
     public class StaffPatientController : Controller
     {
         private readonly DatabaseHelper _db;
-        private readonly IWebHostEnvironment _env;
+        private readonly IDocumentStorage _documentStorage;
         private readonly ILogger<StaffPatientController> _logger;
 
-        public StaffPatientController(DatabaseHelper db, IWebHostEnvironment env, ILogger<StaffPatientController> logger)
+        public StaffPatientController(DatabaseHelper db, IDocumentStorage documentStorage, ILogger<StaffPatientController> logger)
         {
             _db = db;
-            _env = env;
+            _documentStorage = documentStorage;
             _logger = logger;
         }
 
@@ -918,6 +919,10 @@ namespace CRC.Web.Controllers.StaffPatient
                     new[] { new SqlParameter("@Patient_ID", patientId) }
                 );
 
+                // Metadata only — the blob key is deliberately NOT projected. The container is private, so a
+                // storage key is useless to the browser and is exactly the kind of detail that should never
+                // leave the server. The file itself is fetched through GetPatientDocumentUrl, which mints a
+                // short-lived read SAS for one document at click time.
                 var list = dt.Rows.Cast<DataRow>()
                     .Select(r => new
                     {
@@ -927,7 +932,6 @@ namespace CRC.Web.Controllers.StaffPatient
                         docTypeId = r["PatientDocumentType_ID"]?.ToString(),
                         docTypeName = r["PatientDocumentType_Name"]?.ToString(),
                         fileName = r["FileName"]?.ToString(),
-                        filePath = r["FilePath"]?.ToString(),
                         uploadedOn = r["UploadedOn"]?.ToString()
                     })
                     .ToList();
@@ -940,8 +944,14 @@ namespace CRC.Web.Controllers.StaffPatient
             }
         }
 
+        // Uploads one or more files (multipart) into the PRIVATE blob container and records their metadata.
+        // The request size limits are raised on purpose: several 20 MB documents have to fit inside a single
+        // multipart body, and the ASP.NET Core default of roughly 30 MB would reject a two-file batch outright,
+        // before any of the code below ever runs.
         [Authorize(Policy = "AdminOrSuperOrStaff")]
         [HttpPost]
+        [RequestSizeLimit(120_000_000)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 120_000_000)]
         public async Task<IActionResult> UploadPatientDocuments(
     string patientId,
     string patientName,
@@ -959,18 +969,28 @@ namespace CRC.Web.Controllers.StaffPatient
                 return Ok(new { success = false, message = "No files uploaded." });
             }
 
-            try
+            // Validate the WHOLE batch first, in a pass of its own. A bad file has to fail BEFORE any blob is
+            // written — otherwise the files that happened to be validated earlier are already in the container
+            // when the request is rejected, and a refused upload leaves orphaned patient data behind.
+            foreach (var candidate in files)
             {
-                var uploadRoot = Path.Combine(_env.WebRootPath, "uploads", "patient");
-                if (!Directory.Exists(uploadRoot))
+                if (candidate is null)
                 {
-                    Directory.CreateDirectory(uploadRoot);
+                    return Ok(new { success = false, message = "One of the selected files could not be read." });
                 }
 
+                var (ok, message) = DocumentValidation.Validate(candidate);
+                if (!ok)
+                {
+                    return Ok(new { success = false, message });
+                }
+            }
+
+            try
+            {
                 for (int i = 0; i < files.Count; i++)
                 {
                     var file = files[i];
-                    if (file == null || file.Length == 0) continue;
 
                     var docTypeId = (docTypeIds != null && i < docTypeIds.Count)
                         ? docTypeIds[i]
@@ -980,18 +1000,15 @@ namespace CRC.Web.Controllers.StaffPatient
                         ? docTypeNames[i]
                         : string.Empty;
 
-                    // sanitize & create unique filename
-                    var safeFileName = Path.GetFileName(file.FileName);
-                    var uniqueName = $"{Guid.NewGuid():N}_{safeFileName}";
-                    var physicalPath = Path.Combine(uploadRoot, uniqueName);
-
-                    await using (var stream = System.IO.File.Create(physicalPath))
-                    {
-                        await file.CopyToAsync(stream);
-                    }
-
-                    var relativePath = $"/uploads/patient/{uniqueName}";
+                    var safeFileName = DocumentValidation.SafeFileName(file.FileName);
                     var contentType = file.ContentType ?? "application/octet-stream";
+
+                    // Server-generated key: patients/{Patient_ID}/{guid}{ext}. Nothing the user typed becomes
+                    // part of it, and the bytes are streamed straight to the container — never to disk.
+                    var blobName = DocumentValidation.BuildBlobName("patients", patientId, file.FileName);
+
+                    await using var stream = file.OpenReadStream();
+                    await _documentStorage.UploadAsync(stream, blobName, contentType);
 
                     var parameters = new[]
                     {
@@ -1000,18 +1017,80 @@ namespace CRC.Web.Controllers.StaffPatient
                 new SqlParameter("@PatientDocumentType_ID", (object)docTypeId ?? DBNull.Value),
                 new SqlParameter("@PatientDocumentType_Name", (object)docTypeName ?? DBNull.Value),
                 new SqlParameter("@FileName",               safeFileName),
-                new SqlParameter("@FilePath",               relativePath),
+                new SqlParameter("@BlobName",               blobName),
                 new SqlParameter("@ContentType",            contentType)
             };
 
                     await _db.ExecuteNonQueryAsync("spPatientDocument_Insert", parameters);
+
+                    // DocumentId is 0 because spPatientDocument_Insert writes its own AuditTrails row but does
+                    // not hand the new identity back to the caller; the blob key is what ties this audit line
+                    // to the row it describes.
+                    AuditLog.PatientDocumentUploaded(HttpContext, patientId, 0, docTypeId ?? string.Empty,
+                        blobName, safeFileName, file.Length);
                 }
 
                 return Ok(new { success = true });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error uploading patient documents." });
+                _logger.LogError(ex, "Error uploading patient documents for PatientId={PatientId}", patientId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error uploading patient documents."));
+            }
+        }
+
+        // Mints a short-lived read SAS URL for ONE document so the browser can fetch it straight from the
+        // private container.
+        //
+        // The design, plainly: the container is private, so this five-minute URL is the ONLY way the browser
+        // ever reaches the bytes. It is minted per click by this authenticated action, handed back once, never
+        // persisted to the database and never rendered into the page's HTML. That is exactly what the old
+        // static-file document links got wrong: static files are served ahead of authentication and get no
+        // authorisation check at all, so every one of those links was public, and stayed public.
+        [Authorize(Policy = "AdminOrSuperOrStaff")]
+        [HttpGet]
+        public async Task<IActionResult> GetPatientDocumentUrl(int id)
+        {
+            if (id <= 0)
+            {
+                return Ok(new { success = false, message = "Invalid document ID." });
+            }
+
+            try
+            {
+                var dt = await _db.ExecuteDataTableAsync(
+                    "spPatientDocument_GetById",
+                    new[] { new SqlParameter("@PatientDocument_ID", id) }
+                );
+
+                if (dt.Rows.Count == 0)
+                {
+                    return Ok(new { success = false, message = "Document not found." });
+                }
+
+                var row = dt.Rows[0];
+                var blobName = row["BlobName"]?.ToString();
+                var fileName = row["FileName"]?.ToString() ?? string.Empty;
+                var patientId = row["Patient_ID"]?.ToString() ?? string.Empty;
+
+                if (string.IsNullOrWhiteSpace(blobName))
+                {
+                    return Ok(new { success = false, message = "Document not found." });
+                }
+
+                var url = _documentStorage.GetReadSasUrl(blobName, TimeSpan.FromMinutes(5));
+
+                // Minting a SAS for a patient record IS a read of patient data, so it belongs on the audit
+                // channel — and it has to be written before the URL leaves the server, because the download
+                // itself happens against storage where the application can no longer observe it.
+                AuditLog.PatientDocumentDownloaded(HttpContext, patientId, id, fileName);
+
+                return Ok(new { success = true, url = url.ToString(), fileName });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating download URL for PatientDocumentId={PatientDocumentId}", id);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error opening document."));
             }
         }
 
@@ -1031,7 +1110,18 @@ namespace CRC.Web.Controllers.StaffPatient
 
             try
             {
-                var deletedFilePathParameter = new SqlParameter("@DeletedFilePath", SqlDbType.VarChar, 500)
+                // Read the row first, only so the audit line can name the patient the document belonged to —
+                // spPatientDocument_Delete hands back the blob key and nothing else.
+                var lookup = await _db.ExecuteDataTableAsync(
+                    "spPatientDocument_GetById",
+                    new[] { new SqlParameter("@PatientDocument_ID", model.DocumentId) }
+                );
+
+                var patientId = lookup.Rows.Count > 0
+                    ? lookup.Rows[0]["Patient_ID"]?.ToString() ?? string.Empty
+                    : string.Empty;
+
+                var deletedBlobNameParameter = new SqlParameter("@DeletedBlobName", SqlDbType.VarChar, 500)
                 {
                     Direction = ParameterDirection.Output
                 };
@@ -1039,28 +1129,41 @@ namespace CRC.Web.Controllers.StaffPatient
                 var parameters = new[]
                 {
                     new SqlParameter("@PatientDocument_ID", model.DocumentId),
-                    deletedFilePathParameter
+                    deletedBlobNameParameter
                 };
 
                 await _db.ExecuteNonQueryAsync("spPatientDocument_Delete", parameters);
 
-                var deletedFilePath = deletedFilePathParameter.Value?.ToString();
-                if (!string.IsNullOrWhiteSpace(deletedFilePath))
-                {
-                    var relativePath = deletedFilePath.Trim().TrimStart('~').TrimStart('/', '\\');
-                    var physicalPath = Path.Combine(_env.WebRootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                // NULL means no row was deleted, so there is nothing in storage to remove.
+                var deletedBlobName = deletedBlobNameParameter.Value == DBNull.Value
+                    ? null
+                    : deletedBlobNameParameter.Value?.ToString();
 
-                    if (System.IO.File.Exists(physicalPath))
+                if (!string.IsNullOrWhiteSpace(deletedBlobName))
+                {
+                    try
                     {
-                        System.IO.File.Delete(physicalPath);
+                        await _documentStorage.DeleteAsync(deletedBlobName);
                     }
+                    catch (Exception ex)
+                    {
+                        // Deliberately not fatal. The metadata row is already gone and the AuditTrails entry
+                        // already stands, so failing the request here would only confuse the user about what
+                        // happened: from their side the document HAS been deleted. What is actually left is an
+                        // orphaned blob, which is an operational clean-up job — hence a warning in app-*.log.
+                        _logger.LogWarning(ex, "Failed to delete blob {BlobName} for PatientDocumentId={PatientDocumentId}",
+                            deletedBlobName, model.DocumentId);
+                    }
+
+                    AuditLog.PatientDocumentDeleted(HttpContext, patientId, model.DocumentId, deletedBlobName);
                 }
 
                 return Ok(new { success = true });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error deleting patient document." });
+                _logger.LogError(ex, "Error deleting patient document PatientDocumentId={PatientDocumentId}", model.DocumentId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error deleting patient document."));
             }
         }
     }

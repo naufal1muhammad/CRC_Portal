@@ -1,5 +1,6 @@
 ﻿using CRC.Data.Database;
 using CRC.Web.Infrastructure;
+using CRC.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -12,13 +13,13 @@ namespace CRC.Web.Controllers.Patient
     public class PatientController : Controller
     {
         private readonly DatabaseHelper _db;
-        private readonly IWebHostEnvironment _env;
+        private readonly IDocumentStorage _documentStorage;
         private readonly ILogger<PatientController> _logger;
 
-        public PatientController(DatabaseHelper db, IWebHostEnvironment env, ILogger<PatientController> logger)
+        public PatientController(DatabaseHelper db, IDocumentStorage documentStorage, ILogger<PatientController> logger)
         {
             _db = db;
-            _env = env;
+            _documentStorage = documentStorage;
             _logger = logger;
         }
         //------------------------------------------------------
@@ -80,13 +81,45 @@ namespace CRC.Web.Controllers.Patient
             new SqlParameter("@Patient_ID", patientId)
         };
 
-                await _db.ExecuteNonQueryAsync("spPatient_DeleteCascade", parameters);
+                // spPatient_DeleteCascade captures the patient's document blob keys before it removes the
+                // PatientDocument rows and returns them as its final result set, so this reads a DataSet
+                // rather than firing and forgetting. Without deleting those blobs the documents would sit in
+                // storage forever: that costs money, and — far worse — it retains patient data after the
+                // patient record itself has been deleted.
+                var ds = await _db.ExecuteDataSetAsync("spPatient_DeleteCascade", parameters);
+
+                var blobCount = 0;
+                if (ds.Tables.Count > 0)
+                {
+                    foreach (DataRow row in ds.Tables[0].Rows)
+                    {
+                        var blobName = row["BlobName"]?.ToString();
+                        if (string.IsNullOrWhiteSpace(blobName)) continue;
+
+                        try
+                        {
+                            await _documentStorage.DeleteAsync(blobName);
+                            blobCount++;
+                        }
+                        catch (Exception ex)
+                        {
+                            // Best effort, per blob. The database rows are already gone and the patient is
+                            // deleted, so a storage hiccup must not fail the request — it leaves an orphaned
+                            // blob to clean up, which is an operational problem, not a user-facing one.
+                            _logger.LogWarning(ex, "Failed to delete blob {BlobName} for deleted PatientId={PatientId}",
+                                blobName, patientId);
+                        }
+                    }
+                }
+
+                AuditLog.PatientDocumentsPurged(HttpContext, patientId, blobCount);
 
                 return Ok(new { success = true });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return Ok(new { success = false, message = "Error deleting patient." });
+                _logger.LogError(ex, "Error deleting patient PatientId={PatientId}", patientId);
+                return Ok(ErrorResponse.ForUser(HttpContext, "Error deleting patient."));
             }
         }
 
