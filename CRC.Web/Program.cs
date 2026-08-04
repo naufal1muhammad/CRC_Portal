@@ -1,5 +1,6 @@
 using CRC.Web.Infrastructure;
 using CRC.Web.Models;
+using CRC.Web.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Authorization;
@@ -73,6 +74,15 @@ builder.Services.AddControllersWithViews(options =>
 });
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CRC.Data.Database.DatabaseHelper>();
+
+// Patient and staff document storage: a private Azure Blob container, metadata-only in SQL, SAS downloads.
+// Bound from the DocumentStorage config section (Azurite locally; the storage-account connection string in
+// Azure, supplied as the DocumentStorage__* app settings). The BlobServiceClient inside is thread-safe and
+// meant to be reused, so the service is registered as a singleton.
+builder.Services.Configure<DocumentStorageOptions>(
+    builder.Configuration.GetSection(DocumentStorageOptions.SectionName));
+builder.Services.AddSingleton<IDocumentStorage, AzureBlobDocumentStorage>();
+
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
