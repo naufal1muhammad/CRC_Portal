@@ -11,7 +11,7 @@ BEGIN
         d.[StaffDocumentType_ID],
         COALESCE(t.[StaffDocumentType_Name], d.[StaffDocumentType_ID]) AS [StaffDocumentType_Name],
         d.[FileName],
-        d.[FilePath],
+        d.[BlobName],
         d.[ContentType],
         d.[UploadedOn]
     FROM [dbo].[StaffDocument] d

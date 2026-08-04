@@ -23,7 +23,7 @@ BEGIN
             pb.[Patient_Name] AS [Name],
             COALESCE(NULLIF(LTRIM(RTRIM(t.[PatientDocumentType_Name])), ''), NULLIF(LTRIM(RTRIM(d.[PatientDocumentType_ID])), '')) AS [DocumentType],
             d.[FileName] AS [FileName],
-            d.[FilePath] AS [FilePath],
+            d.[BlobName] AS [BlobName],
             d.[UploadedOn] AS [UploadedOn]
         FROM [dbo].[PatientDocument] d
         LEFT JOIN [dbo].[PatientBasic] pb
@@ -50,7 +50,7 @@ BEGIN
             s.[Staff_Name] AS [Name],
             COALESCE(NULLIF(LTRIM(RTRIM(t.[StaffDocumentType_Name])), ''), NULLIF(LTRIM(RTRIM(d.[StaffDocumentType_ID])), '')) AS [DocumentType],
             d.[FileName] AS [FileName],
-            d.[FilePath] AS [FilePath],
+            d.[BlobName] AS [BlobName],
             CONVERT(VARCHAR(100), d.[UploadedOn], 120) AS [UploadedOn]
         FROM [dbo].[StaffDocument] d
         LEFT JOIN [dbo].[Staff] s
@@ -77,7 +77,7 @@ BEGIN
             CAST(NULL AS VARCHAR(200)) AS [Name],
             CAST(NULL AS VARCHAR(200)) AS [DocumentType],
             CAST(NULL AS VARCHAR(255)) AS [FileName],
-            CAST(NULL AS VARCHAR(500)) AS [FilePath],
+            CAST(NULL AS VARCHAR(500)) AS [BlobName],
             CAST(NULL AS VARCHAR(100)) AS [UploadedOn]
         WHERE 1 = 0;
     END

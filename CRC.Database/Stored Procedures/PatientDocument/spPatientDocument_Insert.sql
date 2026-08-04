@@ -5,7 +5,7 @@ CREATE PROCEDURE [dbo].[spPatientDocument_Insert]
     @PatientDocumentType_ID   VARCHAR(100),
     @PatientDocumentType_Name VARCHAR(100),
     @FileName                 VARCHAR(255),
-    @FilePath                 VARCHAR(500),
+    @BlobName                 VARCHAR(500),
     @ContentType              VARCHAR(100),
     @User_ID                  INT = NULL
 )
@@ -18,7 +18,7 @@ BEGIN
         [Patient_ID],
         [PatientDocumentType_ID],
         [FileName],
-        [FilePath],
+        [BlobName],
         [ContentType],
         [UploadedOn]
     )
@@ -27,7 +27,7 @@ BEGIN
         @Patient_ID,
         @PatientDocumentType_ID,
         @FileName,
-        @FilePath,
+        @BlobName,
         @ContentType,
         CONVERT(VARCHAR(100), GETUTCDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Singapore Standard Time', 120)
     );

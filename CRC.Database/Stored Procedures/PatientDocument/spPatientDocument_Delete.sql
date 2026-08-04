@@ -2,7 +2,9 @@
 (
     @PatientDocument_ID INT,
     @User_ID            INT = NULL,
-    @DeletedFilePath    VARCHAR(500) = NULL OUTPUT
+    -- The caller uses this to delete the corresponding BLOB after the row is gone.
+    -- A NULL means no row was deleted and nothing should be removed from storage.
+    @DeletedBlobName    VARCHAR(500) = NULL OUTPUT
 )
 AS
 BEGIN
@@ -15,7 +17,7 @@ BEGIN
         @PatientDocumentType_ID VARCHAR(100),
         @PatientDocumentType_Name VARCHAR(100),
         @FileName VARCHAR(255),
-        @FilePath VARCHAR(500),
+        @BlobName VARCHAR(500),
         @ContentType VARCHAR(100),
         @UploadedOn VARCHAR(100);
 
@@ -23,7 +25,7 @@ BEGIN
         @Patient_ID = [Patient_ID],
         @PatientDocumentType_ID = [PatientDocumentType_ID],
         @FileName = [FileName],
-        @FilePath = [FilePath],
+        @BlobName = [BlobName],
         @ContentType = [ContentType],
         @UploadedOn = [UploadedOn]
     FROM [dbo].[PatientDocument]
@@ -45,7 +47,7 @@ BEGIN
 
     DECLARE @RowsAffected INT = @@ROWCOUNT;
 
-    SET @DeletedFilePath = CASE WHEN @RowsAffected > 0 THEN @FilePath ELSE NULL END;
+    SET @DeletedBlobName = CASE WHEN @RowsAffected > 0 THEN @BlobName ELSE NULL END;
 
     IF @RowsAffected > 0
     BEGIN

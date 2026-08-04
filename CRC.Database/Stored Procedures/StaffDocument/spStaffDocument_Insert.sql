@@ -5,7 +5,7 @@ CREATE PROCEDURE [dbo].[spStaffDocument_Insert]
     @StaffDocumentType_ID   VARCHAR(100),
     @StaffDocumentType_Name VARCHAR(100),
     @FileName               VARCHAR(255),
-    @FilePath               VARCHAR(500),
+    @BlobName               VARCHAR(500),
     @ContentType            VARCHAR(100),
     @User_ID                INT = NULL
 )
@@ -18,7 +18,7 @@ BEGIN
         [Staff_ID],
         [StaffDocumentType_ID],
         [FileName],
-        [FilePath],
+        [BlobName],
         [ContentType],
         [UploadedOn]
     )
@@ -27,7 +27,7 @@ BEGIN
         @Staff_ID,
         @StaffDocumentType_ID,
         @FileName,
-        @FilePath,
+        @BlobName,
         @ContentType,
         CAST(GETUTCDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Singapore Standard Time' AS DATETIME)
     );

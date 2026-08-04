@@ -161,6 +161,7 @@
     <Build Include="Stored Procedures\PatientDocument\spPatientDocument_List.sql" />
     <Build Include="Stored Procedures\PatientDocument\spPatientDocument_Insert.sql" />
     <Build Include="Stored Procedures\PatientDocument\spPatientDocument_Delete.sql" />
+    <Build Include="Stored Procedures\PatientDocument\spPatientDocument_GetById.sql" />
     <Build Include="Stored Procedures\PatientDocumentSettings\spPatientDocumentSettings_GetByDischargeType.sql" />
     <Build Include="Stored Procedures\PatientDocumentSettings\spPatientDocumentSettings_SaveForDischargeType.sql" />
     <Build Include="Stored Procedures\PatientDocumentSettings\spPatient_Discharge_CheckMissingDocuments.sql" />

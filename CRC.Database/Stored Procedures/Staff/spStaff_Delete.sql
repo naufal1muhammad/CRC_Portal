@@ -17,7 +17,7 @@ BEGIN
             CAST('NotFound' AS VARCHAR(20))   AS [Status],
             CAST('Staff not found.' AS VARCHAR(500)) AS [Message];
 
-        SELECT TOP 0 CAST(NULL AS VARCHAR(500)) AS [FilePath];
+        SELECT TOP 0 CAST(NULL AS VARCHAR(500)) AS [BlobName];
         RETURN;
     END
 
@@ -63,22 +63,22 @@ BEGIN
             CAST('Blocked' AS VARCHAR(20)) AS [Status],
             CAST(@BlockedMessage AS VARCHAR(500)) AS [Message];
 
-        SELECT TOP 0 CAST(NULL AS VARCHAR(500)) AS [FilePath];
+        SELECT TOP 0 CAST(NULL AS VARCHAR(500)) AS [BlobName];
         RETURN;
     END
 
     -- -----------------------------
-    -- Capture document file paths BEFORE deleting StaffDocument rows,
-    -- so the caller can physically remove them after the transaction commits.
+    -- Capture document blob keys BEFORE deleting StaffDocument rows,
+    -- so the caller can remove the blobs after the transaction commits.
     -- -----------------------------
-    DECLARE @DocFiles TABLE ([FilePath] VARCHAR(500));
+    DECLARE @DocFiles TABLE ([BlobName] VARCHAR(500));
 
-    INSERT INTO @DocFiles ([FilePath])
-    SELECT [FilePath]
+    INSERT INTO @DocFiles ([BlobName])
+    SELECT [BlobName]
     FROM [dbo].[StaffDocument]
     WHERE [Staff_ID] = @Staff_ID
-      AND [FilePath] IS NOT NULL
-      AND LEN(LTRIM(RTRIM([FilePath]))) > 0;
+      AND [BlobName] IS NOT NULL
+      AND LEN(LTRIM(RTRIM([BlobName]))) > 0;
 
     BEGIN TRY
         BEGIN TRANSACTION;
@@ -131,5 +131,5 @@ BEGIN
         CAST('Success' AS VARCHAR(20)) AS [Status],
         CAST('Staff deleted successfully.' AS VARCHAR(500)) AS [Message];
 
-    SELECT [FilePath] FROM @DocFiles;
+    SELECT [BlobName] FROM @DocFiles;
 END;

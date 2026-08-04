@@ -20,6 +20,19 @@ BEGIN
     DELETE FROM [dbo].[PatientJourney]
     WHERE [Patient_ID] = @Patient_ID;
 
+    -- -----------------------------
+    -- Capture document blob keys BEFORE deleting PatientDocument rows,
+    -- so the caller can remove the blobs after the rows are gone.
+    -- -----------------------------
+    DECLARE @DocBlobs TABLE ([BlobName] VARCHAR(500));
+
+    INSERT INTO @DocBlobs ([BlobName])
+    SELECT [BlobName]
+    FROM [dbo].[PatientDocument]
+    WHERE [Patient_ID] = @Patient_ID
+      AND [BlobName] IS NOT NULL
+      AND LEN(LTRIM(RTRIM([BlobName]))) > 0;
+
     DELETE FROM [dbo].[PatientDocument]
     WHERE [Patient_ID] = @Patient_ID;
 
@@ -61,5 +74,9 @@ BEGIN
             )
         );
     END
+
+    -- Return the blob keys captured above so the caller can remove the blobs
+    -- now that the rows are gone.
+    SELECT [BlobName] FROM @DocBlobs;
 END;
 GO
