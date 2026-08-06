@@ -300,5 +300,200 @@ namespace CRC.Data.Data
         // AccountController.ChangePassword. There is no password history and no MustChangePassword column,
         // so nothing forces the seeded SUPERUSER password to ever be changed (see SEEDING.md).
         Task UpdateUserPasswordAsync(int userId, string passwordHash);
+
+        // ----- Staff (Admin > Staff) -----
+        //
+        // Five procedures over dbo.Staff. THREE OF THEM DECLARE `@User_ID INT = NULL` — spStaff_Insert,
+        // spStaff_Update and spStaff_Delete — which is THE ACTOR for the dbo.AuditTrails row each one
+        // writes, so it is absent from every signature below and SqlData supplies it from
+        // DatabaseHelper.CurrentUserId. spStaff_List and spStaff_GetById declare no @User_ID at all.
+        //
+        // A Staff_ID is a VARCHAR(100) STRING, not a number: spStaff_Insert composes it as
+        // {Staff_Type}-{5-digit global sequence} — "END-00003", "NUR-00011" — so the prefix is the
+        // LU_STAFFTYPE code (CoreFlow.md §3.4). Parsing one to an int loses everything.
+
+        // Every staff member for the Admin > Staff table, seven columns, ordered by Staff_Name. Calls
+        // spStaff_List, which LEFT JOINs LU_STAFFTYPE — so StaffType_Name is null for a staff member whose
+        // Staff_Type no longer matches a lookup row, and nothing prevents that (there is no foreign key).
+        //
+        // REUSED BY PROMPT 6: PatientController.GetAppointmentStaffList populates the appointment form's
+        // staff dropdown from this same procedure. Do not add a second method for it.
+        Task<List<StaffListItem>> GetAllStaffAsync();
+
+        // One staff member with every column, for the Edit Staff form and the read-only My Profile page;
+        // null when no staff member has that id. Calls spStaff_GetById (SELECT TOP 1).
+        //
+        // It returns ELEVEN COLUMNS MORE than spStaff_List — the birth date, age, gender, the whole
+        // residential address and the base branch — which is why StaffDetail and StaffListItem are two
+        // models and not one. See §5.3's spUsers_GetById note for what sharing a model across a strict
+        // subset costs.
+        Task<StaffDetail?> GetStaffByIdAsync(string staffId);
+
+        // Creates a staff member and RETURNS THE NEW Staff_ID, which the caller cannot predict: calls
+        // spStaff_Insert, which composes the id itself as {Staff_Type}-{RIGHT('00000' + sequence, 5)} and
+        // ends with `SELECT @Staff_ID AS NewStaff_ID`. It RAISERRORs — a SqlException in C# — on a blank
+        // @Staff_Type, because a blank prefix would produce the id "-00007".
+        //
+        // 🔴 THE SEQUENCE IS GLOBAL AND IT REUSES NUMBERS, exactly like spBranch_Insert (§3.2):
+        // MAX(TRY_CAST(RIGHT(Staff_ID, 5) AS INT)) scans the WHOLE table, so the third staff member overall
+        // is "…-00003" whatever their type, and deleting the newest one makes the next insert re-issue its
+        // number. A different type then yields a genuinely new id; the SAME type collides on the primary
+        // key and the insert fails. See CoreFlow.md §3.4.
+        //
+        // This is the NON-transactional path, used by POST /Staff/SaveStaff, which saves a staff member on
+        // its own with no documents. SaveStaffWithDocumentsAsync runs the same procedure inside its
+        // transaction instead — both go through one private helper in SqlData so the parameter list cannot
+        // drift between them.
+        Task<string> CreateStaffAsync(StaffSaveInput staff);
+
+        // Updates every field of a staff member except their id. Calls spStaff_Update, which is SILENT when
+        // the id matches nothing — no error, no audit row, and no row count returned, so this method cannot
+        // tell a real write from a missed one. It re-writes Staff_Type as well, so a staff member's type
+        // can change while their Staff_ID keeps the OLD type's prefix; the id is never regenerated.
+        Task UpdateStaffAsync(StaffSaveInput staff);
+
+        // Deletes a staff member and everything that hangs off them, and tells the caller what happened.
+        // Calls spStaff_Delete — READ StaffDeleteResult BEFORE CALLING THIS, because the procedure is
+        // neither a plain delete nor a plain success/failure:
+        //
+        //   • It REFUSES to delete a staff member still referenced by dbo.PatientAppointment,
+        //     dbo.PatientJourney or dbo.PatientJourneyAudit, returning Status = "Blocked" and a Message
+        //     naming which of the three. That is the only referential protection dbo.Staff has — there are
+        //     no foreign keys — and it is enforced in the procedure, so a direct DELETE bypasses it.
+        //   • When it does delete, it CASCADES BY HAND to dbo.StaffSlots, dbo.StaffDocument AND dbo.Users,
+        //     inside a transaction of its own. Deleting a staff member therefore deletes their LOGIN.
+        //   • It returns TWO result sets, always, and the second carries the blob keys of the documents it
+        //     just removed rows for. Storage is outside the transaction, so the caller deletes those
+        //     objects afterwards. See StaffDeleteResult.
+        Task<StaffDeleteResult> DeleteStaffAsync(string staffId);
+
+        // 🔴 THE FIRST OF EXACTLY TWO TRANSACTIONAL UNITS OF WORK IN THIS FILE, and one of only two methods
+        // in nucentra's data layer that calls more than one stored procedure. (The other is
+        // SaveAppointmentAsync, added in Prompt 6.) Everything else here is one method, one procedure.
+        //
+        // Saves a staff member and their document changes ATOMICALLY: spStaff_Insert or spStaff_Update,
+        // then spStaffDocument_GetById + spStaffDocument_Delete for each document being removed, then
+        // spStaffDocument_Insert for each document being added — all on one connection, inside one
+        // SqlTransaction, committed together or rolled back together. It throws on any failure; a throw
+        // means the transaction was rolled back and NOTHING was written.
+        //
+        // WHY IT IS ATOMIC AT ALL: the mandatory-document rule (CoreFlow.md §4.4) says an ENDOSCOPIST is
+        // not a valid record without a CV and an MMC certificate. A staff row that committed while its
+        // documents did not would be exactly the state the rule exists to prevent, and no screen would ever
+        // show that it had happened.
+        //
+        // ── uploadDocumentsAsync: why a callback, and why the blob writes are not hoisted out ───────────
+        //
+        // The caller passes a delegate that UPLOADS THE FILES AND RETURNS THE ROWS TO INSERT, and this
+        // method invokes it after the staff row is written and before the document rows are. That is not
+        // indirection for its own sake — it is the only ordering the blob key permits. The key is
+        // staff/{Staff_ID}/{guid}{ext}, and for a NEW staff member the Staff_ID does not exist until
+        // spStaff_Insert has run, inside this transaction. So "upload everything first, then call the data
+        // layer" is impossible for an insert without moving id generation out of the procedure that owns
+        // it.
+        //
+        // The delegate keeps IDocumentStorage — a CRC.Web service — on the CRC.Web side of the boundary.
+        // CRC.Data has no reference to CRC.Web and must not gain one; a Func<> is a BCL type and carries no
+        // dependency. What it costs is that a blob can be written and the transaction can still fail
+        // afterwards, so the guarantee is kept by COMPENSATION rather than by ordering: the caller records
+        // every key it writes and deletes them all if this method throws. See CoreFlow.md §6.6.
+        //
+        // The AUDIT LINES ARE THE CALLER'S JOB AND ARE WRITTEN AFTER THIS RETURNS, for the same reason —
+        // an AuditLog line claiming a write that a rollback then erased is worse than no line at all. The
+        // dbo.AuditTrails rows are different: the procedures write those themselves, inside the
+        // transaction, so a rollback takes them with it. Both trails end up honest, by opposite means.
+        Task<StaffSaveResult> SaveStaffWithDocumentsAsync(
+            StaffSaveInput staff,
+            IReadOnlyList<int> deleteDocumentIds,
+            Func<string, Task<IReadOnlyList<StaffDocumentInput>>> uploadDocumentsAsync);
+
+        // ----- Staff documents -----
+        //
+        // Six procedures over dbo.StaffDocument plus one over dbo.StaffDocumentSettings. TWO DECLARE
+        // `@User_ID INT = NULL` — spStaffDocument_Insert and spStaffDocument_Delete — the ACTOR, supplied
+        // by SqlData. The four reads declare none.
+        //
+        // Note that spStaffDocument_Insert has NO standalone method here: the only two callers are
+        // StaffController.UploadStaffDocuments and the transactional save above, and the former is folded
+        // into AddStaffDocumentAsync below while the latter runs it inside its own transaction.
+
+        // Every document belonging to one staff member, newest first (UploadedOn DESC, then
+        // StaffDocument_ID DESC — the tiebreak matters, because a batch uploaded in one request shares a
+        // timestamp to the second). Calls spStaffDocument_List.
+        //
+        // 🔴 THE RESULT CARRIES BlobName. The endpoint that lists documents to a browser must not project
+        // it — the container is private and the key is a server-side detail. See StaffDocumentItem.
+        //
+        // @Staff_ID is OPTIONAL in the procedure (`= NULL`, and a blank string is treated the same way), in
+        // which case it returns EVERY document in the system. Nothing in the portal calls it that way
+        // today; StaffController rejects a blank staffId before it gets here.
+        Task<List<StaffDocumentItem>> GetStaffDocumentsAsync(string staffId);
+
+        // One document by its identity; null when no row has that id. Calls spStaffDocument_GetById, which
+        // selects exactly the same nine columns as spStaffDocument_List — hence one model for both.
+        //
+        // This is how the blob key is resolved for a download (to mint a five-minute read SAS) and for a
+        // delete (to know what to remove from the container afterwards).
+        //
+        // REUSED BY PROMPT 8: DocumentsController's search page opens staff documents through the same
+        // procedure. Do not add a second method for it.
+        Task<StaffDocumentItem?> GetStaffDocumentByIdAsync(int documentId);
+
+        // Records one uploaded document. Calls spStaffDocument_Insert, which stamps UploadedOn itself as
+        // MALAYSIAN LOCAL TIME (`GETUTCDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Singapore Standard Time'`),
+        // not UTC — the one timestamp in nucentra that is not.
+        //
+        // The bytes must already be in the container: this writes the row that points at them and nothing
+        // else. It writes an INSERT row to dbo.AuditTrails but DOES NOT RETURN THE NEW StaffDocument_ID —
+        // there is no trailing SELECT — which is why every AuditLog.StaffDocumentUploaded line in the
+        // portal records a document id of 0 and identifies the row by its blob key instead.
+        Task AddStaffDocumentAsync(string staffId, string staffName, string documentTypeId,
+            string documentTypeName, string fileName, string blobName, string contentType);
+
+        // Deletes one document row and RETURNS THE BLOB KEY it pointed at, so the caller can remove the
+        // object from storage. Null means no row was deleted and there is nothing to remove.
+        //
+        // 🔴 spStaffDocument_Delete IS THE SECOND PROCEDURE IN NUCENTRA WITH AN OUTPUT PARAMETER, and the
+        // only one this layer still reads as one. (§5.3 calls spUsers_RegisterFailedLogin "the only" one;
+        // it is not — that claim was made before this area was read. The difference is that this one's
+        // OUTPUT is its whole answer and the procedure has no result set to append to without a .sql
+        // change, which Prompt 3 was not permitted to make and did not need.) SqlData reads
+        // @DeletedBlobName through DynamicParameters, in the one place in the file that does so.
+        Task<string?> DeleteStaffDocumentAsync(int documentId);
+
+        // Which document types matter for a staff type, for the mandatory-document rule and for Prompt 8's
+        // Settings screen. Calls spStaffDocumentSettings_GetByStaffType.
+        //
+        // 🔴 IT RETURNS EVERY DOCUMENT TYPE, NOT ONLY THE MANDATORY ONES — all eight rows of
+        // LU_STAFFDOCUMENTTYPE, with IsMandatory = 1 on the ones configured for this staff type and 0 on
+        // the rest. A caller that wants "the mandatory ones" must filter; the row count answers nothing.
+        //
+        // REUSED BY PROMPT 8: SettingsController renders the same list as a checklist.
+        Task<List<StaffDocumentSetting>> GetStaffDocumentSettingsAsync(string staffTypeId);
+
+        // The document-type filter for the Documents search page: every type that either EXISTS ON A STORED
+        // DOCUMENT or is defined in LU_STAFFDOCUMENTTYPE, unioned. Calls spStaffDocument_LookupDocuments.
+        //
+        // The union is the point, and it is a deliberate difference from GetStaffDocumentTypesAsync (the
+        // plain spLU_STAFFDOCUMENTTYPE_List read used by the upload form). A document uploaded under a type
+        // that was later removed from the lookup must still be findable, so its raw StaffDocumentType_ID
+        // appears in the filter with the id itself standing in for the missing name. An upload form must
+        // NOT offer that type; a search filter must.
+        //
+        // NOTHING IN PROMPT 3 CALLS THIS — StaffController has no search page. It is wrapped now because
+        // the plan's rule is that the prompt reaching a procedure first creates its method.
+        // CALLED BY PROMPT 8: DocumentsController.
+        Task<List<LookupItem>> GetStaffDocumentTypeFiltersAsync();
+
+        // The distinct names of every staff member who owns at least one document, ordered by name — the
+        // staff filter on the same Documents search page. Calls spStaffDocument_StaffNames.
+        //
+        // It returns NAMES, NOT IDS, and it is an INNER JOIN: a document whose Staff_ID matches no staff
+        // row contributes nothing, and two staff members who happen to share a name collapse into one
+        // entry. That is what the filter control wants (it filters on the displayed name) and it is why
+        // this returns List<string> rather than a lookup pair.
+        //
+        // NOTHING IN PROMPT 3 CALLS THIS either. CALLED BY PROMPT 8: DocumentsController.
+        Task<List<string>> GetStaffDocumentStaffNamesAsync();
     }
 }

@@ -1,5 +1,6 @@
 using System.Data;
 using Dapper;
+using Microsoft.Data.SqlClient;
 using CRC.Data.Models;
 
 namespace CRC.Data.Data
@@ -426,6 +427,395 @@ namespace CRC.Data.Data
                 "dbo.spUsers_UpdatePassword",
                 new { User_ID = userId, PasswordHash = passwordHash },
                 commandType: CommandType.StoredProcedure);
+        }
+
+        // ----- Staff (Admin > Staff) -----
+
+        public async Task<List<StaffListItem>> GetAllStaffAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var results = await connection.QueryAsync<StaffListItem>(
+                "dbo.spStaff_List",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<StaffDetail?> GetStaffByIdAsync(string staffId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // SELECT TOP 1 … WHERE Staff_ID = @Staff_ID: at most one row, possibly none.
+            return await connection.QuerySingleOrDefaultAsync<StaffDetail>(
+                "dbo.spStaff_GetById",
+                new { Staff_ID = staffId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task<string> CreateStaffAsync(StaffSaveInput staff)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            return await InsertStaffAsync(connection, null, staff, _databaseHelper.CurrentUserId);
+        }
+
+        public async Task UpdateStaffAsync(StaffSaveInput staff)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            await UpdateStaffRowAsync(connection, null, staff, _databaseHelper.CurrentUserId);
+        }
+
+        public async Task<StaffDeleteResult> DeleteStaffAsync(string staffId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // spStaff_Delete declares @User_ID INT = NULL: the ACTOR for its dbo.AuditTrails row, passed
+            // explicitly because Dapper has no equivalent of DatabaseHelper's sys.parameters injection.
+            //
+            // TWO RESULT SETS, ALWAYS, IN THIS ORDER — which is the whole reason this is QueryMultipleAsync
+            // and not ExecuteAsync, and why the controller used to reach for ExecuteDataSetAsync:
+            //
+            //   grid 1  one row   Status VARCHAR(20), Message VARCHAR(500)
+            //   grid 2  N rows    BlobName VARCHAR(500) — the container keys of the documents just removed
+            //
+            // Both early-return branches ("NotFound" and "Blocked") emit
+            // `SELECT TOP 0 CAST(NULL AS VARCHAR(500)) AS [BlobName]` before returning, so the GRID COUNT
+            // IS STABLE and grid 2 can be read unconditionally. An empty grid 2 means "no storage to
+            // reclaim", never "something failed" — only Status says whether the delete happened.
+            using var grids = await connection.QueryMultipleAsync(
+                "dbo.spStaff_Delete",
+                new { Staff_ID = staffId, User_ID = _databaseHelper.CurrentUserId },
+                commandType: CommandType.StoredProcedure);
+
+            // ReadSingleAsync into StaffDeleteResult maps Status and Message by name and leaves BlobNames
+            // at its initialiser — grid 2 fills it below. Dapper ignores properties it finds no column for.
+            var result = await grids.ReadSingleAsync<StaffDeleteResult>();
+
+            var blobNames = await grids.ReadAsync<string?>();
+
+            // The procedure already excludes NULL and blank keys when it captures them, so this filter is
+            // belt-and-braces; it is here so the list's element type is honest under nullable reference
+            // types rather than carrying nulls a caller would have to re-check.
+            result.BlobNames = blobNames
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name!)
+                .ToList();
+
+            return result;
+        }
+
+        // 🔴 THE FIRST OF EXACTLY TWO TRANSACTIONAL UNITS OF WORK IN THIS FILE. Everything else here is one
+        // method, one procedure; this one runs spStaff_Insert or spStaff_Update, then
+        // spStaffDocument_GetById + spStaffDocument_Delete per removed document, then
+        // spStaffDocument_Insert per added document — on ONE connection, inside ONE SqlTransaction. The
+        // other exception is SaveAppointmentAsync (Prompt 6). Read IDatabaseData for why this is atomic and
+        // why the uploads arrive through a callback; this comment covers only the mechanism.
+        //
+        // The connection is opened and the transaction begun BY HAND here, which is the one thing in this
+        // file that does not let Dapper manage the connection: every call below passes `transaction:` and
+        // must, because a command on this connection without the transaction throws.
+        public async Task<StaffSaveResult> SaveStaffWithDocumentsAsync(
+            StaffSaveInput staff,
+            IReadOnlyList<int> deleteDocumentIds,
+            Func<string, Task<IReadOnlyList<StaffDocumentInput>>> uploadDocumentsAsync)
+        {
+            var result = new StaffSaveResult();
+
+            // Resolved ONCE, before the transaction opens, and reused for all four audit-actor calls below.
+            // It reads the claim off IHttpContextAccessor, which cannot change mid-request — reading it per
+            // call would be four identical answers and four chances to forget one.
+            var actorUserId = _databaseHelper.CurrentUserId;
+
+            await using var connection = _databaseHelper.CreateConnection();
+            await connection.OpenAsync();
+            await using var transaction = connection.BeginTransaction();
+
+            try
+            {
+                if (staff.IsNew)
+                {
+                    result.StaffId = await InsertStaffAsync(connection, transaction, staff, actorUserId);
+
+                    // spStaff_Insert always ends with `SELECT @Staff_ID AS NewStaff_ID` on the path that
+                    // inserted, so this cannot fire — but a blank id here would name every blob
+                    // "staff//{guid}" and orphan the documents, so it fails loudly rather than continuing.
+                    if (string.IsNullOrWhiteSpace(result.StaffId))
+                    {
+                        throw new InvalidOperationException("Failed to generate Staff ID.");
+                    }
+                }
+                else
+                {
+                    result.StaffId = staff.Staff_ID;
+                    await UpdateStaffRowAsync(connection, transaction, staff, actorUserId);
+                }
+
+                // Delete the document ROWS, and capture the blob keys on the way past. Nothing is removed
+                // from storage here: the transaction can still roll the rows back, and a deleted blob
+                // cannot be un-deleted. The keys travel out on the result for the caller to act on AFTER
+                // the commit.
+                foreach (var documentId in deleteDocumentIds)
+                {
+                    var existing = await connection.QuerySingleOrDefaultAsync<StaffDocumentItem>(
+                        "dbo.spStaffDocument_GetById",
+                        new { StaffDocument_ID = documentId },
+                        transaction: transaction,
+                        commandType: CommandType.StoredProcedure);
+
+                    if (existing != null && !string.IsNullOrWhiteSpace(existing.BlobName))
+                    {
+                        result.RemovedDocuments.Add(new StaffDocumentDeletion
+                        {
+                            StaffDocument_ID = documentId,
+                            BlobName = existing.BlobName
+                        });
+                    }
+
+                    // spStaffDocument_Delete declares @User_ID INT = NULL: the ACTOR for its
+                    // dbo.AuditTrails row. Its @DeletedBlobName OUTPUT parameter is not requested here —
+                    // it also declares a default — because the read above already has the key AND the row
+                    // is only audited on the Serilog channel by id, which the caller already holds.
+                    await connection.ExecuteAsync(
+                        "dbo.spStaffDocument_Delete",
+                        new { StaffDocument_ID = documentId, User_ID = actorUserId },
+                        transaction: transaction,
+                        commandType: CommandType.StoredProcedure);
+                }
+
+                // THE CALLBACK. It uploads the files to the private container — which only it can do, since
+                // IDocumentStorage lives in CRC.Web — and hands back the rows to insert. It runs HERE,
+                // after the staff row exists, because the blob key is staff/{Staff_ID}/{guid}{ext} and on
+                // an insert that id was generated three statements ago. Anything it throws propagates into
+                // the catch below and rolls the whole transaction back; the caller compensates the blobs.
+                var documents = await uploadDocumentsAsync(result.StaffId);
+
+                foreach (var document in documents)
+                {
+                    await InsertStaffDocumentAsync(connection, transaction, result.StaffId, document, actorUserId);
+                }
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+
+            return result;
+        }
+
+        // spStaff_Insert has TWO call sites — CreateStaffAsync and the transaction above — so its fifteen
+        // parameters are written out once, here, and cannot drift between them. `transaction` is null on
+        // the non-transactional path, which Dapper accepts.
+        //
+        // spStaff_Insert declares @User_ID INT = NULL: the ACTOR for its dbo.AuditTrails row, passed
+        // explicitly because Dapper has no equivalent of DatabaseHelper's sys.parameters injection. Drop it
+        // and the insert still succeeds — with AuditTrails.User_Id = 0.
+        //
+        // QuerySingleAsync, not …OrDefault: every path that skips the trailing
+        // `SELECT @Staff_ID AS NewStaff_ID` RAISERRORs first (a blank @Staff_Type), so the caller gets a
+        // SqlException rather than an empty result.
+        private static Task<string> InsertStaffAsync(
+            SqlConnection connection, SqlTransaction? transaction, StaffSaveInput staff, int? actorUserId)
+        {
+            return connection.QuerySingleAsync<string>(
+                "dbo.spStaff_Insert",
+                new
+                {
+                    staff.Staff_Name,
+                    staff.Staff_NRIC,
+                    staff.Staff_BirthDate,
+                    staff.Staff_Age,
+                    staff.Staff_Phone,
+                    staff.Staff_Email,
+                    staff.Staff_Gender,
+                    staff.Staff_ResState,
+                    staff.Staff_ResCity,
+                    staff.Staff_ResPostcode,
+                    staff.Staff_AddLine1,
+                    staff.Staff_AddLine2,
+                    staff.Staff_Base,
+                    staff.Staff_Type,
+                    User_ID = actorUserId
+                },
+                transaction: transaction,
+                commandType: CommandType.StoredProcedure);
+        }
+
+        // Same arrangement for spStaff_Update, whose parameter list is spStaff_Insert's plus @Staff_ID.
+        // It too declares @User_ID INT = NULL — the ACTOR — and it audits only when a row actually
+        // changed, so a bad id writes nothing and reports nothing.
+        private static Task UpdateStaffRowAsync(
+            SqlConnection connection, SqlTransaction? transaction, StaffSaveInput staff, int? actorUserId)
+        {
+            return connection.ExecuteAsync(
+                "dbo.spStaff_Update",
+                new
+                {
+                    staff.Staff_ID,
+                    staff.Staff_Name,
+                    staff.Staff_NRIC,
+                    staff.Staff_BirthDate,
+                    staff.Staff_Age,
+                    staff.Staff_Phone,
+                    staff.Staff_Email,
+                    staff.Staff_Gender,
+                    staff.Staff_ResState,
+                    staff.Staff_ResCity,
+                    staff.Staff_ResPostcode,
+                    staff.Staff_AddLine1,
+                    staff.Staff_AddLine2,
+                    staff.Staff_Base,
+                    staff.Staff_Type,
+                    User_ID = actorUserId
+                },
+                transaction: transaction,
+                commandType: CommandType.StoredProcedure);
+        }
+
+        // ----- Staff documents -----
+
+        public async Task<List<StaffDocumentItem>> GetStaffDocumentsAsync(string staffId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var results = await connection.QueryAsync<StaffDocumentItem>(
+                "dbo.spStaffDocument_List",
+                new { Staff_ID = staffId },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<StaffDocumentItem?> GetStaffDocumentByIdAsync(int documentId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // SELECT TOP 1 … WHERE StaffDocument_ID = @StaffDocument_ID over the primary key: at most one
+            // row, possibly none.
+            return await connection.QuerySingleOrDefaultAsync<StaffDocumentItem>(
+                "dbo.spStaffDocument_GetById",
+                new { StaffDocument_ID = documentId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task AddStaffDocumentAsync(string staffId, string staffName, string documentTypeId,
+            string documentTypeName, string fileName, string blobName, string contentType)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            await InsertStaffDocumentAsync(
+                connection,
+                null,
+                staffId,
+                new StaffDocumentInput
+                {
+                    Staff_Name = staffName,
+                    StaffDocumentType_ID = documentTypeId,
+                    StaffDocumentType_Name = documentTypeName,
+                    FileName = fileName,
+                    BlobName = blobName,
+                    ContentType = contentType
+                },
+                _databaseHelper.CurrentUserId);
+        }
+
+        // spStaffDocument_Insert's other two-call-site helper, for the same reason as InsertStaffAsync:
+        // AddStaffDocumentAsync runs it on its own, SaveStaffWithDocumentsAsync runs it inside the
+        // transaction, and the parameter list is written once.
+        //
+        // spStaffDocument_Insert declares @User_ID INT = NULL: the ACTOR for its dbo.AuditTrails row,
+        // passed explicitly because Dapper has no equivalent of DatabaseHelper's sys.parameters injection.
+        private static Task InsertStaffDocumentAsync(
+            SqlConnection connection, SqlTransaction? transaction, string staffId,
+            StaffDocumentInput document, int? actorUserId)
+        {
+            return connection.ExecuteAsync(
+                "dbo.spStaffDocument_Insert",
+                new
+                {
+                    Staff_ID = staffId,
+                    document.Staff_Name,
+                    document.StaffDocumentType_ID,
+                    document.StaffDocumentType_Name,
+                    document.FileName,
+                    document.BlobName,
+                    document.ContentType,
+                    User_ID = actorUserId
+                },
+                transaction: transaction,
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task<string?> DeleteStaffDocumentAsync(int documentId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // 🔴 THE ONE PLACE IN THIS FILE THAT USES DynamicParameters, and the only one that should.
+            // spStaffDocument_Delete answers through an OUTPUT parameter — @DeletedBlobName VARCHAR(500) —
+            // and an OUTPUT parameter is the single thing Dapper cannot reach through an anonymous object.
+            // §5.3 records spUsers_RegisterFailedLogin as "the only procedure in nucentra with OUTPUT
+            // parameters"; THAT IS WRONG, and this is the second. The difference is what could be done
+            // about it: Prompt 2 was allowed to append a trailing SELECT to that procedure, Prompt 3 was
+            // not allowed to touch any .sql, and this one has no result set to append to. So the untyped
+            // bag stays, confined to four lines, with the name and the type written out where a reader can
+            // check them against the procedure.
+            //
+            // AnsiString, not String: the parameter is VARCHAR(500), and DbType.String would send NVARCHAR
+            // for SQL Server to convert back.
+            //
+            // @User_ID INT = NULL is the ACTOR for the dbo.AuditTrails row, passed explicitly as everywhere
+            // else. The procedure audits only when a row was actually deleted.
+            var parameters = new DynamicParameters();
+            parameters.Add("StaffDocument_ID", documentId);
+            parameters.Add("User_ID", _databaseHelper.CurrentUserId);
+            parameters.Add("DeletedBlobName", dbType: DbType.AnsiString, size: 500,
+                direction: ParameterDirection.Output);
+
+            await connection.ExecuteAsync(
+                "dbo.spStaffDocument_Delete",
+                parameters,
+                commandType: CommandType.StoredProcedure);
+
+            // NULL means no row was deleted, so there is nothing in storage to remove.
+            var deletedBlobName = parameters.Get<string?>("DeletedBlobName");
+
+            return string.IsNullOrWhiteSpace(deletedBlobName) ? null : deletedBlobName;
+        }
+
+        public async Task<List<StaffDocumentSetting>> GetStaffDocumentSettingsAsync(string staffTypeId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var results = await connection.QueryAsync<StaffDocumentSetting>(
+                "dbo.spStaffDocumentSettings_GetByStaffType",
+                new { StaffType_ID = staffTypeId },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        // Reuses QueryLookupAsync — the ordinal-reading helper written for the eleven LU_* code procedures
+        // — because this procedure has exactly the shape that helper assumes: two columns, the code first
+        // (StaffDocumentType_ID) and the display name second (StaffDocumentType_Name). Mapping
+        // LookupItem by NAME would match neither column and return empty strings on every row.
+        public Task<List<LookupItem>> GetStaffDocumentTypeFiltersAsync() =>
+            QueryLookupAsync("dbo.spStaffDocument_LookupDocuments");
+
+        public async Task<List<string>> GetStaffDocumentStaffNamesAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // One VARCHAR column, so the row type is the column type. The procedure's WHERE already
+            // excludes blank names, and its INNER JOIN excludes documents whose Staff_ID matches no staff.
+            var results = await connection.QueryAsync<string>(
+                "dbo.spStaffDocument_StaffNames",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
         }
     }
 }

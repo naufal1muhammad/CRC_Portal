@@ -1,6 +1,5 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
@@ -8,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Http;
 using CRC.Data.Data;
+using CRC.Data.Models;
 using CRC.Web.Infrastructure;
 using CRC.Web.Services;
 
@@ -15,16 +15,20 @@ namespace CRC.Web.Controllers.Staff
 {
     public class StaffController : Controller
     {
-        private readonly DatabaseHelper _db;
+        private readonly IDatabaseData _data;
         private readonly IDocumentStorage _documentStorage;
         private readonly ILogger<StaffController> _logger;
 
         // IWebHostEnvironment is deliberately gone: its only consumer was the web-root helper that resolved
         // the old on-disk document folder. Staff documents now live in the private blob container, and this
         // controller no longer knows anything about the local filesystem.
-        public StaffController(DatabaseHelper db, IDocumentStorage documentStorage, ILogger<StaffController> logger)
+        //
+        // DatabaseHelper is gone for a different reason: every stored-procedure call in this file now goes
+        // through IDatabaseData, which is the only type in the solution that names one (CoreFlow.md §6).
+        // IDocumentStorage stays — storage is not the database, and CRC.Data must never learn about it.
+        public StaffController(IDatabaseData data, IDocumentStorage documentStorage, ILogger<StaffController> logger)
         {
-            _db = db;
+            _data = data;
             _documentStorage = documentStorage;
             _logger = logger;
         }
@@ -51,15 +55,17 @@ namespace CRC.Web.Controllers.Staff
         [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetActiveBranches()
         {
-            var dt = await _db.ExecuteDataTableAsync("spBranch_ListActive");
+            var branches = await _data.GetActiveBranchesAsync();
             var list = new List<object>();
 
-            foreach (DataRow row in dt.Rows)
+            // Branch_State is selected by the procedure and deliberately NOT projected: this endpoint feeds
+            // the staff form's branch dropdown, which shows the name only.
+            foreach (var branch in branches)
             {
                 list.Add(new
                 {
-                    branchId = row["Branch_ID"].ToString(),
-                    branchName = row["Branch_Name"].ToString()
+                    branchId = branch.Branch_ID,
+                    branchName = branch.Branch_Name
                 });
             }
 
@@ -71,20 +77,25 @@ namespace CRC.Web.Controllers.Staff
         [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetStaffList()
         {
-            var dt = await _db.ExecuteDataTableAsync("spStaff_List");
+            var staffList = await _data.GetAllStaffAsync();
             var list = new List<object>();
 
-            foreach (DataRow row in dt.Rows)
+            // The anonymous object below is a public contract: wwwroot/js/staff/ reads every one of these
+            // camelCase names. The model is mapped INTO it and never returned directly.
+            foreach (var staff in staffList)
             {
                 list.Add(new
                 {
-                    staffId = row["Staff_ID"].ToString(),
-                    name = row["Staff_Name"].ToString(),
-                    nric = row["Staff_NRIC"].ToString(),
-                    phone = row["Staff_Phone"].ToString(),
-                    email = row["Staff_Email"].ToString(),
-                    staffTypeId = row["Staff_Type"]?.ToString() ?? "",
-                    staffTypeName = row["StaffType_Name"]?.ToString() ?? ""
+                    staffId = staff.Staff_ID,
+                    name = staff.Staff_Name,
+                    nric = staff.Staff_NRIC,
+                    phone = staff.Staff_Phone,
+                    email = staff.Staff_Email,
+                    staffTypeId = staff.Staff_Type,
+                    // StaffType_Name comes from a LEFT JOIN and really can be null — nothing constrains
+                    // Staff.Staff_Type to LU_STAFFTYPE. The DataTable code returned "" for that (a DBNull's
+                    // ToString() is ""), and the table would render the word "null" without this coalesce.
+                    staffTypeName = staff.StaffType_Name ?? ""
                 });
             }
 
@@ -108,53 +119,44 @@ namespace CRC.Web.Controllers.Staff
                 return Forbid();
             }
 
-            var parameters = new[]
-            {
-                new SqlParameter("@Staff_ID", staffId)
-            };
+            var staff = await _data.GetStaffByIdAsync(staffId);
 
-            var dt = await _db.ExecuteDataTableAsync("spStaff_GetById", parameters);
-
-            if (dt.Rows.Count == 0)
+            if (staff == null)
             {
                 return Ok(new { success = false, message = "Staff not found." });
             }
-
-            var row = dt.Rows[0];
 
             return Ok(new
             {
                 success = true,
                 data = new
                 {
-                    staffId = row["Staff_ID"].ToString(),
-                    name = row["Staff_Name"].ToString(),
-                    nric = row["Staff_NRIC"].ToString(),
-                    birthDate = ToDateInputString(row["Staff_BirthDate"]),
-                    age = row["Staff_Age"] == DBNull.Value ? 0 : Convert.ToInt32(row["Staff_Age"]),
-                    phone = row["Staff_Phone"].ToString(),
-                    email = row["Staff_Email"].ToString(),
-                    gender = row["Staff_Gender"]?.ToString() ?? "",
-                    resState = row["Staff_ResState"]?.ToString() ?? "",
-                    resCity = row["Staff_ResCity"]?.ToString() ?? "",
-                    resPostcode = row["Staff_ResPostcode"]?.ToString() ?? "",
-                    addLine1 = row["Staff_AddLine1"]?.ToString() ?? "",
-                    addLine2 = row["Staff_AddLine2"]?.ToString() ?? "",
-                    staffBase = row["Staff_Base"]?.ToString() ?? "",
-                    staffTypeId = row["Staff_Type"]?.ToString() ?? "",
-                    staffTypeName = row["StaffType_Name"]?.ToString() ?? ""
+                    staffId = staff.Staff_ID,
+                    name = staff.Staff_Name,
+                    nric = staff.Staff_NRIC,
+                    birthDate = ToDateInputString(staff.Staff_BirthDate),
+                    age = staff.Staff_Age ?? 0,
+                    phone = staff.Staff_Phone,
+                    email = staff.Staff_Email,
+                    gender = staff.Staff_Gender ?? "",
+                    resState = staff.Staff_ResState ?? "",
+                    resCity = staff.Staff_ResCity ?? "",
+                    resPostcode = staff.Staff_ResPostcode ?? "",
+                    addLine1 = staff.Staff_AddLine1 ?? "",
+                    addLine2 = staff.Staff_AddLine2 ?? "",
+                    staffBase = staff.Staff_Base ?? "",
+                    staffTypeId = staff.Staff_Type ?? "",
+                    staffTypeName = staff.StaffType_Name ?? ""
                 }
             });
         }
 
-        private static string? ToDateInputString(object value)
+        // The <input type="date"> the edit form binds to accepts exactly "yyyy-MM-dd" and nothing else, so
+        // the date is formatted here rather than left to JSON's default DateTime serialization. A null
+        // stays null — the field renders empty — which is what the DataTable version did for a DBNull.
+        private static string? ToDateInputString(DateTime? value)
         {
-            if (value == null || value == DBNull.Value) return null;
-            if (DateTime.TryParse(value.ToString(), out var dt))
-            {
-                return dt.ToString("yyyy-MM-dd");
-            }
-            return null;
+            return value?.ToString("yyyy-MM-dd");
         }
 
         public class SaveStaffRequest
@@ -183,6 +185,32 @@ namespace CRC.Web.Controllers.Staff
         public class DeleteStaffRequest
         {
             public string StaffId { get; set; } = string.Empty;
+        }
+
+        // Maps the form/JSON request onto the data layer's input model. Both save actions build the same
+        // thing, so it is built in one place — a mis-ordered NRIC and phone number would be two strings
+        // that compile fine and save a staff member whose details are swapped.
+        private static StaffSaveInput ToStaffSaveInput(SaveStaffRequest model, DateTime birthDate)
+        {
+            return new StaffSaveInput
+            {
+                IsNew = model.IsNew,
+                Staff_ID = model.StaffId,
+                Staff_Name = model.Name,
+                Staff_NRIC = model.NRIC,
+                Staff_BirthDate = birthDate,
+                Staff_Age = model.Age,
+                Staff_Phone = model.Phone,
+                Staff_Email = model.Email,
+                Staff_Gender = model.Gender,
+                Staff_ResState = model.ResState,
+                Staff_ResCity = model.ResCity,
+                Staff_ResPostcode = model.ResPostcode,
+                Staff_AddLine1 = model.AddLine1,
+                Staff_AddLine2 = model.AddLine2,
+                Staff_Base = model.StaffBase,
+                Staff_Type = model.StaffTypeId
+            };
         }
 
         // POST: /Staff/SaveStaff
@@ -222,32 +250,8 @@ namespace CRC.Web.Controllers.Staff
 
                 if (model.IsNew)
                 {
-                    // INSERT: Staff_ID is auto-generated in spStaff_Insert
-                    var insertParams = new[]
-                    {
-                new SqlParameter("@Staff_Name",        model.Name),
-                new SqlParameter("@Staff_NRIC",        model.NRIC),
-                new SqlParameter("@Staff_BirthDate",   birthDate),
-                new SqlParameter("@Staff_Age",         model.Age),
-                new SqlParameter("@Staff_Phone",       model.Phone),
-                new SqlParameter("@Staff_Email",       model.Email),
-                new SqlParameter("@Staff_Gender",      model.Gender),
-                new SqlParameter("@Staff_ResState",    model.ResState),
-                new SqlParameter("@Staff_ResCity",     model.ResCity),
-                new SqlParameter("@Staff_ResPostcode", model.ResPostcode),
-                new SqlParameter("@Staff_AddLine1",    model.AddLine1),
-                new SqlParameter("@Staff_AddLine2",    model.AddLine2),
-                new SqlParameter("@Staff_Base",        model.StaffBase),
-                new SqlParameter("@Staff_Type",        model.StaffTypeId) // StaffType_ID
-            };
-
-                    var dt = await _db.ExecuteDataTableAsync("spStaff_Insert", insertParams);
-
-                    string newStaffId = string.Empty;
-                    if (dt.Rows.Count > 0 && dt.Columns.Contains("NewStaff_ID"))
-                    {
-                        newStaffId = dt.Rows[0]["NewStaff_ID"]?.ToString() ?? "";
-                    }
+                    // INSERT: Staff_ID is auto-generated in spStaff_Insert, which returns it.
+                    var newStaffId = await _data.CreateStaffAsync(ToStaffSaveInput(model, birthDate));
 
                     AuditLog.StaffCreated(HttpContext, newStaffId, model.Name, model.NRIC,
                         model.Phone, model.Email, model.StaffTypeId, model.StaffBase);
@@ -278,26 +282,7 @@ namespace CRC.Web.Controllers.Staff
                         return Ok(new { success = false, message = "Staff ID is required for update." });
                     }
 
-                    var updateParams = new[]
-                    {
-                new SqlParameter("@Staff_ID",          model.StaffId),
-                new SqlParameter("@Staff_Name",        model.Name),
-                new SqlParameter("@Staff_NRIC",        model.NRIC),
-                new SqlParameter("@Staff_BirthDate",   birthDate),
-                new SqlParameter("@Staff_Age",         model.Age),
-                new SqlParameter("@Staff_Phone",       model.Phone),
-                new SqlParameter("@Staff_Email",       model.Email),
-                new SqlParameter("@Staff_Gender",      model.Gender),
-                new SqlParameter("@Staff_ResState",    model.ResState),
-                new SqlParameter("@Staff_ResCity",     model.ResCity),
-                new SqlParameter("@Staff_ResPostcode", model.ResPostcode),
-                new SqlParameter("@Staff_AddLine1",    model.AddLine1),
-                new SqlParameter("@Staff_AddLine2",    model.AddLine2),
-                new SqlParameter("@Staff_Base",        model.StaffBase),
-                new SqlParameter("@Staff_Type",        model.StaffTypeId)
-            };
-
-                    await _db.ExecuteNonQueryAsync("spStaff_Update", updateParams);
+                    await _data.UpdateStaffAsync(ToStaffSaveInput(model, birthDate));
 
                     AuditLog.StaffUpdated(HttpContext, model.StaffId, model.Name, model.NRIC,
                         model.Phone, model.Email, model.StaffTypeId, model.StaffBase);
@@ -396,15 +381,13 @@ namespace CRC.Web.Controllers.Staff
                 }
 
                 // Existing docs for this staff (exclude pending deletes)
-                var existingParams = new[] { new SqlParameter("@Staff_ID", model.StaffId) };
-                var existingDt = await _db.ExecuteDataTableAsync("spStaffDocument_List", existingParams);
+                var existingDocs = await _data.GetStaffDocumentsAsync(model.StaffId);
 
-                foreach (DataRow row in existingDt.Rows)
+                foreach (var doc in existingDocs)
                 {
-                    int docId = row["StaffDocument_ID"] == DBNull.Value ? 0 : Convert.ToInt32(row["StaffDocument_ID"]);
-                    if (docId > 0 && deleteSet.Contains(docId)) continue;
+                    if (doc.StaffDocument_ID > 0 && deleteSet.Contains(doc.StaffDocument_ID)) continue;
 
-                    var typeId = row["StaffDocumentType_ID"]?.ToString() ?? "";
+                    var typeId = doc.StaffDocumentType_ID ?? "";
                     if (!string.IsNullOrWhiteSpace(typeId))
                     {
                         resultingDocTypeIds.Add(typeId);
@@ -493,150 +476,83 @@ namespace CRC.Web.Controllers.Staff
 
             try
             {
-                await using var conn = _db.CreateConnection();
-                await conn.OpenAsync();
-                await using var tx = conn.BeginTransaction();
-
-                try
-                {
-                    if (model.IsNew)
+                // THE TRANSACTION ITSELF LIVES IN SqlData — one named unit of work owning the connection,
+                // the SqlTransaction and the procedure sequence (spStaff_Insert or spStaff_Update, then
+                // spStaffDocument_GetById + spStaffDocument_Delete per removal, then spStaffDocument_Insert
+                // per upload). This controller no longer opens a connection or names a procedure; what it
+                // still owns is everything the database cannot roll back.
+                //
+                // THE ORDERING PROBLEM, and why the blob writes happen in the callback below rather than
+                // before the call. The blob key is staff/{Staff_ID}/{guid}{ext}, but for a NEW staff member
+                // the Staff_ID does not exist until spStaff_Insert has run — and spStaff_Insert only runs
+                // inside that transaction. So the upload cannot be hoisted out of the transaction the way
+                // the validation was: the key it needs has not been generated yet. The data layer therefore
+                // calls back into this lambda once the staff row is written and the id is known.
+                //
+                // What that costs is that a blob can be written and the transaction can still fail
+                // afterwards, so the guarantee is kept by compensation instead of by ordering: every key
+                // lands in uploadedBlobs as it is written, and the catch block below deletes all of them if
+                // anything throws. The alternative — pre-generating a Staff_ID in the application — would
+                // move id generation out of spStaff_Insert, where it belongs, to buy a rollback that a
+                // best-effort delete already provides.
+                //
+                // IDocumentStorage stays on this side of the boundary throughout: CRC.Data has no reference
+                // to CRC.Web and must not gain one, and a Func<> carries no dependency.
+                var result = await _data.SaveStaffWithDocumentsAsync(
+                    ToStaffSaveInput(model, birthDate),
+                    deleteSet.ToList(),
+                    async newStaffId =>
                     {
-                        var insertParams = new[]
+                        // Captured so the catch blocks below can name the staff member in their log line,
+                        // exactly as they could when this method held the id in a local.
+                        staffId = newStaffId;
+
+                        var documents = new List<StaffDocumentInput>();
+
+                        for (int i = 0; i < files.Count; i++)
                         {
-                            new SqlParameter("@Staff_Name",        model.Name),
-                            new SqlParameter("@Staff_NRIC",        model.NRIC),
-                            new SqlParameter("@Staff_BirthDate",   birthDate),
-                            new SqlParameter("@Staff_Age",         model.Age),
-                            new SqlParameter("@Staff_Phone",       model.Phone),
-                            new SqlParameter("@Staff_Email",       model.Email),
-                            new SqlParameter("@Staff_Gender",      model.Gender),
-                            new SqlParameter("@Staff_ResState",    model.ResState),
-                            new SqlParameter("@Staff_ResCity",     model.ResCity),
-                            new SqlParameter("@Staff_ResPostcode", model.ResPostcode),
-                            new SqlParameter("@Staff_AddLine1",    model.AddLine1),
-                            new SqlParameter("@Staff_AddLine2",    model.AddLine2),
-                            new SqlParameter("@Staff_Base",        model.StaffBase),
-                            new SqlParameter("@Staff_Type",        model.StaffTypeId)
-                        };
+                            var file = files[i];
 
-                        var dt = await ExecDataTableAsync(conn, tx, "spStaff_Insert", insertParams);
-                        staffId = string.Empty;
-                        if (dt.Rows.Count > 0 && dt.Columns.Contains("NewStaff_ID"))
-                        {
-                            staffId = dt.Rows[0]["NewStaff_ID"]?.ToString() ?? string.Empty;
-                        }
+                            string tId = (i < docTypeIds.Count) ? docTypeIds[i] : string.Empty;
+                            string tName = (i < docTypeNames.Count) ? docTypeNames[i] : string.Empty;
 
-                        if (string.IsNullOrWhiteSpace(staffId))
-                        {
-                            throw new Exception("Failed to generate Staff ID.");
-                        }
-                    }
-                    else
-                    {
-                        staffId = model.StaffId;
+                            var safeFileName = DocumentValidation.SafeFileName(file.FileName);
+                            var contentType = file.ContentType ?? "application/octet-stream";
 
-                        var updateParams = new[]
-                        {
-                            new SqlParameter("@Staff_ID",          model.StaffId),
-                            new SqlParameter("@Staff_Name",        model.Name),
-                            new SqlParameter("@Staff_NRIC",        model.NRIC),
-                            new SqlParameter("@Staff_BirthDate",   birthDate),
-                            new SqlParameter("@Staff_Age",         model.Age),
-                            new SqlParameter("@Staff_Phone",       model.Phone),
-                            new SqlParameter("@Staff_Email",       model.Email),
-                            new SqlParameter("@Staff_Gender",      model.Gender),
-                            new SqlParameter("@Staff_ResState",    model.ResState),
-                            new SqlParameter("@Staff_ResCity",     model.ResCity),
-                            new SqlParameter("@Staff_ResPostcode", model.ResPostcode),
-                            new SqlParameter("@Staff_AddLine1",    model.AddLine1),
-                            new SqlParameter("@Staff_AddLine2",    model.AddLine2),
-                            new SqlParameter("@Staff_Base",        model.StaffBase),
-                            new SqlParameter("@Staff_Type",        model.StaffTypeId)
-                        };
+                            // Server-generated key: staff/{Staff_ID}/{guid}{ext}. Nothing the user typed becomes
+                            // part of it, and the bytes are streamed straight to the container — never to disk.
+                            var blobName = DocumentValidation.BuildBlobName("staff", newStaffId, file.FileName);
 
-                        await ExecNonQueryAsync(conn, tx, "spStaff_Update", updateParams);
-                    }
-
-                    // Capture the blob keys of the docs being deleted (and delete the DB rows). Do NOT remove
-                    // anything from storage yet — the transaction may still roll the rows back, and a deleted
-                    // blob cannot be un-deleted.
-                    foreach (var docId in deleteSet)
-                    {
-                        var dtDoc = await ExecDataTableAsync(conn, tx, "spStaffDocument_GetById",
-                            new[] { new SqlParameter("@StaffDocument_ID", docId) });
-
-                        if (dtDoc.Rows.Count > 0)
-                        {
-                            var blobName = dtDoc.Rows[0]["BlobName"]?.ToString() ?? "";
-                            if (!string.IsNullOrWhiteSpace(blobName))
+                            await using (var stream = file.OpenReadStream())
                             {
-                                deleteBlobNames.Add(blobName);
-                                pendingDeleteAudits.Add((docId, blobName));
+                                await _documentStorage.UploadAsync(stream, blobName, contentType);
                             }
+
+                            uploadedBlobs.Add(blobName);
+                            pendingUploadAudits.Add((blobName, safeFileName, tId, file.Length));
+
+                            documents.Add(new StaffDocumentInput
+                            {
+                                Staff_Name = model.Name,
+                                StaffDocumentType_ID = tId,
+                                StaffDocumentType_Name = tName,
+                                FileName = safeFileName,
+                                BlobName = blobName,
+                                ContentType = contentType
+                            });
                         }
 
-                        await ExecNonQueryAsync(conn, tx, "spStaffDocument_Delete",
-                            new[] { new SqlParameter("@StaffDocument_ID", docId) });
-                    }
+                        return documents;
+                    });
 
-                    // Upload new documents (if any).
-                    //
-                    // THE ORDERING PROBLEM, and why the blob writes sit inside the transaction rather than before
-                    // it. The blob key is staff/{Staff_ID}/{guid}{ext}, but for a NEW staff member the
-                    // Staff_ID does not exist until spStaff_Insert has run — and spStaff_Insert only runs
-                    // inside this transaction. So the upload cannot be hoisted out of the transaction the way
-                    // the validation was: the key it needs has not been generated yet.
-                    //
-                    // The transaction therefore opens first, spStaff_Insert/spStaff_Update runs to obtain
-                    // staffId, and only then do the bytes go to the container. What that costs is that a blob
-                    // can be written and the transaction can still fail afterwards, so the guarantee is kept
-                    // by compensation instead of by ordering: every key lands in uploadedBlobs as it is
-                    // written, and the catch block below deletes all of them if anything throws. The
-                    // alternative — pre-generating a Staff_ID in the application — would move id generation
-                    // out of spStaff_Insert, where it belongs, to buy a rollback that a best-effort delete
-                    // already provides.
-                    for (int i = 0; i < files.Count; i++)
-                    {
-                        var file = files[i];
+                staffId = result.StaffId;
 
-                        string tId = (i < docTypeIds.Count) ? docTypeIds[i] : string.Empty;
-                        string tName = (i < docTypeNames.Count) ? docTypeNames[i] : string.Empty;
-
-                        var safeFileName = DocumentValidation.SafeFileName(file.FileName);
-                        var contentType = file.ContentType ?? "application/octet-stream";
-
-                        // Server-generated key: staff/{Staff_ID}/{guid}{ext}. Nothing the user typed becomes
-                        // part of it, and the bytes are streamed straight to the container — never to disk.
-                        var blobName = DocumentValidation.BuildBlobName("staff", staffId, file.FileName);
-
-                        await using (var stream = file.OpenReadStream())
-                        {
-                            await _documentStorage.UploadAsync(stream, blobName, contentType);
-                        }
-
-                        uploadedBlobs.Add(blobName);
-                        pendingUploadAudits.Add((blobName, safeFileName, tId, file.Length));
-
-                        var insertDocParams = new[]
-                        {
-                            new SqlParameter("@Staff_ID",              staffId),
-                            new SqlParameter("@Staff_Name",            (object?)model.Name ?? DBNull.Value),
-                            new SqlParameter("@StaffDocumentType_ID",  (object?)tId ?? DBNull.Value),
-                            new SqlParameter("@StaffDocumentType_Name",(object?)tName ?? DBNull.Value),
-                            new SqlParameter("@FileName",              safeFileName),
-                            new SqlParameter("@BlobName",              blobName),
-                            new SqlParameter("@ContentType",           contentType)
-                        };
-
-                        await ExecNonQueryAsync(conn, tx, "spStaffDocument_Insert", insertDocParams);
-                    }
-
-                    await tx.CommitAsync();
-                }
-                catch
+                // The document rows are gone and the commit has returned, so these keys are now safe to
+                // remove from storage and safe to write audit lines about.
+                foreach (var removed in result.RemovedDocuments)
                 {
-                    await tx.RollbackAsync();
-                    throw;
+                    deleteBlobNames.Add(removed.BlobName);
+                    pendingDeleteAudits.Add((removed.StaffDocument_ID, removed.BlobName));
                 }
 
                 if (model.IsNew)
@@ -697,7 +613,7 @@ namespace CRC.Web.Controllers.Staff
 
 
         // --------------------
-        // Helper methods for transactional stored-proc execution & file handling
+        // Helper methods for the mandatory-document rule & file handling
         // --------------------
 
         private sealed class MandatoryDocInfo
@@ -706,6 +622,10 @@ namespace CRC.Web.Controllers.Staff
             public string Name { get; set; } = string.Empty;
         }
 
+        // spStaffDocumentSettings_GetByStaffType returns EVERY document type with an IsMandatory flag, not
+        // just the mandatory ones, so the filter below is what turns it into "what this staff type must
+        // have". IsMandatory is an INT (a CASE over 0/1), and it is compared to 1 rather than treated as a
+        // boolean, exactly as the DataTable code did.
         private async Task<List<MandatoryDocInfo>> GetMandatoryDocsByStaffType(string staffTypeId)
         {
             var list = new List<MandatoryDocInfo>();
@@ -713,22 +633,17 @@ namespace CRC.Web.Controllers.Staff
             if (string.IsNullOrWhiteSpace(staffTypeId))
                 return list;
 
-            var settingsParams = new[]
-            {
-                new SqlParameter("@StaffType_ID", staffTypeId)
-            };
+            var settings = await _data.GetStaffDocumentSettingsAsync(staffTypeId);
 
-            var settingsDt = await _db.ExecuteDataTableAsync("spStaffDocumentSettings_GetByStaffType", settingsParams);
-
-            foreach (DataRow row in settingsDt.Rows)
+            foreach (var setting in settings)
             {
-                var isMandatory = row["IsMandatory"] != DBNull.Value && Convert.ToInt32(row["IsMandatory"]) == 1;
+                var isMandatory = setting.IsMandatory == 1;
                 if (!isMandatory) continue;
 
-                var docTypeId = row["StaffDocumentType_ID"]?.ToString() ?? string.Empty;
+                var docTypeId = setting.StaffDocumentType_ID ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(docTypeId)) continue;
 
-                var docTypeName = row["StaffDocumentType_Name"]?.ToString() ?? docTypeId;
+                var docTypeName = setting.StaffDocumentType_Name ?? docTypeId;
 
                 list.Add(new MandatoryDocInfo
                 {
@@ -738,22 +653,6 @@ namespace CRC.Web.Controllers.Staff
             }
 
             return list;
-        }
-
-        private async Task<DataTable> ExecDataTableAsync(SqlConnection conn, SqlTransaction tx, string storedProc, SqlParameter[]? parameters)
-        {
-            using var cmd = await _db.CreateStoredProcedureCommandAsync(conn, tx, storedProc, parameters);
-
-            using var reader = await cmd.ExecuteReaderAsync();
-            var dt = new DataTable();
-            dt.Load(reader);
-            return dt;
-        }
-
-        private async Task<int> ExecNonQueryAsync(SqlConnection conn, SqlTransaction tx, string storedProc, SqlParameter[]? parameters)
-        {
-            using var cmd = await _db.CreateStoredProcedureCommandAsync(conn, tx, storedProc, parameters);
-            return await cmd.ExecuteNonQueryAsync();
         }
 
         /// <summary>
@@ -799,32 +698,19 @@ namespace CRC.Web.Controllers.Staff
 
             try
             {
-                var parameters = new[]
-                {
-                    new SqlParameter("@Staff_ID", model.StaffId)
-                };
-
-                // spStaff_Delete returns:
+                // spStaff_Delete returns TWO result sets, always:
                 //   Result set 1: Status ('Success' | 'Blocked' | 'NotFound'), Message
-                //   Result set 2: BlobName rows for the StaffDocument blobs to remove (only when Success)
-                var ds = await _db.ExecuteDataSetAsync("spStaff_Delete", parameters);
+                //   Result set 2: BlobName rows for the StaffDocument blobs to remove (empty unless Success)
+                // Both are carried on StaffDeleteResult — see IDatabaseData.DeleteStaffAsync for what
+                // "Blocked" means and what it cascades to when it does not.
+                var result = await _data.DeleteStaffAsync(model.StaffId);
 
-                string status = string.Empty;
-                string message = string.Empty;
-
-                if (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
-                {
-                    var row = ds.Tables[0].Rows[0];
-                    status = row.Table.Columns.Contains("Status") ? row["Status"]?.ToString() ?? "" : "";
-                    message = row.Table.Columns.Contains("Message") ? row["Message"]?.ToString() ?? "" : "";
-                }
-
-                if (!string.Equals(status, "Success", StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(result.Status, "Success", StringComparison.OrdinalIgnoreCase))
                 {
                     return Ok(new
                     {
                         success = false,
-                        message = string.IsNullOrWhiteSpace(message) ? "Failed to delete staff." : message
+                        message = string.IsNullOrWhiteSpace(result.Message) ? "Failed to delete staff." : result.Message
                     });
                 }
 
@@ -832,15 +718,11 @@ namespace CRC.Web.Controllers.Staff
                 // gone; leaving the blobs would retain personal data after the record it belonged to was
                 // deleted, which is the more serious half of an orphan.
                 var blobNames = new List<string>();
-                if (ds.Tables.Count > 1)
+                foreach (var blobName in result.BlobNames)
                 {
-                    foreach (DataRow fileRow in ds.Tables[1].Rows)
+                    if (!string.IsNullOrWhiteSpace(blobName))
                     {
-                        var blobName = fileRow["BlobName"]?.ToString();
-                        if (!string.IsNullOrWhiteSpace(blobName))
-                        {
-                            blobNames.Add(blobName);
-                        }
+                        blobNames.Add(blobName);
                     }
                 }
 
@@ -858,6 +740,9 @@ namespace CRC.Web.Controllers.Staff
             }
         }
 
+        // The same rule as GetMandatoryDocsByStaffType, asked the other way round: which mandatory document
+        // types does this staff member NOT yet have a row for. Used by SaveStaff, which — unlike
+        // SaveStaffWithDocuments — saves first and reports the gap afterwards.
         private async Task<List<string>> GetMissingMandatoryDocuments(string staffTypeId, string staffId)
         {
             var missing = new List<string>();
@@ -867,21 +752,16 @@ namespace CRC.Web.Controllers.Staff
                 return missing;
             }
 
-            var settingsParams = new[]
-            {
-                new SqlParameter("@StaffType_ID", staffTypeId)
-            };
-
-            var settingsDt = await _db.ExecuteDataTableAsync("spStaffDocumentSettings_GetByStaffType", settingsParams);
+            var settings = await _data.GetStaffDocumentSettingsAsync(staffTypeId);
             var mandatoryDocs = new List<(string Id, string Name)>();
 
-            foreach (DataRow row in settingsDt.Rows)
+            foreach (var setting in settings)
             {
-                var isMandatory = row["IsMandatory"] != DBNull.Value && Convert.ToInt32(row["IsMandatory"]) == 1;
+                var isMandatory = setting.IsMandatory == 1;
                 if (!isMandatory) continue;
 
-                var docTypeId = row["StaffDocumentType_ID"]?.ToString() ?? "";
-                var docTypeName = row["StaffDocumentType_Name"]?.ToString() ?? docTypeId;
+                var docTypeId = setting.StaffDocumentType_ID ?? "";
+                var docTypeName = setting.StaffDocumentType_Name ?? docTypeId;
 
                 if (!string.IsNullOrWhiteSpace(docTypeId))
                 {
@@ -894,17 +774,12 @@ namespace CRC.Web.Controllers.Staff
                 return missing;
             }
 
-            var docParams = new[]
-            {
-                new SqlParameter("@Staff_ID", staffId)
-            };
-
-            var docDt = await _db.ExecuteDataTableAsync("spStaffDocument_List", docParams);
+            var documents = await _data.GetStaffDocumentsAsync(staffId);
             var existingDocTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (DataRow row in docDt.Rows)
+            foreach (var document in documents)
             {
-                var docTypeId = row["StaffDocumentType_ID"]?.ToString() ?? "";
+                var docTypeId = document.StaffDocumentType_ID ?? "";
                 if (!string.IsNullOrWhiteSpace(docTypeId))
                 {
                     existingDocTypes.Add(docTypeId);
@@ -930,26 +805,31 @@ namespace CRC.Web.Controllers.Staff
         {
             try
             {
-                var dtStaffTypes = await _db.ExecuteDataTableAsync("spLU_STAFFTYPE_List");
-                var dtStates = await _db.ExecuteDataTableAsync("spLU_LOCATION_ListStates");
+                var staffTypeItems = await _data.GetStaffTypesAsync();
+                var stateItems = await _data.GetStatesAsync();
 
                 var staffTypes = new List<object>();
-                foreach (DataRow row in dtStaffTypes.Rows)
+                foreach (var staffType in staffTypeItems)
                 {
                     staffTypes.Add(new
                     {
-                        staffTypeId = row["StaffType_ID"]?.ToString() ?? "",
-                        staffTypeName = row["StaffType_Name"]?.ToString() ?? ""
+                        staffTypeId = staffType.Id,
+                        staffTypeName = staffType.Name
                     });
                 }
 
                 var states = new List<object>();
-                foreach (DataRow row in dtStates.Rows)
+                foreach (var state in stateItems)
                 {
                     states.Add(new
                     {
-                        id = row["LocationId"]?.ToString() ?? "",
-                        name = row["Name"]?.ToString() ?? ""
+                        // 🔴 A STRING, not a number, and deliberately so. LU_LOCATION.LocationId is an INT,
+                        // and /Branch/GetStates serializes it as a JSON number — but this endpoint has
+                        // always gone through DataRow.ToString() and returned "2367". The three staff
+                        // endpoints below do the same. Two shapes for one column across two screens is
+                        // untidy; changing either one breaks a .js file this plan does not touch.
+                        id = state.LocationId.ToString(),
+                        name = state.Name
                     });
                 }
 
@@ -970,20 +850,15 @@ namespace CRC.Web.Controllers.Staff
                 return Ok(new { success = false, message = "State is required." });
             }
 
-            var parameters = new[]
-            {
-                new SqlParameter("@StateId", stateId)
-            };
-
-            var dt = await _db.ExecuteDataTableAsync("spLU_LOCATION_ListCityByState", parameters);
+            var cityItems = await _data.GetCitiesByStateAsync(stateId);
             var cities = new List<object>();
 
-            foreach (DataRow row in dt.Rows)
+            foreach (var city in cityItems)
             {
                 cities.Add(new
                 {
-                    id = row["LocationId"]?.ToString() ?? "",
-                    name = row["Name"]?.ToString() ?? ""
+                    id = city.LocationId.ToString(),
+                    name = city.Name
                 });
             }
 
@@ -999,20 +874,15 @@ namespace CRC.Web.Controllers.Staff
                 return Ok(new { success = false, message = "City is required." });
             }
 
-            var parameters = new[]
-            {
-                new SqlParameter("@CityId", cityId)
-            };
-
-            var dt = await _db.ExecuteDataTableAsync("spLU_LOCATION_ListPostcodesByCity", parameters);
+            var postcodeItems = await _data.GetPostcodesByCityAsync(cityId);
             var postcodes = new List<object>();
 
-            foreach (DataRow row in dt.Rows)
+            foreach (var postcode in postcodeItems)
             {
                 postcodes.Add(new
                 {
-                    id = row["LocationId"]?.ToString() ?? "",
-                    name = row["Name"]?.ToString() ?? ""
+                    id = postcode.LocationId.ToString(),
+                    name = postcode.Name
                 });
             }
 
@@ -1025,15 +895,15 @@ namespace CRC.Web.Controllers.Staff
         [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetStaffDocumentTypes()
         {
-            var dt = await _db.ExecuteDataTableAsync("spLU_STAFFDOCUMENTTYPE_List");
+            var documentTypes = await _data.GetStaffDocumentTypesAsync();
             var list = new List<object>();
 
-            foreach (DataRow row in dt.Rows)
+            foreach (var documentType in documentTypes)
             {
                 list.Add(new
                 {
-                    documentTypeId = row["StaffDocumentType_ID"]?.ToString() ?? "",
-                    documentTypeName = row["StaffDocumentType_Name"]?.ToString() ?? ""
+                    documentTypeId = documentType.Id,
+                    documentTypeName = documentType.Name
                 });
             }
 
@@ -1050,31 +920,30 @@ namespace CRC.Web.Controllers.Staff
                 return Ok(new { success = false, message = "Staff ID is required." });
             }
 
-            var parameters = new[]
-            {
-        new SqlParameter("@Staff_ID", staffId)
-    };
-
-            var dt = await _db.ExecuteDataTableAsync("spStaffDocument_List", parameters);
+            var documents = await _data.GetStaffDocumentsAsync(staffId);
 
             var list = new List<object>();
 
             // Metadata only — the blob key is deliberately NOT projected. The container is private, so a
             // storage key is useless to the browser and is exactly the kind of detail that should never leave
             // the server. The file itself is fetched through GetStaffDocumentUrl, which mints a short-lived
-            // read SAS for one document at click time.
-            foreach (DataRow row in dt.Rows)
+            // read SAS for one document at click time. StaffDocumentItem.BlobName is populated here and
+            // dropped on purpose; do not add it to this object.
+            foreach (var document in documents)
             {
                 list.Add(new
                 {
-                    documentId = Convert.ToInt32(row["StaffDocument_ID"]),
-                    staffId = row["Staff_ID"]?.ToString() ?? "",
-                    staffName = row["Staff_Name"]?.ToString() ?? "",
-                    staffDocumentTypeId = row["StaffDocumentType_ID"]?.ToString() ?? "",
-                    staffDocumentTypeName = row["StaffDocumentType_Name"]?.ToString() ?? "",
-                    fileName = row["FileName"]?.ToString() ?? "",
-                    contentType = row["ContentType"]?.ToString() ?? "",
-                    uploadedOn = row["UploadedOn"]?.ToString() ?? ""
+                    documentId = document.StaffDocument_ID,
+                    staffId = document.Staff_ID,
+                    staffName = document.Staff_Name ?? "",
+                    staffDocumentTypeId = document.StaffDocumentType_ID ?? "",
+                    staffDocumentTypeName = document.StaffDocumentType_Name ?? "",
+                    fileName = document.FileName,
+                    contentType = document.ContentType,
+                    // UploadedOn is rendered with a plain ToString(), i.e. the server's current culture
+                    // ("8/6/2026 9:28:03 PM"), and NOT as ISO-8601 — the DataTable code did the same and the
+                    // documents table renders the string straight. A null renders "".
+                    uploadedOn = document.UploadedOn?.ToString() ?? ""
                 });
             }
 
@@ -1152,18 +1021,12 @@ namespace CRC.Web.Controllers.Staff
                     await using var stream = file.OpenReadStream();
                     await _documentStorage.UploadAsync(stream, blobName, contentType);
 
-                    var parameters = new[]
-                    {
-                new SqlParameter("@Staff_ID",             staffId),
-                new SqlParameter("@Staff_Name",           (object?)staffName ?? DBNull.Value),
-                new SqlParameter("@StaffDocumentType_ID", (object?)docTypeId ?? DBNull.Value),
-                new SqlParameter("@StaffDocumentType_Name",(object?)docTypeName ?? DBNull.Value),
-                new SqlParameter("@FileName",             safeFileName),
-                new SqlParameter("@BlobName",             blobName),
-                new SqlParameter("@ContentType",          contentType)
-            };
-
-                    await _db.ExecuteNonQueryAsync("spStaffDocument_Insert", parameters);
+                    // NO TRANSACTION HERE, and that is what this endpoint has always done: one row at a
+                    // time, each committing on its own. A failure halfway through a batch leaves the earlier
+                    // rows saved. SaveStaffWithDocuments is the atomic path; this one is not, and nothing
+                    // calls it.
+                    await _data.AddStaffDocumentAsync(staffId, staffName, docTypeId, docTypeName,
+                        safeFileName, blobName, contentType);
 
                     // DocumentId is 0 because spStaffDocument_Insert writes its own AuditTrails row but does
                     // not hand the new identity back to the caller; the blob key is what ties this audit line
@@ -1206,20 +1069,16 @@ namespace CRC.Web.Controllers.Staff
 
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spStaffDocument_GetById",
-                    new[] { new SqlParameter("@StaffDocument_ID", id) }
-                );
+                var document = await _data.GetStaffDocumentByIdAsync(id);
 
-                if (dt.Rows.Count == 0)
+                if (document == null)
                 {
                     return Ok(new { success = false, message = "Document not found." });
                 }
 
-                var row = dt.Rows[0];
-                var blobName = row["BlobName"]?.ToString();
-                var fileName = row["FileName"]?.ToString() ?? string.Empty;
-                var staffId = row["Staff_ID"]?.ToString() ?? string.Empty;
+                var blobName = document.BlobName;
+                var fileName = document.FileName ?? string.Empty;
+                var staffId = document.Staff_ID ?? string.Empty;
 
                 if (string.IsNullOrWhiteSpace(blobName))
                 {
@@ -1268,32 +1127,14 @@ namespace CRC.Web.Controllers.Staff
             {
                 // Read the row first, only so the audit line can name the staff member the document belonged
                 // to — spStaffDocument_Delete hands back the blob key and nothing else.
-                var lookup = await _db.ExecuteDataTableAsync(
-                    "spStaffDocument_GetById",
-                    new[] { new SqlParameter("@StaffDocument_ID", model.DocumentId) }
-                );
+                var lookup = await _data.GetStaffDocumentByIdAsync(model.DocumentId);
 
-                var staffId = lookup.Rows.Count > 0
-                    ? lookup.Rows[0]["Staff_ID"]?.ToString() ?? string.Empty
-                    : string.Empty;
+                var staffId = lookup?.Staff_ID ?? string.Empty;
 
-                var deletedBlobNameParameter = new SqlParameter("@DeletedBlobName", SqlDbType.VarChar, 500)
-                {
-                    Direction = ParameterDirection.Output
-                };
-
-                var parameters = new[]
-                {
-                    new SqlParameter("@StaffDocument_ID", model.DocumentId),
-                    deletedBlobNameParameter
-                };
-
-                await _db.ExecuteNonQueryAsync("spStaffDocument_Delete", parameters);
-
-                // NULL means no row was deleted, so there is nothing in storage to remove.
-                var deletedBlobName = deletedBlobNameParameter.Value == DBNull.Value
-                    ? null
-                    : deletedBlobNameParameter.Value?.ToString();
+                // The blob key comes back through the procedure's @DeletedBlobName OUTPUT parameter, which
+                // SqlData reads for us. NULL means no row was deleted, so there is nothing in storage to
+                // remove.
+                var deletedBlobName = await _data.DeleteStaffDocumentAsync(model.DocumentId);
 
                 if (!string.IsNullOrWhiteSpace(deletedBlobName))
                 {
@@ -1315,15 +1156,15 @@ namespace CRC.Web.Controllers.Staff
         [Authorize(Policy = "AdminOrSuper")]
         public async Task<IActionResult> GetStaffTypes()
         {
-            var dt = await _db.ExecuteDataTableAsync("spLU_STAFFTYPE_List");
+            var staffTypes = await _data.GetStaffTypesAsync();
             var list = new List<object>();
 
-            foreach (DataRow row in dt.Rows)
+            foreach (var staffType in staffTypes)
             {
                 list.Add(new
                 {
-                    staffTypeId = row["StaffType_ID"]?.ToString() ?? "",
-                    staffTypeName = row["StaffType_Name"]?.ToString() ?? ""
+                    staffTypeId = staffType.Id,
+                    staffTypeName = staffType.Name
                 });
             }
 
@@ -1339,24 +1180,19 @@ namespace CRC.Web.Controllers.Staff
                 return Ok(new { success = false, message = "Staff type is required." });
             }
 
-            var parameters = new[]
-            {
-        new SqlParameter("@StaffType_ID", staffTypeId)
-    };
-
-            var dt = await _db.ExecuteDataTableAsync("spStaffDocumentSettings_GetByStaffType", parameters);
+            var settings = await _data.GetStaffDocumentSettingsAsync(staffTypeId);
             var list = new List<object>();
 
-            foreach (DataRow row in dt.Rows)
+            foreach (var setting in settings)
             {
-                bool isMandatory = row["IsMandatory"] != DBNull.Value && Convert.ToInt32(row["IsMandatory"]) == 1;
+                bool isMandatory = setting.IsMandatory == 1;
                 if (!isMandatory)
                     continue;
 
                 list.Add(new
                 {
-                    staffDocumentTypeId = row["StaffDocumentType_ID"]?.ToString() ?? "",
-                    staffDocumentTypeName = row["StaffDocumentType_Name"]?.ToString() ?? ""
+                    staffDocumentTypeId = setting.StaffDocumentType_ID ?? "",
+                    staffDocumentTypeName = setting.StaffDocumentType_Name ?? ""
                 });
             }
 
