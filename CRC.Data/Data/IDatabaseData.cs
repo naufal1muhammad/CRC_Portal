@@ -203,5 +203,102 @@ namespace CRC.Data.Data
         // are plain VARCHAR(100) columns holding a Branch_ID. Deleting a branch that staff are based at, or
         // that appointments are booked into, succeeds and orphans them.
         Task DeleteBranchAsync(string branchId);
+
+        // ----- Users, authentication and lockout -----
+        //
+        // Nine procedures, all over dbo.Users, and the whole of nucentra's authentication. Read CoreFlow.md
+        // §2 before changing any of them.
+        //
+        // 🔴 FIVE OF THE NINE DECLARE @User_ID, AND IN ALL FIVE IT IS A TARGET — spUsers_GetById,
+        // spUsers_Unlock, spUsers_UpdatePassword, spUsers_ResetFailedLogins and spUsers_UpdateLastLogin. It
+        // names THE USER ROW BEING READ OR WRITTEN, not the person doing it. THE TELL IS THE DEFAULT: these
+        // five declare `@User_ID INT` with none, whereas all 19 audit-actor procedures elsewhere declare
+        // `@User_ID INT = NULL`. So the five take an ordinary `int userId` argument below and NONE of them
+        // is given DatabaseHelper.CurrentUserId.
+        //
+        // spUsers_Unlock is the one to stare at: filling its @User_ID from the caller's claim would unlock
+        // the SUPERUSER's own account, leave the locked-out user locked, and return "Account unlocked."
+        //
+        // NONE of the nine writes a dbo.AuditTrails row — unusual for procedures that write. The security
+        // trail for login, lockout, unlock and logout is the Serilog audit channel instead
+        // (AuditLog.* → Logs/audit-*.log), written by AccountController. See CoreFlow.md §9.
+
+        // The dbo.Users row for a username, for the login path — identity, password hash and lockout
+        // state. Null when no account has that username. Calls spUsers_ValidateLogin.
+        //
+        // 🔴 THE PROCEDURE VALIDATES NOTHING despite its name: it is a plain SELECT by username, with no
+        // password check, no lockout enforcement and no side effect. A non-null return means "this username
+        // exists", NOT "this login succeeded". The password comparison (PasswordHasher<string>.
+        // VerifyHashedPassword) and the lockout-window comparison both happen in AccountController.Login.
+        Task<UserAuthRecord?> GetUserForLoginAsync(string username);
+
+        // One user by id, for the Change Password page and for naming the account being unlocked. Null when
+        // no user has that id. Calls spUsers_GetById — whose @User_ID is A TARGET (the row to read), not
+        // the caller.
+        //
+        // It selects NINE columns, three fewer than spUsers_ValidateLogin: THE LOCKOUT STATE IS NOT AMONG
+        // THEM. That is why this returns UserAccountRecord and not UserAuthRecord — a lockout decision made
+        // from this result would read 0 and null on a locked account, silently. Use GetUserForLoginAsync
+        // when you need to know whether someone is locked.
+        Task<UserAccountRecord?> GetUserByIdAsync(int userId);
+
+        // Every user account for the Admin > Users table. Calls spUsers_GetAll; ordered by User_ID
+        // DESCENDING — newest account first, and the caller must not re-sort. This is the only one of the
+        // three read procedures that does NOT select Password_Hash, which is why it gets its own model.
+        Task<List<UserListItem>> GetAllUsersAsync();
+
+        // Creates a user account. Calls spUsers_Register, which RAISERRORs — surfacing as a SqlException —
+        // on four separate conditions, none of which this method can pre-empt:
+        //   • the username already exists (dbo.Users has a UNIQUE index on Username);
+        //   • userType is 3 (STAFF) and staffId is blank;
+        //   • staffId does not match a row in dbo.Staff;
+        //   • staffId is ALREADY linked to another user account — one staff member, at most one login.
+        // The caller passes a hash, never a password: hash it with PasswordHasher<string> first.
+        // Created_At and Last_Login are both stamped GETUTCDATE() by the procedure, so a brand-new account
+        // reads as though it had just logged in.
+        Task RegisterUserAsync(string userName, string username, string userEmail, string passwordHash,
+            int userType, string? staffId);
+
+        // Records one failed login attempt and returns the resulting lockout state. Calls
+        // spUsers_RegisterFailedLogin — the ONLY procedure in nucentra with OUTPUT parameters, and the only
+        // .sql file the Dapper migration edited (additively: a trailing SELECT of the same three values,
+        // with all three OUTPUT parameters kept). See FailedLoginResult for why.
+        //
+        // The thresholds are passed in per call from IOptions<LoginLockoutOptions> (appsettings.json
+        // "Account:LoginLockout"), not read from the database — the procedure holds no policy of its own.
+        //
+        // Returns null when the procedure emitted no result set, which it does on its two early-RETURN
+        // paths: an unknown username, and an attempt against an account whose lockout window is already
+        // open. Neither is reachable from AccountController.Login, which calls this only after
+        // GetUserForLoginAsync returned a row and after its own lockout check has passed.
+        Task<FailedLoginResult?> RegisterFailedLoginAsync(string username, int maxFailedAttempts,
+            int lockoutMinutes, int attemptWindowMinutes);
+
+        // Clears Failed_Login_Count, Last_Failed_Login_At and Lockout_End_Utc after a SUCCESSFUL login.
+        // Calls spUsers_ResetFailedLogins, whose @User_ID is A TARGET — the user who just logged in, which
+        // the caller passes explicitly. Silent when the id matches nothing.
+        Task ResetFailedLoginsAsync(int userId);
+
+        // Clears the same three columns on behalf of somebody else — a SUPERUSER unlocking a locked-out
+        // account. Calls spUsers_Unlock.
+        //
+        // 🔴 @User_ID HERE IS THE LOCKED-OUT ACCOUNT, NOT THE SUPERUSER PERFORMING THE UNLOCK. This is the
+        // single call in the whole migration where confusing the ACTOR with the TARGET would unlock the
+        // wrong account and report success. Unlike spUsers_ResetFailedLogins it is NOT silent on a bad id:
+        // it RAISERRORs "User not found." (severity 16 → a SqlException).
+        Task UnlockUserAsync(int userId);
+
+        // Stamps dbo.Users.Last_Login with GETUTCDATE(). Calls spUsers_UpdateLastLogin, whose @User_ID is A
+        // TARGET — the user who just logged in. Silent when the id matches nothing.
+        Task UpdateLastLoginAsync(int userId);
+
+        // Replaces dbo.Users.Password_Hash. Calls spUsers_UpdatePassword, whose @User_ID is A TARGET — and
+        // which RAISERRORs "User not found." rather than failing silently.
+        //
+        // The caller passes a HASH, never a password. The procedure verifies nothing: the current-password
+        // check, the "must differ from the current one" rule and the whole password policy live in
+        // AccountController.ChangePassword. There is no password history and no MustChangePassword column,
+        // so nothing forces the seeded SUPERUSER password to ever be changed (see SEEDING.md).
+        Task UpdateUserPasswordAsync(int userId, string passwordHash);
     }
 }

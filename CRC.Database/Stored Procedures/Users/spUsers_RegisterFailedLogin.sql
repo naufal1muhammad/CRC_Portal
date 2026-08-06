@@ -68,5 +68,23 @@ BEGIN
 
     SET @FailedLoginCount = @CurrentCount;
     SET @LockoutEndUtc    = COALESCE(@NewLockoutEnd, @ExistingLockoutEnd);
+
+    -- ADDITIVE, and the ONLY change this procedure has had (DapperLayerPlan.md, Prompt 2).
+    --
+    -- The three OUTPUT parameters above are DELIBERATELY UNTOUCHED: anything still calling this the old
+    -- way (a raw SqlCommand with three ParameterDirection.Output parameters) keeps working unchanged.
+    -- What is new is the SELECT below, which re-emits exactly the same three values as a RESULT SET,
+    -- because Dapper can only read OUTPUT parameters through DynamicParameters — the untyped, string-keyed
+    -- plumbing the Dapper migration exists to delete. A result set maps onto CRC.Data/Models/
+    -- FailedLoginResult.cs by name, with the compiler checking the shape.
+    --
+    -- 🔴 THE TWO RETURN STATEMENTS ABOVE SKIP THIS SELECT, and that is why SqlData reads it with
+    -- QuerySingleOrDefaultAsync rather than QuerySingleAsync. An unknown @Username and an already-active
+    -- lockout window each RETURN early, emitting NO result set at all. Neither is reachable from
+    -- AccountController.Login — it only calls this after spUsers_ValidateLogin returned a row and after
+    -- its own lockout check has passed — but a caller must still handle "no row". See CoreFlow.md §5.
+    SELECT @LockoutTriggered AS [LockoutTriggered],
+           @LockoutEndUtc    AS [LockoutEndUtc],
+           @FailedLoginCount AS [FailedLoginCount];
 END;
 GO

@@ -264,5 +264,168 @@ namespace CRC.Data.Data
                 new { Branch_ID = branchId, User_ID = _databaseHelper.CurrentUserId },
                 commandType: CommandType.StoredProcedure);
         }
+
+        // ----- Users, authentication and lockout -----
+        //
+        // 🔴 READ THIS BEFORE ADDING A CALL TO THIS BANNER. Five of the nine procedures declare @User_ID,
+        // and NOT ONE of them gets _databaseHelper.CurrentUserId. In all five it is `@User_ID INT` with NO
+        // DEFAULT, meaning A TARGET USER ROW — the account being read or written — which arrives as an
+        // ordinary method argument. The 19 audit-actor procedures are the ones that declare
+        // `@User_ID INT = NULL`; that default is the whole tell. Every one of the five below says TARGET on
+        // its call, deliberately, because the mistake this prevents is invisible: passing the claim to
+        // spUsers_Unlock unlocks the administrator's own account and answers "Account unlocked."
+        //
+        // None of the nine writes a dbo.AuditTrails row, so there is no audit assertion to make here — the
+        // security trail for this area is the Serilog audit channel, written by AccountController.
+
+        public async Task<UserAuthRecord?> GetUserForLoginAsync(string username)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // SELECT TOP 1 … WHERE Username = @Username, over a UNIQUE index: at most one row, possibly
+            // none. No @User_ID — this procedure reads by username, not by id.
+            return await connection.QuerySingleOrDefaultAsync<UserAuthRecord>(
+                "dbo.spUsers_ValidateLogin",
+                new { Username = username },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task<UserAccountRecord?> GetUserByIdAsync(int userId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // spUsers_GetById declares @User_ID INT with no default: A TARGET — the user row to read. It
+            // is the caller's argument and has nothing to do with who is logged in.
+            return await connection.QuerySingleOrDefaultAsync<UserAccountRecord>(
+                "dbo.spUsers_GetById",
+                new { User_ID = userId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task<List<UserListItem>> GetAllUsersAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var results = await connection.QueryAsync<UserListItem>(
+                "dbo.spUsers_GetAll",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task RegisterUserAsync(string userName, string username, string userEmail,
+            string passwordHash, int userType, string? staffId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // No @User_ID of either kind: spUsers_Register records no actor and writes no audit row. Who
+            // created an account is captured on the Serilog audit channel by the controller instead.
+            //
+            // staffId is passed as null rather than "" for non-STAFF users. The procedure only inspects it
+            // when @User_Type = 3 (where it NULLIFs the blank anyway), so both work today — but null is
+            // what the column stores, and "" would be a Staff_ID that matches no staff row.
+            await connection.ExecuteAsync(
+                "dbo.spUsers_Register",
+                new
+                {
+                    User_Name = userName,
+                    Username = username,
+                    User_Email = userEmail,
+                    PasswordHash = passwordHash,
+                    User_Type = userType,
+                    Staff_ID = staffId
+                },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task<FailedLoginResult?> RegisterFailedLoginAsync(string username, int maxFailedAttempts,
+            int lockoutMinutes, int attemptWindowMinutes)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // THE ONE PROCEDURE THE DAPPER MIGRATION EDITED. It answers through three OUTPUT parameters,
+            // which Dapper can only reach via DynamicParameters — a string-keyed bag with a manual
+            // .Get<T>("@Name") per value, i.e. exactly the untyped plumbing this layer exists to remove.
+            // Prompt 2 therefore APPENDED a trailing SELECT of the same three values to the .sql and KEPT
+            // ALL THREE OUTPUT PARAMETERS, so the change is invisible to any caller still using them. The
+            // three OUTPUT parameters are simply not sent from here; each declares a default.
+            //
+            // @NowUtc is likewise not sent, so the procedure uses GETUTCDATE() — the SQL SERVER's clock,
+            // not the web server's. The controller compares the returned LockoutEndUtc against the web
+            // server's DateTime.UtcNow, so the two machines' clocks must agree for a lockout window to be
+            // the length it claims. On one box, as locally, they are the same clock.
+            //
+            // 🔴 QuerySingleOrDefault, NOT QuerySingle. Two early RETURNs in the procedure skip the new
+            // SELECT entirely and emit NO result set: an unknown @Username, and an attempt against an
+            // account whose lockout window is already open. Neither is reachable from
+            // AccountController.Login — it calls this only after spUsers_ValidateLogin returned a row and
+            // after its own lockout check passed — but QuerySingleAsync would throw "Sequence contains no
+            // elements" if either ever were, turning a failed login into a 500. Null means "the procedure
+            // decided nothing"; the caller treats that as no lockout.
+            return await connection.QuerySingleOrDefaultAsync<FailedLoginResult>(
+                "dbo.spUsers_RegisterFailedLogin",
+                new
+                {
+                    Username = username,
+                    MaxFailedAttempts = maxFailedAttempts,
+                    LockoutMinutes = lockoutMinutes,
+                    AttemptWindowMinutes = attemptWindowMinutes
+                },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task ResetFailedLoginsAsync(int userId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // spUsers_ResetFailedLogins declares @User_ID INT with no default: A TARGET — the account whose
+            // counters are being cleared, which is the user who just logged in successfully.
+            await connection.ExecuteAsync(
+                "dbo.spUsers_ResetFailedLogins",
+                new { User_ID = userId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task UnlockUserAsync(int userId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // 🔴 A TARGET, AND THE MOST DANGEROUS ONE IN THE MIGRATION. spUsers_Unlock declares @User_ID INT
+            // with no default, and it is THE LOCKED-OUT ACCOUNT BEING UNLOCKED — a SUPERUSER acting on
+            // somebody else's row. Writing `User_ID = _databaseHelper.CurrentUserId` here would clear the
+            // SUPERUSER's own counters, leave the locked-out user locked, throw nothing, and return
+            // "Account unlocked." to the administrator. It is the caller's argument. Do not "tidy" it.
+            await connection.ExecuteAsync(
+                "dbo.spUsers_Unlock",
+                new { User_ID = userId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task UpdateLastLoginAsync(int userId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // spUsers_UpdateLastLogin declares @User_ID INT with no default: A TARGET — the user whose
+            // Last_Login is being stamped. Note that this runs BEFORE HttpContext.SignInAsync, so
+            // DatabaseHelper.CurrentUserId is still null at this point in the login flow anyway.
+            await connection.ExecuteAsync(
+                "dbo.spUsers_UpdateLastLogin",
+                new { User_ID = userId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task UpdateUserPasswordAsync(int userId, string passwordHash)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // spUsers_UpdatePassword declares @User_ID INT with no default: A TARGET — the account whose
+            // hash is being replaced. Today the only caller passes the logged-in user's own id (there is no
+            // admin password reset in nucentra), which is exactly why it would be easy to mistake this for
+            // an actor parameter. It is not: it is the row in the WHERE clause.
+            await connection.ExecuteAsync(
+                "dbo.spUsers_UpdatePassword",
+                new { User_ID = userId, PasswordHash = passwordHash },
+                commandType: CommandType.StoredProcedure);
+        }
     }
 }

@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.SqlClient;
 using System.ComponentModel.DataAnnotations;
-using System.Data;
 using System.Text.Json.Serialization;
 using System.Globalization;
 using System.Security.Claims;
@@ -19,7 +18,7 @@ namespace CRC.Web.Controllers
 {
     public class AccountController : Controller
     {
-        private readonly DatabaseHelper _db;
+        private readonly IDatabaseData _data;
         private readonly PasswordPolicyOptions _passwordPolicy;
         private readonly SessionTimeoutOptions _sessionTimeout;
         private readonly LoginLockoutOptions _lockoutOptions;
@@ -27,51 +26,45 @@ namespace CRC.Web.Controllers
         private static readonly PasswordHasher<string> _hasher = new PasswordHasher<string>();
 
         public AccountController(
-            DatabaseHelper db,
+            IDatabaseData data,
             IOptions<PasswordPolicyOptions> passwordPolicyOptions,
             IOptions<SessionTimeoutOptions> sessionTimeoutOptions,
             IOptions<LoginLockoutOptions> lockoutOptions,
             ILogger<AccountController> logger)
         {
-            _db = db;
+            _data = data;
             _passwordPolicy = passwordPolicyOptions.Value;
             _sessionTimeout = sessionTimeoutOptions.Value;
             _lockoutOptions = lockoutOptions.Value;
             _logger = logger;
         }
 
+        // Records one failed login attempt and, if this attempt locked the account, writes the audit line.
+        //
+        // 🔴 THE try/catch IS LOAD-BEARING AND SWALLOWS ON PURPOSE. Failing to RECORD a failed login must
+        // never change what the caller is told about that login — the user still gets the same generic
+        // "Invalid username or password.", and the operational detail goes to the app log. Rethrowing here
+        // would turn a database hiccup into a 500 on the login page and hand an attacker a way to
+        // distinguish one failure from another. Do not "improve" this by letting the exception out.
+        //
+        // The thresholds come from IOptions<LoginLockoutOptions> ("Account:LoginLockout" in
+        // appsettings.json) and are passed per call: the procedure holds no policy of its own.
         private async Task RegisterFailedLoginAsync(string username, HttpContext httpContext)
         {
             try
             {
-                using var conn = _db.CreateConnection();
-                await conn.OpenAsync();
+                var result = await _data.RegisterFailedLoginAsync(
+                    username,
+                    _lockoutOptions.MaxFailedAttempts,
+                    _lockoutOptions.LockoutMinutes,
+                    _lockoutOptions.AttemptWindowMinutes);
 
-                using var cmd = new SqlCommand("dbo.spUsers_RegisterFailedLogin", conn)
+                // Null means the procedure returned no result set — an unknown username, or a lockout
+                // window that was already open. Neither is reachable from Login below, and neither is a
+                // new lockout, so there is nothing to audit either way. See IDatabaseData.
+                if (result != null && result.LockoutTriggered)
                 {
-                    CommandType = CommandType.StoredProcedure
-                };
-
-                cmd.Parameters.Add(new SqlParameter("@Username", SqlDbType.VarChar, 100) { Value = username });
-                cmd.Parameters.Add(new SqlParameter("@MaxFailedAttempts", SqlDbType.Int) { Value = _lockoutOptions.MaxFailedAttempts });
-                cmd.Parameters.Add(new SqlParameter("@LockoutMinutes", SqlDbType.Int) { Value = _lockoutOptions.LockoutMinutes });
-                cmd.Parameters.Add(new SqlParameter("@AttemptWindowMinutes", SqlDbType.Int) { Value = _lockoutOptions.AttemptWindowMinutes });
-
-                var triggeredParam = new SqlParameter("@LockoutTriggered", SqlDbType.Bit) { Direction = ParameterDirection.Output };
-                var lockoutEndParam = new SqlParameter("@LockoutEndUtc", SqlDbType.DateTime) { Direction = ParameterDirection.Output };
-                var failedCountParam = new SqlParameter("@FailedLoginCount", SqlDbType.Int) { Direction = ParameterDirection.Output };
-                cmd.Parameters.Add(triggeredParam);
-                cmd.Parameters.Add(lockoutEndParam);
-                cmd.Parameters.Add(failedCountParam);
-
-                await cmd.ExecuteNonQueryAsync();
-
-                var triggered = triggeredParam.Value is bool b && b;
-                if (triggered)
-                {
-                    DateTime? lockoutEnd = lockoutEndParam.Value is DateTime dtEnd ? dtEnd : null;
-                    int failedCount = failedCountParam.Value is int fc ? fc : 0;
-                    AuditLog.LoginLockoutTriggered(httpContext, username, failedCount, lockoutEnd);
+                    AuditLog.LoginLockoutTriggered(httpContext, username, result.FailedLoginCount, result.LockoutEndUtc);
                 }
             }
             catch (Exception ex)
@@ -80,14 +73,15 @@ namespace CRC.Web.Controllers
             }
         }
 
+        // Clears the lockout counters after a successful login. Swallows for the same reason as above: a
+        // successful authentication must not be turned into an error because the bookkeeping failed.
         private async Task ResetFailedLoginsAsync(int userId)
         {
             try
             {
-                await _db.ExecuteNonQueryAsync(
-                    "spUsers_ResetFailedLogins",
-                    new[] { new SqlParameter("@User_ID", userId) }
-                );
+                // spUsers_ResetFailedLogins' @User_ID is a TARGET — the user who just logged in — not an
+                // audit actor. See CoreFlow.md §0.1.
+                await _data.ResetFailedLoginsAsync(userId);
             }
             catch (Exception ex)
             {
@@ -253,17 +247,17 @@ namespace CRC.Web.Controllers
                         return BadRequest(new { success = false, message = "Staff is required for STAFF users." });
                 }
 
-                var parameters = new[]
-                {
-    new SqlParameter("@User_Name", model.Name.Trim()),
-    new SqlParameter("@Username", username),
-    new SqlParameter("@User_Email", model.Email.Trim()),
-    new SqlParameter("@PasswordHash", passwordHash),
-    new SqlParameter("@User_Type", model.UserType),
-    new SqlParameter("@Staff_ID", (object?)staffId ?? DBNull.Value)
-};
-
-                await _db.ExecuteNonQueryAsync("spUsers_Register", parameters);
+                // staffId is null for everyone who is not a STAFF user; the procedure only looks at it when
+                // @User_Type = 3. Its four RAISERROR paths (duplicate username, missing Staff_ID, unknown
+                // Staff_ID, Staff_ID already linked to another account) all surface as the SqlException
+                // caught below, which is why none of them is re-checked here.
+                await _data.RegisterUserAsync(
+                    model.Name.Trim(),
+                    username,
+                    model.Email.Trim(),
+                    passwordHash,
+                    model.UserType,
+                    staffId);
 
                 return Ok(new { success = true, message = "User registered successfully." });
             }
@@ -335,36 +329,31 @@ namespace CRC.Web.Controllers
             {
                 var usernameInput = model.Username.Trim();
 
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spUsers_ValidateLogin",
-                    new[] { new SqlParameter("@Username", usernameInput) }
-                );
+                // spUsers_ValidateLogin VALIDATES NOTHING — it is a plain read by username. A non-null
+                // result means the account exists; every decision below is made here, in C#.
+                var user = await _data.GetUserForLoginAsync(usernameInput);
 
-                if (dt.Rows.Count == 0)
+                if (user == null)
                 {
                     AuditLog.LoginFailed(HttpContext, usernameInput, "UserNotFound");
                     ViewData["LoginError"] = genericLoginError;
                     return View();
                 }
 
-                var row = dt.Rows[0];
-
-                var userId = row["User_ID"]?.ToString() ?? string.Empty;
-                var userName = row["User_Name"]?.ToString() ?? string.Empty;
-                var username = row["Username"]?.ToString() ?? string.Empty;
-                var userEmail = row["User_Email"]?.ToString() ?? string.Empty;
-                var userType = row["User_Type"]?.ToString() ?? "3";
-                var staffId = row.Table.Columns.Contains("StaffId")
-    ? (row["StaffId"]?.ToString() ?? "")
-    : "";
+                var userId = user.User_ID.ToString(CultureInfo.InvariantCulture);
+                var userName = user.User_Name;
+                var username = user.Username;
+                var userEmail = user.User_Email;
+                var userType = user.User_Type.ToString(CultureInfo.InvariantCulture);
+                var staffId = user.StaffId ?? "";
 
                 // Lockout check: if the account is currently locked, refuse before
                 // verifying the password (avoids password-oracle on locked accounts)
                 // and do not increment the failure counter.
                 DateTime? lockoutEndUtc = null;
-                if (row.Table.Columns.Contains("LockoutEndUtc") && row["LockoutEndUtc"] != DBNull.Value)
+                if (user.LockoutEndUtc.HasValue)
                 {
-                    var rawEnd = Convert.ToDateTime(row["LockoutEndUtc"]);
+                    var rawEnd = user.LockoutEndUtc.Value;
                     if (rawEnd.Kind == DateTimeKind.Unspecified)
                         rawEnd = DateTime.SpecifyKind(rawEnd, DateTimeKind.Utc);
                     lockoutEndUtc = rawEnd;
@@ -377,7 +366,7 @@ namespace CRC.Web.Controllers
                     return View();
                 }
 
-                var storedHash = row["PasswordHash"]?.ToString() ?? "";
+                var storedHash = user.PasswordHash;
                 if (string.IsNullOrWhiteSpace(storedHash))
                 {
                     AuditLog.LoginFailed(HttpContext, usernameInput, "MissingPasswordHash");
@@ -395,18 +384,28 @@ namespace CRC.Web.Controllers
                     return View();
                 }
 
-                if (int.TryParse(userId, out var uid))
-                {
-                    await ResetFailedLoginsAsync(uid);
-                    await _db.ExecuteNonQueryAsync(
-                        "spUsers_UpdateLastLogin",
-                        new[] { new SqlParameter("@User_ID", uid) }
-                    );
-                }
+                // Both @User_ID parameters below are TARGETS — the account that just authenticated. They
+                // could not be audit actors even in principle: SignInAsync has not run yet, so there is no
+                // NameIdentifier claim for DatabaseHelper.CurrentUserId to read. See CoreFlow.md §0.1.
+                await ResetFailedLoginsAsync(user.User_ID);
+                await _data.UpdateLastLoginAsync(user.User_ID);
 
                 // -----------------------------
                 // Claims + Sign-in (same as yours)
                 // -----------------------------
+                //
+                // 🔴 THIS BLOCK IS THE PRODUCT'S AUTHORIZATION AND AUDIT SURFACE, AND IT IS BUILT NOWHERE
+                // ELSE. Renaming a claim, or changing the FORMAT of one's value, breaks things that will
+                // not fail a build:
+                //   • ClaimTypes.NameIdentifier — a plain integer string. DatabaseHelper.CurrentUserId
+                //     int.TryParses it back, and that value becomes dbo.AuditTrails.User_Id for all 19
+                //     audit-actor procedures. A non-numeric value here writes User_Id = 0 for the entire
+                //     product, silently (CoreFlow.md §0.1).
+                //   • "UserType" — "1"/"2"/"3" as STRINGS. All five authorization policies are
+                //     RequireClaim("UserType", …) string comparisons (CoreFlow.md §2).
+                //   • ClaimTypes.Role — the role names RedirectToLanding switches on.
+                //   • "StaffId" — added ONLY for User_Type = 3, and read by every staff-scoped page.
+                // Do not touch the construction below.
                 var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, userId),
@@ -445,7 +444,7 @@ namespace CRC.Web.Controllers
                     new AuthenticationProperties { IsPersistent = false }
                 );
 
-                int? auditUserId = int.TryParse(userId, out var parsedUserId) ? parsedUserId : (int?)null;
+                int? auditUserId = user.User_ID;
                 AuditLog.LoginSucceeded(HttpContext, username, auditUserId, ut);
 
                 return RedirectToLanding(principal);
@@ -462,23 +461,27 @@ namespace CRC.Web.Controllers
         [HttpGet]
         public async Task<IActionResult> GetUsers()
         {
-            var dt = await _db.ExecuteDataTableAsync("spUsers_GetAll", Array.Empty<SqlParameter>());
+            // spUsers_GetAll is the only Users read that omits Password_Hash — so the model it maps onto
+            // does not carry one, and this endpoint's JSON cannot leak one by accident.
+            var rows = await _data.GetAllUsersAsync();
 
-            string ToIso(object v)
+            // Every date leaves as ISO-8601 round-trip ("o"), and "never" is the EMPTY STRING, not null —
+            // wwwroot/js reads these by name and renders them straight. SQL Server hands back DATETIME with
+            // Kind = Unspecified; the values are UTC, so they are stamped Utc before formatting or the "Z"
+            // the format appends would be a lie.
+            static string ToIso(DateTime? v)
             {
-                if (v == null || v == DBNull.Value) return "";
+                if (!v.HasValue) return "";
 
-                var dt = Convert.ToDateTime(v);
-                if (dt.Kind == DateTimeKind.Unspecified)
-                    dt = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+                var value = v.Value;
+                if (value.Kind == DateTimeKind.Unspecified)
+                    value = DateTime.SpecifyKind(value, DateTimeKind.Utc);
 
-                return dt.ToString("o");
+                return value.ToString("o");
             }
 
-            string UserTypeName(object v)
+            static string UserTypeName(int t)
             {
-                if (v == null || v == DBNull.Value) return "";
-                var t = Convert.ToInt32(v);
                 return t switch
                 {
                     1 => "SUPERUSER",
@@ -488,41 +491,38 @@ namespace CRC.Web.Controllers
                 };
             }
 
-            bool HasCol(string name) => dt.Columns.Contains(name);
-            DateTime? ReadDateTime(System.Data.DataRow r, string col)
-            {
-                if (!HasCol(col) || r[col] == DBNull.Value) return null;
-                var v = Convert.ToDateTime(r[col]);
-                if (v.Kind == DateTimeKind.Unspecified)
-                    v = DateTime.SpecifyKind(v, DateTimeKind.Utc);
-                return v;
-            }
-
             var nowUtc = DateTime.UtcNow;
 
-            var users = dt.Rows.Cast<System.Data.DataRow>()
+            // The DTO's [JsonPropertyName] attributes are the public contract that wwwroot/js reads; the
+            // Dapper model is mapped INTO it and never returned directly.
+            var users = rows
                 .Select(r =>
                 {
-                    var lockoutEnd = ReadDateTime(r, "LockoutEndUtc");
-                    var lastFailed = ReadDateTime(r, "LastFailedLoginAt");
-                    var failedCount = HasCol("FailedLoginCount") && r["FailedLoginCount"] != DBNull.Value
-                        ? Convert.ToInt32(r["FailedLoginCount"])
-                        : 0;
+                    var lockoutEnd = r.LockoutEndUtc;
+                    if (lockoutEnd.HasValue && lockoutEnd.Value.Kind == DateTimeKind.Unspecified)
+                        lockoutEnd = DateTime.SpecifyKind(lockoutEnd.Value, DateTimeKind.Utc);
 
                     return new UserListItemDto
                     {
-                        UserId = Convert.ToInt32(r["User_ID"]),
-                        Name = r["User_Name"]?.ToString() ?? "",
-                        Username = r["Username"]?.ToString() ?? "",
-                        Email = r["User_Email"]?.ToString() ?? "",
-                        UserType = Convert.ToInt32(r["User_Type"]),
-                        UserTypeName = UserTypeName(r["User_Type"]),
-                        StaffId = r["Staff_ID"] == DBNull.Value ? "" : (r["Staff_ID"]?.ToString() ?? ""),
-                        CreatedAt = ToIso(r["Created_At"]),
-                        LastLogin = ToIso(r["Last_Login"]),
-                        FailedLoginCount = failedCount,
-                        LastFailedLoginAt = lastFailed.HasValue ? lastFailed.Value.ToString("o") : "",
-                        LockoutEndUtc = lockoutEnd.HasValue ? lockoutEnd.Value.ToString("o") : "",
+                        UserId = r.User_ID,
+                        Name = r.User_Name,
+                        Username = r.Username,
+                        Email = r.User_Email,
+                        UserType = r.User_Type,
+                        UserTypeName = UserTypeName(r.User_Type),
+                        // Staff_ID is NULL for every non-STAFF account, and the DataTable code this
+                        // replaced returned "" for a DBNull. Without the coalesce the table renders "null".
+                        StaffId = r.Staff_ID ?? "",
+                        CreatedAt = ToIso(r.Created_At),
+                        LastLogin = ToIso(r.Last_Login),
+                        // Failed_Login_Count is INT NOT NULL DEFAULT 0, so the coalesce cannot fire — it is
+                        // here because the model types it int? to keep a NULL from becoming a 500 (Dapper
+                        // throws mapping NULL onto a non-nullable int), exactly as BranchDetail does.
+                        FailedLoginCount = r.FailedLoginCount ?? 0,
+                        LastFailedLoginAt = ToIso(r.LastFailedLoginAt),
+                        LockoutEndUtc = ToIso(lockoutEnd),
+                        // "Locked" is not a column: an expired window leaves Lockout_End_Utc set until the
+                        // next successful login clears it, so the answer is always a comparison against now.
                         IsLocked = lockoutEnd.HasValue && lockoutEnd.Value > nowUtc
                     };
                 })
@@ -547,20 +547,19 @@ namespace CRC.Web.Controllers
 
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spUsers_GetById",
-                    new[] { new SqlParameter("@User_ID", model.UserId) }
-                );
+                // 🔴 BOTH CALLS BELOW TAKE model.UserId — THE LOCKED-OUT ACCOUNT — as their @User_ID, and
+                // that parameter is a TARGET, not an audit actor. The SUPERUSER performing the unlock is
+                // named separately, in the audit line, from their own identity. Passing the caller's id to
+                // spUsers_Unlock would clear the SUPERUSER's counters, leave the locked user locked, and
+                // still answer "Account unlocked." See CoreFlow.md §0.1.
+                var target = await _data.GetUserByIdAsync(model.UserId);
 
-                if (dt.Rows.Count == 0)
+                if (target == null)
                     return BadRequest(new { success = false, message = "User not found." });
 
-                var targetUsername = dt.Rows[0]["Username"]?.ToString() ?? "";
+                var targetUsername = target.Username;
 
-                await _db.ExecuteNonQueryAsync(
-                    "spUsers_Unlock",
-                    new[] { new SqlParameter("@User_ID", model.UserId) }
-                );
+                await _data.UnlockUserAsync(model.UserId);
 
                 var actor = User?.Identity?.Name ?? "unknown";
                 AuditLog.AccountUnlocked(HttpContext, model.UserId, targetUsername, actor);
@@ -629,27 +628,25 @@ namespace CRC.Web.Controllers
                 return RedirectToAction(nameof(Logout));
             }
 
-            var dt = await _db.ExecuteDataTableAsync(
-                "spUsers_GetById",
-                new[] { new SqlParameter("@User_ID", userId) }
-            );
+            // @User_ID is a TARGET — here it happens to be the caller's own id, read from their claim,
+            // which is precisely what makes it easy to mistake for an actor parameter. It is not.
+            var user = await _data.GetUserByIdAsync(userId);
 
-            if (dt.Rows.Count == 0)
+            if (user == null)
             {
                 TempData["ErrorMessage"] = "User not found.";
                 return RedirectToAction(nameof(Logout));
             }
 
-            var row = dt.Rows[0];
-            var userType = Convert.ToInt32(row["User_Type"]);
+            var userType = user.User_Type;
 
             var vm = new ChangePasswordViewModel
             {
-                UserName = row["User_Name"]?.ToString() ?? "",
+                UserName = user.User_Name,
                 UserTypeId = userType,
                 UserType = UserTypeDisplay(userType),
-                StaffId = row["StaffId"] == DBNull.Value ? "" : (row["StaffId"]?.ToString() ?? ""),
-                Email = row["User_Email"]?.ToString() ?? ""
+                StaffId = user.StaffId ?? "",
+                Email = user.User_Email
             };
 
             return View(vm);
@@ -667,28 +664,24 @@ namespace CRC.Web.Controllers
             }
 
             // Always reload user fields from DB (do not trust form values)
-            var dt = await _db.ExecuteDataTableAsync(
-                "spUsers_GetById",
-                new[] { new SqlParameter("@User_ID", userId) }
-            );
+            var user = await _data.GetUserByIdAsync(userId);
 
-            if (dt.Rows.Count == 0)
+            if (user == null)
             {
                 TempData["ErrorMessage"] = "User not found.";
                 return RedirectToAction(nameof(Logout));
             }
 
-            var row = dt.Rows[0];
-            var username = row["Username"]?.ToString() ?? "";
-            var storedHash = row["PasswordHash"]?.ToString() ?? "";
-            var userType = Convert.ToInt32(row["User_Type"]);
+            var username = user.Username;
+            var storedHash = user.PasswordHash;
+            var userType = user.User_Type;
 
             // Overwrite read-only fields (so UI always shows truth from dbo.Users)
-            model.UserName = row["User_Name"]?.ToString() ?? "";
+            model.UserName = user.User_Name;
             model.UserTypeId = userType;
             model.UserType = UserTypeDisplay(userType);
-            model.StaffId = row["StaffId"] == DBNull.Value ? "" : (row["StaffId"]?.ToString() ?? "");
-            model.Email = row["User_Email"]?.ToString() ?? "";
+            model.StaffId = user.StaffId ?? "";
+            model.Email = user.User_Email;
 
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(storedHash))
             {
@@ -734,14 +727,9 @@ namespace CRC.Web.Controllers
 
             try
             {
-                await _db.ExecuteNonQueryAsync(
-                    "spUsers_UpdatePassword",
-                    new[]
-                    {
-                        new SqlParameter("@User_ID", userId),
-                        new SqlParameter("@PasswordHash", newHash)
-                    }
-                );
+                // A TARGET again: the row whose Password_Hash is replaced. nucentra has no admin password
+                // reset, so this is always the caller's own account — but the parameter does not know that.
+                await _data.UpdateUserPasswordAsync(userId, newHash);
 
                 TempData["SuccessMessage"] = "Password updated successfully.";
                 return RedirectToAction(nameof(ChangePassword));

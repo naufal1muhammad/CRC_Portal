@@ -75,6 +75,14 @@ spUsers_GetById        spUsers_Unlock          spUsers_UpdatePassword
 spUsers_ResetFailedLogins                      spUsers_UpdateLastLogin
 ```
 
+**All five of the TARGET procedures are `spUsers_*`, and the default is the whole tell** — these five
+declare `@User_ID INT` with *no* default, where all nineteen audit-actor procedures declare
+`@User_ID INT = NULL`. That is not a coincidence to be memorised: it is a rule you can apply to a procedure
+you have never seen. A `@User_ID` with a default is a bookkeeping parameter the caller is allowed to omit;
+a `@User_ID` without one is a business argument the procedure cannot run without. Every one of the five is
+in the `WHERE` clause of a statement over `dbo.Users`, and not one of them writes a `dbo.AuditTrails` row
+(§5.3). If you find yourself reaching for `DatabaseHelper.CurrentUserId` inside a `spUsers_*` call, stop.
+
 `spUsers_Unlock` is the one to stare at: its `@User_ID` is **the locked-out account being unlocked**, by a
 SUPERUSER, on somebody else's behalf. Auto-filling it from the caller's claim would unlock the
 administrator's own account, leave the locked-out user locked, and report success.
@@ -125,7 +133,231 @@ remarks. A NULL discharge type is the definition of an active patient.
 
 ## 2. Who can see what — user types and policies
 
-> *Written in Prompt 2 — not yet filled in.*
+> ### 🔴 If you have come from HEART, read this paragraph before anything else
+>
+> **nucentra has no permission-key model. There are no permissions, no roles table, no role assignments,
+> and nothing to configure.** Authorization is **one integer on `dbo.Users`**, carried as one claim, checked
+> by five `RequireClaim` policies. That is the entire mechanism.
+>
+> HEART's `PermissionsLogins_Brief.md` describes a `Permissions` / `Roles` / `RolePermissions` / `UserRoles`
+> system where endpoints are guarded by *keys* (`Roles.Manage`) so that new roles can be added without
+> touching endpoint code, and a Role Management screen maintains the mapping. **None of that exists here.**
+> There is no `dbo.Permissions`, no `dbo.Roles`, no `dbo.RolePermissions`, no `dbo.UserRoles`, and no
+> equivalent of `HeartPermissionKeys.cs`. Adding a fourth kind of user to nucentra means adding a policy in
+> `Program.cs` and an attribute to every action that should allow it — a code change and a redeploy, not an
+> admin screen. Do not go looking for the tables; do not "restore" them; do not assume an endpoint is
+> guarded by a key it does not have.
+
+### 2.1 The `UserType` claim — the whole of authorization
+
+`dbo.Users.User_Type` is an `INT NOT NULL` with exactly three meaningful values:
+
+| `User_Type` | Role name | Lands on | What it is |
+|---|---|---|---|
+| **1** | `SUPERUSER` | `/Dashboard/Index` | Full administrator. The only type that may manage branches, users, document settings, the Documents search and the audit trails. |
+| **2** | `ADMIN` | `/AdminDashboard/Index` | Operational administrator: patients, appointments, staff, the tracker. |
+| **3** | `STAFF` | `/StaffDashboard/Index` | A clinician. The only type that **must** have a `Staff_ID` — `spUsers_Register` refuses a blank one, refuses a `Staff_ID` that is not in `dbo.Staff`, and refuses one already linked to another account. One staff member, at most one login. |
+
+**Nothing constrains the column.** There is no check constraint, no foreign key and no lookup table for
+user types; the three values are a convention held in `Program.cs`, in `AccountController` and in the
+`RegisterUserRequest` DTO's `= 3` default. A row with `User_Type = 7` inserts fine, satisfies no policy, and
+its holder can reach only the actions that require authentication alone.
+
+The claims are built in **exactly one place** — `AccountController.Login` (POST), after the password
+verifies — and are the only thing the rest of the product ever sees:
+
+| Claim | Value | Read by |
+|---|---|---|
+| `ClaimTypes.NameIdentifier` | `User_ID` as a plain integer string | **`DatabaseHelper.CurrentUserId`**, which `int.TryParse`s it into `dbo.AuditTrails.User_Id` for all 19 audit-actor procedures (§0.1). A non-numeric value here silently audits everything as user `0`. |
+| `ClaimTypes.Name` | `Username` | `User.Identity.Name`; the `[User:…]` field of every log line; the actor named in `AuditLog.AccountUnlocked`. |
+| `"UserType"` | `"1"` / `"2"` / `"3"` — **a string** | All five authorization policies. |
+| `ClaimTypes.Role` | `"SUPERUSER"` / `"ADMIN"` / `"STAFF"` | `RedirectToLanding`, which decides the post-login page. **Nothing else uses roles** — no action is guarded by `[Authorize(Roles = …)]`. |
+| `"FullName"`, `"UserEmail"` | display only | The layout's user menu. |
+| `"StaffId"` | `dbo.Users.Staff_ID` | Added **only when `User_Type = 3` and the id is non-blank**. Every staff-scoped page reads it — `MyProfileStaff`, `StaffSchedule`, `StaffPatient`. An ADMIN or SUPERUSER has no such claim, which is why those pages take an id in the query string instead. |
+
+**The role claim and the `UserType` claim carry the same fact in two encodings, and they can disagree.**
+`UserType` is the string from the database; the role is derived from it by an `if/else` whose final branch
+is `else → "STAFF"`. So `User_Type = 7` produces `UserType = "7"` **and** `Role = "STAFF"` — it satisfies no
+policy but does land on the staff dashboard. Guard with the policy, never with the role.
+
+### 2.2 Everything is authenticated by default
+
+```csharp
+builder.Services.AddControllersWithViews(options =>
+{
+    options.Filters.Add(new AuthorizeFilter());                        // authentication, globally
+    options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());  // antiforgery, globally
+});
+```
+
+The global `AuthorizeFilter` means **an action with no attributes at all still requires a signed-in user**.
+Forgetting `[Authorize]` on a new controller fails closed, which is the right default and the reason the
+codebase can be read without hunting for gaps.
+
+**There are exactly two `[AllowAnonymous]` attributes in the entire web project**, both on
+`AccountController.Login` — the GET that renders the page and the POST that signs you in. Nothing else in
+nucentra is reachable without a cookie: not the access-denied page, not logout, not an error page, not a
+health check (there is none). A `grep` for `AllowAnonymous` is a complete audit of the portal's public
+surface, and it returns two lines.
+
+### 2.3 The five policies, and which controllers use them
+
+```csharp
+options.AddPolicy("SuperUserOnly",        policy => policy.RequireClaim("UserType", "1"));
+options.AddPolicy("AdminOrSuper",         policy => policy.RequireClaim("UserType", "1", "2"));
+options.AddPolicy("AdminOnly",            policy => policy.RequireClaim("UserType", "2"));
+options.AddPolicy("StaffOnly",            policy => policy.RequireClaim("UserType", "3"));
+options.AddPolicy("AdminOrSuperOrStaff",  policy => policy.RequireClaim("UserType", "1", "2", "3"));
+```
+
+Every one is a **string comparison on a claim value** — `RequireClaim` with several values is an OR. There
+is no requirement handler, no resource-based authorization and no policy that looks at anything but this one
+claim.
+
+| Policy | Types | Applied to |
+|---|---|---|
+| `SuperUserOnly` | 1 | **class:** `BranchController`, `DashboardController`, `SettingsController`, `DocumentsController`, `AuditTrailsController` · **action:** `Account.Register`, `Account.RegisterUser`, `Account.GetUsers`, `Account.UnlockUser` |
+| `AdminOrSuper` | 1, 2 | **class:** `AdminDashboardController`, `AppointmentController`, `PatientController`, `PatientTrackerController` · **action:** most of `StaffController` |
+| `AdminOrSuperOrStaff` | 1, 2, 3 | **class:** `MyProfileStaffController`, `StaffScheduleController`, `StaffPerformanceController` · **action:** `StaffController.GetStaffTypes` and most reads in `StaffPatientController` |
+| `StaffOnly` | 3 | **class:** `StaffDashboardController` · **action:** the clinical *writes* in `StaffPatientController` (assessment, colonoscopy, follow-up) |
+| `AdminOnly` | 2 | 🔴 **nothing.** |
+
+**`AdminOnly` is declared and never used — not by one controller, not by one action.** It is dead
+configuration. Do not read its existence as evidence that some screen is ADMIN-exclusive; nothing is. Every
+place an ADMIN can reach, a SUPERUSER can reach too, because every policy that admits `"2"` also admits
+`"1"`. The one asymmetry in the product runs the other way: `StaffOnly` excludes the SUPERUSER, so a
+SUPERUSER genuinely cannot open the staff dashboard or record a clinical result.
+
+`StaffPatientController` is the only controller that mixes policies per action, and the split is
+deliberate: **reads are `AdminOrSuperOrStaff`, clinical writes are `StaffOnly`.** An administrator may look
+at a patient journey; only a clinician may record one.
+
+Actions with **no** policy — `Account.ChangePassword` (both overloads), `Account.AccessDenied`,
+`Account.Logout`, and `Account.GetPasswordPolicy` / `GetSessionTimeout` (which carry a bare `[Authorize]`) —
+are open to **every authenticated user of any type**, which is correct: they are about your own session.
+
+### 2.4 Antiforgery — global, header-named, and HTTPS-bound
+
+`AutoValidateAntiforgeryTokenAttribute` is a **global filter**, so **every non-GET action is validated
+whether or not it says `[ValidateAntiForgeryToken]`**. The two places that do say it — both `Login` POST and
+`ChangePassword` POST — are redundant and harmless; keep them, because they document intent at the one
+place a reader looks.
+
+```csharp
+options.HeaderName        = "X-CSRF-TOKEN";
+options.Cookie.Name       = "__Host-CSRF";
+options.Cookie.SameSite   = SameSiteMode.Strict;
+options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+options.Cookie.HttpOnly   = true;
+options.Cookie.Path       = "/";
+```
+
+Form posts carry the token in the `__RequestVerificationToken` field; the 59 JavaScript files carry it in
+the **`X-CSRF-TOKEN`** header.
+
+🔴 **The `__Host-` cookie prefix is a browser-enforced rule, not a naming style.** A cookie so named is
+rejected outright unless it is `Secure`, has `Path=/`, and has **no `Domain` attribute** — and `Secure`
+means HTTPS. Over plain HTTP the browser never stores it, so **every POST fails antiforgery validation with
+a 400 and no useful message**. This is why local testing must use the `https` launch profile
+(`https://localhost:7276`) and not `http://localhost:5289`, and why "my POSTs all return 400" is almost
+always "I am on the wrong port".
+
+### 2.5 The session cookie
+
+```csharp
+options.LoginPath         = "/Account/Login";
+options.LogoutPath        = "/Account/Logout";
+options.AccessDeniedPath  = "/Account/AccessDenied";
+options.ExpireTimeSpan    = TimeSpan.FromSeconds(sessionTimeout.InactivityTimeoutSeconds);  // 600 s
+options.SlidingExpiration = true;
+options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+options.Cookie.HttpOnly     = true;
+options.Cookie.SameSite     = SameSiteMode.Lax;
+```
+
+Cookie authentication, **no server-side session store** — the ticket is the cookie. `ExpireTimeSpan` comes
+from `Account:SessionTimeout:InactivityTimeoutSeconds` in `appsettings.json` (**600 seconds, 10 minutes**),
+and with `SlidingExpiration = true` it is an **inactivity** timeout: the cookie is reissued once more than
+half its life has elapsed, so a user who keeps clicking is never signed out. `SignInAsync` passes
+`IsPersistent = false`, so nothing survives closing the browser.
+
+The client's countdown reads the same number from `GET /Account/GetSessionTimeout`, which exists only so
+that the warning dialog and the cookie cannot drift apart. **Changing the timeout means changing
+`appsettings.json` — one value feeds both.**
+
+Note the two cookies deliberately differ: the auth cookie is `SameSite=Lax` (it must survive a top-level
+navigation back into the site), the antiforgery cookie is `SameSite=Strict`.
+
+### 2.6 Two independent brute-force defences
+
+They protect against different attacks and neither substitutes for the other.
+
+**Per-IP rate limiting** — a fixed-window limiter registered as the `"login-ip"` policy and applied with
+`[EnableRateLimiting("login-ip")]` to **`Login` (POST) only**. Nothing else in the portal is rate limited.
+
+| Setting (`Account:LoginLockout`) | Value | Meaning |
+|---|---|---|
+| `IpRequestsPerWindow` | 10 | login POSTs permitted per window, partitioned by remote IP |
+| `IpRateLimitWindowSeconds` | 60 | the window |
+
+`QueueLimit = 0`, so request 11 is **rejected, not queued**: HTTP 429, a `Retry-After` header, the plain-text
+body `"Too many login attempts from this address. Please wait and try again."`, and an
+`AuditLog.LoginRateLimited` line. This is the defence against *credential stuffing* — many usernames from
+one address — which per-account lockout cannot see. It partitions on `RemoteIpAddress`, so a NAT gateway
+shares one budget and a botnet defeats it; that is the accepted trade.
+
+**Per-account lockout** — the defence against guessing *one* password, with its counters on `dbo.Users`.
+
+| Setting (`Account:LoginLockout`) | Value | Meaning |
+|---|---|---|
+| `MaxFailedAttempts` | 5 | lock on the **5th** failure (`@CurrentCount >= @MaxFailedAttempts`) |
+| `LockoutMinutes` | 15 | how long `Lockout_End_Utc` is set ahead |
+| `AttemptWindowMinutes` | 15 | failures further apart than this do not accumulate |
+
+The whole mechanism is `spUsers_RegisterFailedLogin` plus three columns (§3.3, §5.3). **The thresholds live
+in configuration and are passed into the procedure per call** — the database holds no policy of its own, so
+changing them is an `appsettings.json` edit with no publish.
+
+Four behaviours that matter and are not obvious:
+
+- **A locked account is refused *before* the password is checked**, in `Login`, and that path does **not**
+  increment the counter. A locked-out account is therefore not a password oracle, and an attacker cannot
+  extend someone's lockout by hammering it.
+- **The counter is a sliding window, not a lifetime total.** If the previous failure is older than
+  `AttemptWindowMinutes`, the procedure resets the count to 0 before incrementing — so the stored
+  `Failed_Login_Count` can read `4` on an account that is one failure away from nothing.
+- **"Locked" is not a column.** It is `Lockout_End_Utc > UtcNow`, computed by the caller. An expired lockout
+  leaves the timestamp sitting in the row (the procedure's `COALESCE` never clears it) until the next
+  successful login or a SUPERUSER unlock does — which is why `GET /Account/GetUsers` returns both
+  `lockoutEndUtc` and a separately computed `isLocked`.
+- **The two clocks are not the same clock.** The procedure decides with `GETUTCDATE()` (SQL Server); the
+  controller decides with `DateTime.UtcNow` (the web server). On one machine they agree. Split across an
+  App Service and Azure SQL they agree only as well as both are synchronised, and the error shows up as a
+  lockout that is minutes longer or shorter than 15.
+
+Clearing a lockout has exactly two routes: **log in successfully** (`spUsers_ResetFailedLogins`), or **a
+SUPERUSER unlocks the account** (`POST /Account/UnlockUser` → `spUsers_Unlock`). There is no self-service
+unlock, no email, no "forgot password", and **no password reset of any kind** — a user who forgets their
+password needs someone with database access, because `ChangePassword` requires the current one.
+
+### 2.7 What is *not* here
+
+Stated plainly, because each one is a thing a reader may reasonably expect to find:
+
+- **No permission keys, roles table or role management screen** (see the box at the top of this section).
+- **No password reset and no "forgot password" flow.** `ChangePassword` demands the current password.
+- **No `MustChangePassword` column and nothing that forces the seeded SUPERUSER password to be changed.**
+  `SEEDING.md` publishes `ChangeMe!123` in source control and asks nicely.
+- **No password history**: `spUsers_UpdatePassword` overwrites `Password_Hash` and keeps nothing. The only
+  reuse rule is "must differ from the current one", enforced in the controller by comparing the two
+  *plaintext* form fields — so re-using the password from two changes ago is allowed.
+- **No multi-factor authentication, no external identity provider, no API keys or bearer tokens.** Cookie
+  authentication is the only scheme registered.
+- **No account disable/enable and no delete.** `dbo.Users` has no `IsActive` column; removing someone's
+  access means deleting the row by hand in SQL.
+- **No per-branch or per-organization scoping.** An ADMIN sees every patient at every branch. The only
+  data-scoping claim in the product is `StaffId`, and it scopes a staff member to *their own* schedule and
+  profile, not to a site.
 
 ---
 
@@ -240,6 +472,73 @@ stating plainly, because they are not what the shape suggests:
 3. It caps at 999 (`VARCHAR(3)`), and `RIGHT('000' + …, 3)` would wrap a four-digit sequence back to its last
    three digits rather than failing.
 
+### 3.3 `dbo.Users`
+
+Every login in the portal. **One row is one account**, and an account is not a person and not a staff
+member — see the `Staff_ID` note below.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `User_ID` | **`INT IDENTITY(1,1)`** | NOT NULL | PK. **One of the few numeric keys in nucentra** (§0) — most business ids are `VARCHAR(100)`. Its string form becomes the `NameIdentifier` claim and thence `dbo.AuditTrails.User_Id`. |
+| `User_Name` | `VARCHAR(100)` | NOT NULL | Display name ("SYSTEM SUPERUSER"). Not the login. |
+| `Username` | `VARCHAR(100)` | NOT NULL | The login. **`UNIQUE INDEX IX_Users_Username`** — the only uniqueness constraint on the table, and the reason `spUsers_Register` can pre-check it. |
+| `User_Email` | `VARCHAR(100)` | NOT NULL | Display only. **Nothing validates it, nothing is ever sent to it**, and it is not unique — two accounts may share an address. |
+| `Password_Hash` | `VARCHAR(500)` | NOT NULL | See below. |
+| `User_Type` | `INT` | NOT NULL | 1 = SUPERUSER, 2 = ADMIN, 3 = STAFF. **No check constraint and no lookup table** (§2.1). |
+| `Staff_ID` | `VARCHAR(100)` | **NULL** | A `dbo.Staff.Staff_ID`, **by convention only — there is no foreign key.** Required for `User_Type = 3`, NULL for everyone else. |
+| `Created_At` | `DATETIME` | NOT NULL | `DEFAULT (GETUTCDATE())`. UTC. |
+| `Last_Login` | `DATETIME` | NOT NULL | `DEFAULT (GETUTCDATE())`. UTC. |
+| `Failed_Login_Count` | `INT` | NOT NULL | `DEFAULT (0)`. |
+| `Last_Failed_Login_At` | `DATETIME` | **NULL** | UTC. NULL until the first failure. |
+| `Lockout_End_Utc` | `DATETIME` | **NULL** | UTC. NULL until the first lockout. |
+
+**`Last_Login` is `NOT NULL` with a default, so a brand-new account reads as though it had just logged in.**
+`spUsers_Register` stamps `Created_At` and `Last_Login` with the same `GETUTCDATE()`, which means
+`lastLogin == createdAt` is the portal's only signal for "has never signed in" — and it is a guess, not a
+fact. There is no nullable "never logged in" state to distinguish.
+
+#### The password hash
+
+`Password_Hash` holds a **PBKDF2 hash produced by `Microsoft.AspNetCore.Identity.PasswordHasher<string>`**,
+Base64-encoded, in the Identity **V3** layout — decoding a seeded row's prefix `AQAAAAIAAYagAAAAE…` gives
+marker `0x01`, PRF `2` (**HMAC-SHA512**), **100,000 iterations**, **128-bit salt**, 256-bit subkey. Two facts
+follow, and both are load-bearing:
+
+- **The hash is salted per row.** Two accounts with the same password have different values here, so
+  comparing two hashes for equality answers nothing and a hash cannot be used as an identifier.
+- 🔴 **`PasswordHasher<string>` takes the *user* as its first argument, and nucentra passes the
+  `Username`.** Every call in `AccountController` — `HashPassword(username, …)`,
+  `VerifyHashedPassword(username, storedHash, …)` — passes the username, and it must keep doing so.
+  (`PasswordHasher<T>` ignores that argument in its current implementation, which is exactly why an
+  inconsistency here would compile, pass every test, and only break if the implementation ever changed.
+  Consistency is free; do not vary it.)
+
+The hash is **never** returned to a browser, never logged and never put on an audit line. Two of the three
+read procedures select it (`spUsers_ValidateLogin`, `spUsers_GetById`) and are mapped onto models that say
+so in a comment; `spUsers_GetAll`, whose result reaches the browser, does not select it at all — which is
+why it gets its own model (`UserListItem`) with no hash property to leak.
+
+#### Referential integrity: there is none
+
+`dbo.Users` has **no foreign keys in either direction**. `Staff_ID` is not constrained to `dbo.Staff`, and
+nothing references `User_ID` — including `dbo.AuditTrails.User_Id`, which is a plain `INT` holding one.
+Three consequences:
+
+- Deleting a staff member leaves their login pointing at nothing; the account still signs in and its
+  `StaffId` claim resolves to no staff row.
+- Deleting a user account orphans every `dbo.AuditTrails` row that named them. **`User_Id = 0` in the audit
+  trail therefore has two possible meanings** — the actor parameter was dropped (§0.1), or the actor's
+  account no longer exists. Neither is distinguishable after the fact.
+- `spUsers_Register` enforces by hand what the schema does not: `Staff_ID` must exist in `dbo.Staff` and
+  must not already be linked to another account. **Those are checks in one procedure, not constraints**, so
+  a direct `INSERT` bypasses all of them.
+
+#### The seeded row
+
+Exactly one row is seeded (`CRC.Database/Scripts/Seed_Users.sql`, guarded on `Username`, so a re-publish
+never resets it): `SUPERUSER` / `ChangeMe!123`, `User_Type = 1`, `Staff_ID` NULL. See `SEEDING.md`. Nothing
+in the application forces that password to be changed — there is no `MustChangePassword` column (§2.7).
+
 ---
 
 ## 4. Pages, endpoints, policies
@@ -341,6 +640,125 @@ The `StaffId` claim never touches this endpoint: the ids arrive as query paramet
 user can resolve any location name**, which is harmless for public geography and is why the page is allowed
 to skip the broader admin lookups.
 
+### 4.3 Account (login, users, change password)
+
+`CRC.Web/Controllers/AccountController.cs` — **no class-level `[Authorize]`**, and it is the only controller
+in the portal without one. That is not an omission: its twelve actions need four different levels, and the
+global `AuthorizeFilter` (§2.2) makes the default *authenticated*, so the class-level default is already the
+right one. Views live in `Views/Account/`; scripts in `wwwroot/js/account/`.
+
+**This controller is also the default route.** `Program.cs` maps
+`{controller=Account}/{action=Login}/{id?}`, so `https://localhost:7276/` **is** `/Account/Login` — the one
+place in nucentra where a bare path resolves to something (`/Branch` alone still 404s, §4.1).
+
+| # | Verb | Route | Policy | Returns |
+|---|---|---|---|---|
+| 1 | GET | `/Account/Login` | **`[AllowAnonymous]`** | the login page |
+| 2 | POST | `/Account/Login` | **`[AllowAnonymous]`** + `[ValidateAntiForgeryToken]` + `[EnableRateLimiting("login-ip")]` | a **redirect** on success, the **view** on failure — never JSON |
+| 3 | GET | `/Account/Logout` | authenticated (global filter) | redirect to `/Account/Login` |
+| 4 | GET | `/Account/AccessDenied` | authenticated (global filter) | the access-denied page |
+| 5 | GET | `/Account/Register` | `SuperUserOnly` | the create-user page |
+| 6 | POST | `/Account/RegisterUser` | `SuperUserOnly` | `{ success, message }` |
+| 7 | GET | `/Account/GetUsers` | `SuperUserOnly` | `{ success, users[] }` |
+| 8 | POST | `/Account/UnlockUser` | `SuperUserOnly` | `{ success, message }` |
+| 9 | GET | `/Account/GetPasswordPolicy` | `[Authorize]` (any type) | a bare policy object — **no envelope** |
+| 10 | GET | `/Account/GetSessionTimeout` | `[Authorize]` (any type) | a bare object — **no envelope** |
+| 11 | GET | `/Account/ChangePassword` | authenticated (global filter) | the page, with a `ChangePasswordViewModel` |
+| 12 | POST | `/Account/ChangePassword` | authenticated (global filter) + `[ValidateAntiForgeryToken]` | **PRG** — a redirect on success, the view on failure |
+
+**Both `Login` and `ChangePassword` exist as a GET/POST pair over one name**, and neither POST returns JSON.
+That makes this controller the exception to §0's response-shape rule, and deliberately so: these are form
+posts driven by `.cshtml`, not by `fetch`. `Login` failures re-render the view with `ViewData["LoginError"]`;
+`ChangePassword` uses **Post/Redirect/Get** with `TempData["SuccessMessage"]` / `TempData["ErrorMessage"]`,
+so a refresh after a successful change does not re-post the form. Five of the twelve return JSON; four
+return a page; three redirect.
+
+#### The JSON, which is the contract `wwwroot/js` reads
+
+```jsonc
+// GET /Account/GetUsers                                    → 200  (SuperUserOnly)
+{ "success": true,
+  "users": [{ "userId": 1, "name": "SYSTEM SUPERUSER", "username": "SUPERUSER",
+              "email": "superuser@crc.local", "userType": 1, "userTypeName": "SUPERUSER",
+              "staffId": "", "createdAt": "2026-08-06T02:06:15.0300000Z",
+              "lastLogin": "2026-08-06T07:25:09.1030000Z", "failedLoginCount": 0,
+              "lastFailedLoginAt": "", "lockoutEndUtc": "", "isLocked": false }] }
+
+// POST /Account/RegisterUser  { name, username, email, password, userType, staffId? }
+{ "success": true,  "message": "User registered successfully." }
+// 400 { "success": false, "message": "Please fill in all required fields." }
+// 400 { "success": false, "message": "<the password-policy errors, space-joined>" }
+// 400 { "success": false, "message": "Staff is required for STAFF users." }
+{ "success": false, "message": "Unable to register user. Please verify the inputs and try again.",
+  "correlationId": "…" }                                   // SqlException — 200, not 500
+{ "success": false, "message": "An unexpected error occurred.", "correlationId": "…" }
+
+// POST /Account/UnlockUser  { userId }
+{ "success": true,  "message": "Account unlocked." }
+// 400 { "success": false, "message": "A valid user is required." }   // userId <= 0 or no body
+// 400 { "success": false, "message": "User not found." }             // unknown userId
+{ "success": false, "message": "Unable to unlock the account.", "correlationId": "…" }
+
+// GET /Account/GetPasswordPolicy                           → 200, BARE object, no envelope
+{ "requireDigit": true, "requireLowercase": true, "requireNonAlphanumeric": true,
+  "requireUppercase": true, "requiredLength": 12, "requiredUniqueChars": 2 }
+
+// GET /Account/GetSessionTimeout                           → 200, BARE object, no envelope
+{ "inactivityTimeoutSeconds": 600 }
+```
+
+`GetUsers` is the one endpoint in the portal whose JSON names are **not** produced by an anonymous object:
+they come from `[JsonPropertyName]` attributes on the nested `UserListItemDto`. Same contract, different
+mechanism — do not "tidy" it into an anonymous object without checking `wwwroot/js/account/`.
+
+Four shape rules that must survive any change:
+
+- **Dates are ISO-8601 round-trip (`"o"`), and "never" is the EMPTY STRING, not `null`.** `""` is what the
+  `DataTable` code produced for a `DBNull` (`DBNull.ToString()` is `""`), and the table renders these
+  straight — a `null` shows the word "null".
+- **`staffId` is `""` for every non-STAFF account**, same reason.
+- **The values are UTC but SQL Server returns `DateTimeKind.Unspecified`.** They are `SpecifyKind(…, Utc)`-ed
+  before formatting, or the `Z` the `"o"` format appends would be a lie.
+- **`isLocked` is computed, not stored** — `lockoutEndUtc > UtcNow`, which is why the response carries both
+  (§2.6). An expired lockout returns a non-empty `lockoutEndUtc` with `isLocked: false`.
+
+#### Login (POST) — the order of the checks is the security
+
+1. Blank username or password → re-render with **`"Please enter username and password."`** (the one login
+   message that is *not* generic — it leaks nothing, because it is about the form).
+2. `GetUserForLoginAsync` → no row → `AuditLog.LoginFailed(…, "UserNotFound")`, generic error.
+3. **Lockout check, before the password is verified** → `AuditLog.LoginAttemptWhileLocked`, generic error,
+   **counter not incremented**. Checking the lockout first is what stops a locked account being a password
+   oracle.
+4. Empty stored hash → `AuditLog.LoginFailed(…, "MissingPasswordHash")` + register the failure.
+5. Password mismatch → `AuditLog.LoginFailed(…, "PasswordMismatch")` + register the failure.
+6. Success → reset the counters, stamp `Last_Login`, build the claims (§2.1), `SignInAsync`,
+   `AuditLog.LoginSucceeded`, redirect by role.
+
+🔴 **Every failure path returns the same string — `"Invalid username or password."`** — and the reason is
+recorded only on the audit channel. Do not make any of them more helpful: the distinction between "no such
+user", "locked", and "wrong password" is exactly what an attacker wants, and steps 2, 3, 4 and 5 are four
+different failures wearing one message on purpose.
+
+An unexpected exception anywhere in the action is caught, logged, and shown as
+**`"We couldn't sign you in right now."`** via `ErrorResponse.ForView` — which carries the correlation id
+into the page so a user's complaint ties to a line in `Logs/app-*.log`.
+
+#### ChangePassword (POST) — what it validates, in order
+
+Fields are **always reloaded from `dbo.Users`**, never trusted from the form: the view model carries the
+read-only profile fields and a hostile client could otherwise post any of them back. Then:
+current password must verify against `Password_Hash`; the new password must **differ from the current one**
+(compared as *plaintext form fields*, so re-using a password from two changes ago is allowed — there is no
+history, §2.7); the new password must satisfy every rule in `Account:Password`; and `[Compare]` on the view
+model requires the confirmation to match. On any failure the three password fields are **blanked** before
+the view is re-rendered, so a browser back-button or a re-render never redisplays a password.
+
+`ValidatePasswordPolicy` produces **one message per broken rule** and `RegisterUser` space-joins them into a
+single `message` string. The rules and their configured values are in `Account:Password` — 12 characters,
+upper, lower, digit, non-alphanumeric, 2 unique characters (§2.6's table is the lockout half of the same
+config block).
+
 ---
 
 ## 5. Stored procedures
@@ -404,6 +822,104 @@ Three asymmetries between the writes, all of them real and none of them obviousl
   and a later prompt's call.
 - **The insert is the only one that returns anything**, which is why `CreateBranchAsync` is the only Branch
   write that is a `QuerySingleAsync` rather than an `ExecuteAsync`.
+
+### 5.3 Users, authentication and lockout — `CRC.Database/Stored Procedures/Users/` (9)
+
+**Five of the nine declare `@User_ID`, and in all five it is a TARGET, not an actor** — the tell is that
+they declare `@User_ID INT` with **no default**, where every audit-actor procedure declares
+`@User_ID INT = NULL` (§0.1). **None of the nine writes a `dbo.AuditTrails` row**, which is unusual for
+procedures that write: the security trail for login, lockout, unlock and logout is the Serilog audit
+channel (`AuditLog.*` → `Logs/audit-*.log`), written by `AccountController`, not by the database.
+
+| Procedure | Parameters | Returns | `IDatabaseData` method | `@User_ID` |
+|---|---|---|---|---|
+| `spUsers_ValidateLogin` | `@Username VARCHAR(100)` | `SELECT TOP 1` — 12 columns incl. `PasswordHash` **and the lockout state**; **empty set** for an unknown username | `GetUserForLoginAsync` → `UserAuthRecord?` | no |
+| `spUsers_GetById` | `@User_ID INT` | `SELECT TOP 1` — **9** columns incl. `PasswordHash`, **without** the lockout state; empty set for an unknown id | `GetUserByIdAsync` → `UserAccountRecord?` | **`INT` — TARGET** |
+| `spUsers_GetAll` | — | 11 columns, **no `Password_Hash`**, ordered by `User_ID` **DESC** | `GetAllUsersAsync` → `List<UserListItem>` | no |
+| `spUsers_Register` | `@User_Name`, `@Username`, `@User_Email`, `@PasswordHash`, `@User_Type`, `@Staff_ID = NULL` | nothing | `RegisterUserAsync` | no |
+| `spUsers_RegisterFailedLogin` | `@Username`, `@MaxFailedAttempts`, `@LockoutMinutes`, `@AttemptWindowMinutes`, `@NowUtc = NULL`, **3 OUTPUT params** | **the OUTPUT params, and — new — a one-row result set of the same three values** | `RegisterFailedLoginAsync` → `FailedLoginResult?` | no |
+| `spUsers_ResetFailedLogins` | `@User_ID INT` | nothing | `ResetFailedLoginsAsync` | **`INT` — TARGET** |
+| `spUsers_Unlock` | `@User_ID INT` | nothing | `UnlockUserAsync` | **`INT` — TARGET** |
+| `spUsers_UpdateLastLogin` | `@User_ID INT` | nothing | `UpdateLastLoginAsync` | **`INT` — TARGET** |
+| `spUsers_UpdatePassword` | `@User_ID INT`, `@PasswordHash VARCHAR(500)` | nothing | `UpdateUserPasswordAsync` | **`INT` — TARGET** |
+
+#### 🔴 THE ONE `.sql` CHANGE IN THE WHOLE DAPPER MIGRATION
+
+`spUsers_RegisterFailedLogin` is **the only procedure in nucentra with `OUTPUT` parameters**, and the only
+`.sql` file this migration has edited. Prompt 2 **appended** one statement to the end of its body:
+
+```sql
+SELECT @LockoutTriggered AS [LockoutTriggered],
+       @LockoutEndUtc    AS [LockoutEndUtc],
+       @FailedLoginCount AS [FailedLoginCount];
+```
+
+**Why.** Dapper reads an `OUTPUT` parameter only through `DynamicParameters` — a string-keyed bag with a
+manual `.Get<T>("@Name")` per value, no compiler check on the name or the type. That is precisely the
+untyped plumbing this layer exists to delete, and it would have been the only place in `SqlData` doing it.
+A result set maps onto `CRC.Data/Models/FailedLoginResult.cs` by name, like everything else in the file.
+
+**What was deliberately NOT changed.** All three `OUTPUT` parameters are still declared, still have their
+`= NULL` defaults, and are still `SET` on exactly the paths they were before. The change is **purely
+additive**: any caller still using `ParameterDirection.Output` gets byte-identical behaviour and simply
+ignores an extra result set. That mattered mid-migration, when `AccountController` was the old code and the
+new procedure was already deployed, and it is why the additive-only rule exists at all.
+
+**The surprise it exposed, and the reason `SqlData` uses `QuerySingleOrDefaultAsync`.** The procedure has
+**two early `RETURN` statements** — an unknown `@Username`, and an attempt against an account whose lockout
+window is already open — and both **skip the appended `SELECT` entirely, emitting no result set at all**.
+`QuerySingleAsync` would throw *"Sequence contains no elements"* on either, turning a failed login into a
+500. Neither is reachable from `AccountController.Login`, which calls this only after
+`spUsers_ValidateLogin` returned a row and only after its own lockout check has passed — but "unreachable
+today" is not "safe", so the method returns `FailedLoginResult?` and null means *no lockout was decided*.
+Making the two paths emit a row as well would have meant adding statements before existing `RETURN`s rather
+than appending one at the end, and the narrower change was preferred.
+
+The file remains registered in `CRC.Database/CRC.Database.sqlproj` as
+`<Build Include="Stored Procedures\Users\spUsers_RegisterFailedLogin.sql" />` (line 206), unmoved and
+unreordered. Verified after publishing, against the live `CRC_DB`, with
+`sys.dm_exec_describe_first_result_set` (three columns: `bit`, `datetime`, `int`) and `sys.parameters`
+(all three parameters still `is_output = 1`) — not just against the `.sql` file.
+
+#### The other findings, from reading all nine
+
+- **`spUsers_ValidateLogin` validates nothing.** It is a plain `SELECT` by username: no password
+  comparison, no lockout enforcement, no side effect. A returned row means "this username exists", and
+  every decision is made in C#. The name is the most misleading thing in the procedure catalogue.
+- **Three procedures over one table disagree on how to spell one column.** `spUsers_ValidateLogin` and
+  `spUsers_GetById` alias `Staff_ID` to **`StaffId`**; `spUsers_GetAll` returns it raw as **`Staff_ID`**.
+  Since Dapper maps by name, a model that guesses wrong stays silently null. `spUsers_GetAll` *does* alias
+  the three lockout columns (`Failed_Login_Count` → `FailedLoginCount`, …), so a single result set mixes
+  both conventions. Read the `.sql`.
+- **`spUsers_GetById` returns a strict subset of `spUsers_ValidateLogin` — nine columns to twelve — and the
+  three it omits are the lockout state.** One shared model would compile and would hand every
+  `GetUserByIdAsync` caller `FailedLoginCount = 0` and `LockoutEndUtc = null` on an account that is locked,
+  with no exception and nothing in a log. Hence two models, `UserAuthRecord` and `UserAccountRecord`: a
+  lockout decision can only be made from the one that has the columns. (Contrast §5.2, where
+  `spBranch_ListAll` and `spBranch_GetById` genuinely return the same seven columns and correctly share
+  `BranchDetail`. Reuse the shape, never the name.)
+- **`spUsers_GetAll` is the only read that omits `Password_Hash`**, and it is also the only one whose result
+  reaches a browser. `UserListItem` therefore has no hash property — a hash that is not in the model cannot
+  be leaked by a careless `Ok(users)`.
+- **Two of the writes `RAISERROR` on a bad id and two are silent, and the split is not principled.**
+  `spUsers_Unlock` and `spUsers_UpdatePassword` both check `IF NOT EXISTS … RAISERROR('User not found.', 16, 1)`;
+  `spUsers_ResetFailedLogins` and `spUsers_UpdateLastLogin` just run an `UPDATE` that matches nothing and
+  return normally. So `UnlockUserAsync` can throw a `SqlException` where `ResetFailedLoginsAsync` cannot —
+  which is fine here only because both of the silent ones are called with an id that was just read from the
+  database.
+- **`spUsers_Register` enforces four rules the schema does not**: unique `Username` (this one *is* backed by
+  `IX_Users_Username`), `Staff_ID` required for `User_Type = 3`, `Staff_ID` must exist in `dbo.Staff`, and
+  `Staff_ID` must not already be linked to another account. All four are `RAISERROR` severity 16 → a
+  `SqlException` in C# → the single user-facing message *"Unable to register user. Please verify the inputs
+  and try again."* **They are procedure logic, not constraints** — a direct `INSERT` bypasses every one.
+- **`spUsers_RegisterFailedLogin` never clears an expired lockout**: it writes
+  `Lockout_End_Utc = COALESCE(@NewLockoutEnd, [Lockout_End_Utc])`, so a stale timestamp survives until a
+  successful login or an unlock. That is why "is this account locked" is a comparison and not a column
+  (§2.6).
+- **`@NowUtc DATETIME = NULL` is a seam nobody uses.** The procedure falls back to `GETUTCDATE()`, and no
+  caller passes it. It exists so the lockout arithmetic can be tested at a fixed instant; `SqlData` does not
+  send it, so the decision is made on the **SQL Server's** clock while the controller's own lockout check
+  uses the **web server's** `DateTime.UtcNow`.
 
 ---
 
