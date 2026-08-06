@@ -2,7 +2,7 @@ using System;
 using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
-using CRC.Data.Database;
+using CRC.Data.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;

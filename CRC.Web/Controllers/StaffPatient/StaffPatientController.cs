@@ -1,4 +1,4 @@
-﻿using CRC.Data.Database;
+﻿using CRC.Data.Data;
 using CRC.Web.Infrastructure;
 using CRC.Web.Services;
 using Microsoft.AspNetCore.Authorization;

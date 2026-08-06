@@ -73,7 +73,12 @@ builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
 });
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<CRC.Data.Database.DatabaseHelper>();
+builder.Services.AddScoped<CRC.Data.Data.DatabaseHelper>();
+
+// The Dapper data-access layer: one typed method per stored procedure, the only place in the
+// solution that names one. Scoped, because it resolves the current user's id per request for the
+// audit-actor parameter. See CoreFlow.md §6.
+builder.Services.AddScoped<CRC.Data.Data.IDatabaseData, CRC.Data.Data.SqlData>();
 
 // Patient and staff document storage: a private Azure Blob container, metadata-only in SQL, SAS downloads.
 // Bound from the DocumentStorage config section (Azurite locally; the storage-account connection string in

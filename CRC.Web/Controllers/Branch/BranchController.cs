@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
-using CRC.Data.Database;
+using CRC.Data.Data;
 using CRC.Web.Infrastructure;
 
 namespace CRC.Web.Controllers.Branch

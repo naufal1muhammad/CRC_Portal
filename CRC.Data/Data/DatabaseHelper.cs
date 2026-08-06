@@ -5,7 +5,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Security.Claims;
 
-namespace CRC.Data.Database
+namespace CRC.Data.Data
 {
     public class DatabaseHelper
     {
@@ -91,6 +91,30 @@ namespace CRC.Data.Database
         {
             return new SqlConnection(_connectionString);
         }
+
+        /// <summary>
+        /// The logged-in user's id, from the <see cref="ClaimTypes.NameIdentifier"/> claim; null when there is
+        /// no authenticated caller (background work, a request that failed authentication).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is public because <see cref="SqlData"/> needs it, and it needs it because Dapper cannot do what
+        /// the ADO surface below does. <see cref="TryInjectUserIdAsync"/> asks sys.parameters whether the
+        /// procedure it is about to run declares <c>@User_ID</c> and, if so, silently appends the claim value —
+        /// which is how dbo.AuditTrails learns who performed a write without any controller passing an actor.
+        /// Dapper sends exactly the properties of the anonymous parameter object and nothing else, so there is
+        /// no hook to hang that injection on. <see cref="SqlData"/> therefore passes the value as an ordinary
+        /// parameter, per call, to the 19 procedures that record an audit actor.
+        /// </para>
+        /// <para>
+        /// Read DapperLayerPlan.md's "@User_ID" section, and CoreFlow.md §0, before using this. The failure mode
+        /// is silent: every one of those 19 procedures declares <c>@User_ID INT = NULL</c>, so omitting it does
+        /// not throw — it writes <c>AuditTrails.User_Id = 0</c> and the audit trail stops naming anyone. Note
+        /// also that <c>@User_ID</c> means the ACTOR in those 19 and a TARGET USER ROW in five spUsers_*
+        /// procedures; this property answers only the first question.
+        /// </para>
+        /// </remarks>
+        public int? CurrentUserId => GetCurrentUserId();
 
 
         /// <summary>
