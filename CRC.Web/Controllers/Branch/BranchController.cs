@@ -1,6 +1,5 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -13,12 +12,12 @@ namespace CRC.Web.Controllers.Branch
     [Authorize(Policy = "SuperUserOnly")]
     public class BranchController : Controller
     {
-        private readonly DatabaseHelper _db;
+        private readonly IDatabaseData _data;
         private readonly ILogger<BranchController> _logger;
 
-        public BranchController(DatabaseHelper db, ILogger<BranchController> logger)
+        public BranchController(IDatabaseData data, ILogger<BranchController> logger)
         {
-            _db = db;
+            _data = data;
             _logger = logger;
         }
 
@@ -33,22 +32,28 @@ namespace CRC.Web.Controllers.Branch
         [HttpGet]
         public async Task<IActionResult> GetBranches()
         {
-            var dt = await _db.ExecuteDataTableAsync("spBranch_ListAll");
+            var branches = await _data.GetAllBranchesAsync();
             var list = new List<object>();
 
-            foreach (DataRow row in dt.Rows)
+            // The anonymous object below is a public contract: wwwroot/js/branch/index.js reads every one
+            // of these camelCase names. The model is mapped INTO it and never returned directly.
+            foreach (var branch in branches)
             {
                 list.Add(new
                 {
-                    branchId = row["Branch_ID"].ToString(),
-                    name = row["Branch_Name"].ToString(),
-                    location = row["Branch_Location"].ToString(),
-                    state = row["Branch_State"].ToString(),
-                    status = row["Branch_Status"] == DBNull.Value
-                        ? false
-                        : Convert.ToBoolean(row["Branch_Status"]),
-                    organizationId = row["Organization_ID"].ToString(),
-                    organizationName = row["Organization_Name"].ToString()
+                    branchId = branch.Branch_ID,
+                    name = branch.Branch_Name,
+                    location = branch.Branch_Location,
+                    state = branch.Branch_State,
+                    // Branch_Status is BIT NOT NULL, but this endpoint has always coerced a null to false
+                    // rather than failing. Keep the coercion: a null must still serialize as false.
+                    status = branch.Branch_Status ?? false,
+                    // Organization_ID / Organization_Name ARE nullable on dbo.Branch. The DataTable code
+                    // this replaced returned "" for them, because DBNull.Value.ToString() is "". Without
+                    // these two coalesces a legacy row with a null organization serializes as null here
+                    // and the branch table renders "null".
+                    organizationId = branch.Organization_ID ?? string.Empty,
+                    organizationName = branch.Organization_Name ?? string.Empty
                 });
             }
 
@@ -64,34 +69,25 @@ namespace CRC.Web.Controllers.Branch
                 return BadRequest(new { success = false, message = "Branch ID is required." });
             }
 
-            var parameters = new[]
-            {
-                new SqlParameter("@Branch_ID", branchId)
-            };
+            var branch = await _data.GetBranchByIdAsync(branchId);
 
-            var dt = await _db.ExecuteDataTableAsync("spBranch_GetById", parameters);
-
-            if (dt.Rows.Count == 0)
+            if (branch == null)
             {
                 return Ok(new { success = false, message = "Branch not found." });
             }
-
-            var row = dt.Rows[0];
 
             return Ok(new
             {
                 success = true,
                 data = new
                 {
-                    branchId = row["Branch_ID"].ToString(),
-                    name = row["Branch_Name"].ToString(),
-                    location = row["Branch_Location"].ToString(),
-                    state = row["Branch_State"].ToString(),
-                    status = row["Branch_Status"] == DBNull.Value
-                        ? false
-                        : Convert.ToBoolean(row["Branch_Status"]),
-                    organizationId = row["Organization_ID"].ToString(),
-                    organizationName = row["Organization_Name"].ToString()
+                    branchId = branch.Branch_ID,
+                    name = branch.Branch_Name,
+                    location = branch.Branch_Location,
+                    state = branch.Branch_State,
+                    status = branch.Branch_Status ?? false,
+                    organizationId = branch.Organization_ID ?? string.Empty,
+                    organizationName = branch.Organization_Name ?? string.Empty
                 }
             });
         }
@@ -134,25 +130,14 @@ namespace CRC.Web.Controllers.Branch
             {
                 if (model.IsNew)
                 {
-                    // INSERT: Branch_ID is auto-generated in spBranch_Insert
-                    var insertParams = new[]
-                    {
-                new SqlParameter("@Branch_Name", model.Name),
-                new SqlParameter("@Branch_Location", (object?)model.Location ?? DBNull.Value),
-                new SqlParameter("@Branch_State", (object?)model.State ?? DBNull.Value),
-                new SqlParameter("@Branch_Status", (object?)model.Status ?? DBNull.Value),
-                new SqlParameter("@Organization_ID", (object?)model.OrganizationId ?? DBNull.Value),
-                new SqlParameter("@Organization_Name", (object?)model.OrganizationName ?? DBNull.Value)
-            };
-
-                    // spBranch_Insert ends with: SELECT @Branch_ID AS NewBranch_ID;
-                    var dt = await _db.ExecuteDataTableAsync("spBranch_Insert", insertParams);
-
-                    string newBranchId = string.Empty;
-                    if (dt.Rows.Count > 0 && dt.Columns.Contains("NewBranch_ID"))
-                    {
-                        newBranchId = dt.Rows[0]["NewBranch_ID"]?.ToString() ?? "";
-                    }
+                    // INSERT: Branch_ID is auto-generated in spBranch_Insert, which returns it.
+                    var newBranchId = await _data.CreateBranchAsync(
+                        model.Name,
+                        model.Location,
+                        model.State,
+                        model.Status,
+                        model.OrganizationId,
+                        model.OrganizationName);
 
                     return Ok(new
                     {
@@ -168,18 +153,14 @@ namespace CRC.Web.Controllers.Branch
                         return Ok(new { success = false, message = "Branch ID is required for update." });
                     }
 
-                    var updateParams = new[]
-                    {
-                new SqlParameter("@Branch_ID", model.BranchId),
-                new SqlParameter("@Branch_Name", model.Name),
-                new SqlParameter("@Branch_Location", (object?)model.Location ?? DBNull.Value),
-                new SqlParameter("@Branch_State", (object?)model.State ?? DBNull.Value),
-                new SqlParameter("@Branch_Status", (object?)model.Status ?? DBNull.Value),
-                new SqlParameter("@Organization_ID", (object?)model.OrganizationId ?? DBNull.Value),
-                new SqlParameter("@Organization_Name", (object?)model.OrganizationName ?? DBNull.Value)
-            };
-
-                    await _db.ExecuteNonQueryAsync("spBranch_Update", updateParams);
+                    await _data.UpdateBranchAsync(
+                        model.BranchId,
+                        model.Name,
+                        model.Location,
+                        model.State,
+                        model.Status,
+                        model.OrganizationId,
+                        model.OrganizationName);
 
                     return Ok(new
                     {
@@ -212,12 +193,7 @@ namespace CRC.Web.Controllers.Branch
 
             try
             {
-                var parameters = new[]
-                {
-                    new SqlParameter("@Branch_ID", model.BranchId)
-                };
-
-                await _db.ExecuteNonQueryAsync("spBranch_Delete", parameters);
+                await _data.DeleteBranchAsync(model.BranchId);
 
                 return Ok(new { success = true, message = "Branch deleted successfully." });
             }
@@ -230,15 +206,17 @@ namespace CRC.Web.Controllers.Branch
         [HttpGet]
         public async Task<IActionResult> GetStates()
         {
-            var dt = await _db.ExecuteDataTableAsync("spLU_LOCATION_ListStates");
+            var states = await _data.GetStatesAsync();
             var list = new List<object>();
 
-            foreach (DataRow row in dt.Rows)
+            foreach (var state in states)
             {
                 list.Add(new
                 {
-                    stateId = row["LocationId"] == DBNull.Value ? 0 : Convert.ToInt32(row["LocationId"]),
-                    stateName = row["Name"]?.ToString() ?? string.Empty
+                    // LU_LOCATION.LocationId is INT IDENTITY NOT NULL, so the DBNull-to-0 guard the
+                    // DataTable version carried here could never fire. stateId stays a JSON number.
+                    stateId = state.LocationId,
+                    stateName = state.Name
                 });
             }
 
@@ -248,15 +226,15 @@ namespace CRC.Web.Controllers.Branch
         [HttpGet]
         public async Task<IActionResult> GetOrganizations()
         {
-            var dt = await _db.ExecuteDataTableAsync("spLU_ORGANIZATION_List");
+            var organizations = await _data.GetOrganizationsAsync();
             var list = new List<object>();
 
-            foreach (DataRow row in dt.Rows)
+            foreach (var organization in organizations)
             {
                 list.Add(new
                 {
-                    organizationId = row["Organization_ID"]?.ToString() ?? "",
-                    organizationName = row["Organization_Name"]?.ToString() ?? ""
+                    organizationId = organization.Id,
+                    organizationName = organization.Name
                 });
             }
             return Ok(list);

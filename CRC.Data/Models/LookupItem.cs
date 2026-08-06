@@ -17,8 +17,28 @@ namespace CRC.Data.Models
     //
     // LU_LOCATION is the single exception: it keys on `LocationId INT IDENTITY(1,1)` and its display
     // column is `Name`, not `{Table}_Name`. So the three spLU_LOCATION_* procedures do NOT fit this type.
-    // Prompt 1 decides what they get instead, once it has read all fourteen lookup procedures — do not
-    // pre-empt that here by widening this model or adding a second one on a guess.
+    //
+    // ── PROMPT 1's DECISION, having read all fourteen procedures ─────────────────────────────────────
+    //
+    // TWO models, not fourteen: this one and LocationLookupItem. Eleven of the fourteen procedures return
+    // exactly {code, name} and are represented here; the three spLU_LOCATION_* procedures return
+    // {LocationId, [ParentId,] Name, SortOrder} and get LocationLookupItem.
+    //
+    // 🔴 BUT THE ELEVEN CANNOT BE MAPPED BY NAME, and that is the surprise of this prompt. Dapper matches
+    // a result column to a property by NAME, and no two of the eleven agree on one: spLU_Race_List
+    // returns Race_ID / Race_Name, spLU_Source_List returns Source_ID / Source_Name, spLU_PJ_AppType_List
+    // returns PjAppType_ID / PjAppType_Name, and so on for all eleven. `QueryAsync<LookupItem>` against
+    // any of them compiles, runs, returns the right NUMBER of rows and leaves Id and Name empty on every
+    // one — no exception, nothing in a log.
+    //
+    // The three ways out, and why this one:
+    //   ✗ Alias the columns in the .sql. Explicitly forbidden by Prompt 1 — name the model after the data,
+    //     not the data after the model — and a shared procedure's output columns are a public contract.
+    //   ✗ Eleven two-property models, one per table. Also forbidden, and it would be eleven files that
+    //     differ only in a prefix.
+    //   ✓ Map POSITIONALLY, once, in SqlData.QueryLookupAsync: column 0 is the code, column 1 is the
+    //     display name, in every one of the eleven. It is the one property all eleven genuinely share.
+    //     The helper is the ONLY place in the data layer that reads a column by ordinal, and it says so.
     //
     // The Web layer maps these into whatever camelCase shape its endpoint already returns
     // (`{ stateId, stateName }`, `{ organizationId, organizationName }`, …). It never serializes a model

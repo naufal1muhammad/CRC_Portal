@@ -131,19 +131,279 @@ remarks. A NULL discharge type is the definition of an active patient.
 
 ## 3. Data model
 
-> *Written in Prompts 1 and 3–9, by appending one `###` sub-section per feature area — not yet filled in.*
+> *Grows by appending one `###` sub-section per feature area, across Prompts 1 and 3–9. Prompts 3–9 add
+> theirs below; nothing already here is rewritten.*
+
+### 3.1 Reference data (`dbo.LU_*`)
+
+Twelve tables, **fourteen** procedures — `LU_LOCATION` has three, one per level of its tree. Every one is a
+plain unfiltered read: **no `LU_*` table has an `IsActive`, `IsDeleted` or `SortOrder` column except
+`LU_LOCATION`**, so a row that exists is a row the dropdown shows, and the only way to retire a value is to
+delete it (which would orphan every business row still holding the code, since none of these are enforced by
+a foreign key either).
+
+| Table | PK column | Type | Display column | Procedure | Rows (local seed) |
+|---|---|---|---|---|---|
+| `LU_DISCHARGETYPE` | `DischargeType_ID` | `VARCHAR(100)` | `DischargeType_Name` | `spLU_DischargeType_List` | 4 |
+| `LU_MARITALSTATUS` | `MaritalStatus_ID` | `VARCHAR(100)` | `MaritalStatus_Name` | `spLU_MaritalStatus_List` | 3 |
+| `LU_OCCUPATION` | `Occupation_ID` | `VARCHAR(100)` | `Occupation_Name` | `spLU_Occupation_List` | 8 |
+| `LU_ORGANIZATION` | `Organization_ID` | `VARCHAR(100)` | `Organization_Name` | `spLU_ORGANIZATION_List` | 6 |
+| `LU_PATDOCUMENTTYPE` | `PatientDocumentType_ID` | `VARCHAR(100)` | `PatientDocumentType_Name` | `spLU_PatientDocumentType_List` | 13 |
+| `LU_PJ_APP_TYPE` | `PjAppType_ID` | `VARCHAR(100)` | `PjAppType_Name` | `spLU_PJ_AppType_List` | 4 |
+| `LU_RACE` | `Race_ID` | `VARCHAR(100)` | `Race_Name` | `spLU_Race_List` | 11 |
+| `LU_RELIGION` | `Religion_ID` | `VARCHAR(100)` | `Religion_Name` | `spLU_Religion_List` | 6 |
+| `LU_SOURCE` | `Source_ID` | `VARCHAR(100)` | `Source_Name` | `spLU_Source_List` | 9 |
+| `LU_STAFFDOCUMENTTYPE` | `StaffDocumentType_ID` | `VARCHAR(100)` | `StaffDocumentType_Name` | `spLU_STAFFDOCUMENTTYPE_List` | 8 |
+| `LU_STAFFTYPE` | `StaffType_ID` | `VARCHAR(100)` | `StaffType_Name` | `spLU_STAFFTYPE_List` | 5 |
+| `LU_LOCATION` | `LocationId` | **`INT IDENTITY(1,1)`** | `Name` | `spLU_LOCATION_ListStates` / `…ListCityByState` / `…ListPostcodesByCity` | 16 states, 442 cities, 2,784 postcodes |
+
+Both columns of all eleven code tables are `NOT NULL`. `LU_LOCATION` is `LocationId INT NOT NULL`,
+`LocationType TINYINT NOT NULL` (1 = state, 2 = city, 3 = postcode), `ParentId INT NULL` (self-referencing
+FK — the only foreign key in the reference data), `Name NVARCHAR(150) NOT NULL`, `SortOrder INT NULL`.
+
+**KEY OBSERVATION — nucentra's lookup keys are `VARCHAR` codes, and `LU_LOCATION` is the exception.**
+Eleven of the twelve key on `VARCHAR(100)`, seeded with two-character zero-padded codes (`"01"`, `"02"`, …).
+`LU_STAFFTYPE` is the outlier *within* the outlier: three-letter mnemonics — `ANE`, `END`, `ENT`, `GAS`,
+`NUR`. Every column that references one is `VARCHAR(100)` as well (`PatientBasic.Race_ID`,
+`Staff.Staff_Type`, `Branch.Organization_ID`, …), and none of those references is a foreign key. **Parsing a
+lookup id to an `int` appears to work and silently loses the leading zero** — `"01"` is not `1` — which is
+why `CRC.Data/Models/LookupItem.Id` is a `string`. `LU_LOCATION` alone is an `INT IDENTITY`, which is why
+the three location procedures get their own model, `LocationLookupItem`, and why `stateId`, `cityId` and
+`postcodeId` are JSON **numbers** everywhere in the portal while every other lookup id is a JSON string.
+
+**THE SURPRISE, and the one that cost Prompt 1 the most: no two of the eleven code procedures name their
+columns the same way.** Each returns `{{Table}_ID, {Table}_Name}` — `Race_ID`/`Race_Name`,
+`Source_ID`/`Source_Name`, `PjAppType_ID`/`PjAppType_Name` — so **Dapper, which maps by column name, maps
+`LookupItem` to none of them**. `QueryAsync<LookupItem>("dbo.spLU_Race_List")` compiles, runs, returns the
+right *number* of rows, and leaves `Id` and `Name` empty on every one, with no exception and nothing in a
+log. `SqlData.QueryLookupAsync` therefore reads those two columns **by ordinal** — column 0 is the code,
+column 1 is the display name — in one helper, documented at the point where the assumption lives. It is the
+only ordinal read in the data layer. The runtime shape was verified against the deployed database with
+`sys.dm_exec_describe_first_result_set`, not just against the `.sql` files: all eleven, two columns,
+`varchar(100)`, code first.
+
+Two smaller findings:
+
+- **Ordering is part of each procedure's contract.** Ten of the eleven `ORDER BY` the display *name*.
+  `spLU_PJ_AppType_List` orders by **ID**, because `01 PATIENT ASSESSMENT → 02 COLONOSCOPY → 03 FOLLOW UP →
+  04 SURVEILLANCE` is clinical sequence and alphabetical order would scramble it into COLONOSCOPY first. A
+  caller must not re-sort.
+- The three `LU_LOCATION` procedures order by `COALESCE(SortOrder, 2147483647)` then `Name`, so curated rows
+  float above an alphabetical tail. `spLU_LOCATION_ListStates` does **not** select `ParentId` (a state has
+  no parent); the other two do. An unknown parent id is **not an error** — the procedure returns an empty
+  set, and the caller decides what "no cities" means.
+
+### 3.2 `dbo.Branch`
+
+An organization's physical site. Staff are based at one; appointments are booked into one.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `Branch_ID` | `VARCHAR(100)` | NOT NULL | PK, **generated by `spBranch_Insert`** — see below |
+| `Branch_Name` | `VARCHAR(100)` | NOT NULL | |
+| `Branch_Location` | `VARCHAR(200)` | NOT NULL | free text; the insert/update procedures declare their `@Branch_Location` as `VARCHAR(100)`, so a location over 100 characters is **silently truncated on the way in** |
+| `Branch_State` | `VARCHAR(100)` | NOT NULL | the state's **`Name`**, not its `LocationId` |
+| `Branch_Status` | `BIT` | NOT NULL | active / inactive |
+| `Organization_ID` | `VARCHAR(100)` | **NULL** | `LU_ORGANIZATION.Organization_ID`, by convention only |
+| `Organization_Name` | `VARCHAR(100)` | **NULL** | denormalized copy of the name |
+
+**No foreign keys, in either direction.** `Organization_ID` is not constrained to `LU_ORGANIZATION` and
+`Branch_State` is not constrained to `LU_LOCATION`; nothing references `Branch_ID` either — `Staff.Staff_Base`
+and `PatientAppointment.Branch_ID` are plain `VARCHAR(100)` columns holding one. Deleting a branch that staff
+are based at, or that appointments are booked into, succeeds and orphans them.
+
+**The two nullable organization columns are a schema/procedure mismatch worth knowing about.** They are
+`NULL`-able, yet `spBranch_Insert` refuses a blank `@Organization_ID` outright with `RAISERROR`. The only
+supported write path cannot produce the state the schema permits — but a row inserted by hand or by an older
+build can, and the endpoints must keep coercing those nulls to `""` (see §4.1). `Organization_Name` being
+stored on the branch at all is a denormalization: rename an organization in `LU_ORGANIZATION` and every
+branch keeps the old name until someone re-saves it.
+
+**How a `Branch_ID` is generated** (read `spBranch_Insert`): it is composed, not an identity.
+
+```
+Branch_ID  =  {Organization_ID, '*' stripped}  +  {state LocationId, 4 digits, zero-padded}  +  {sequence, 3 digits}
+                            "02"                              "2367"  (SELANGOR)                      "002"
+           →  "022367002"
+```
+
+The state segment is a genuine join: the procedure looks `@Branch_State` up **by `Name`** against
+`LU_LOCATION` where `LocationType = 1`, and `RAISERROR`s if it finds nothing — which is why a state is stored
+as text on the branch but still has to exist in the location tree. Three things about the sequence are worth
+stating plainly, because they are not what the shape suggests:
+
+1. **It is global, not per prefix.** `MAX(TRY_CAST(RIGHT(Branch_ID, 3) AS INT))` scans the *whole* table, so
+   the third branch overall is `…003` no matter which organization or state it belongs to.
+2. **It reuses numbers.** The `MAX` is over surviving rows only, so deleting the newest branch makes the next
+   insert re-issue its number — and if the deleted branch had a different organization or state, the new id
+   is genuinely new. If it had the same, the insert fails on the primary key. Empty table → `…001`.
+3. It caps at 999 (`VARCHAR(3)`), and `RIGHT('000' + …, 3)` would wrap a four-digit sequence back to its last
+   three digits rather than failing.
 
 ---
 
 ## 4. Pages, endpoints, policies
 
-> *Written in Prompts 1 and 3–9, by appending one `###` sub-section per feature area — not yet filled in.*
+> *Grows by appending one `###` sub-section per feature area, across Prompts 1 and 3–9. Prompts 3–9 add
+> theirs below; nothing already here is rewritten.*
+
+### 4.1 Branch (Admin > Branch)
+
+`CRC.Web/Controllers/Branch/BranchController.cs` — **`[Authorize(Policy = "SuperUserOnly")]` on the class**,
+so every action requires `UserType = 1`. There is no per-action policy and no `[AllowAnonymous]`.
+View: `Views/Branch/Index.cshtml`; script: `wwwroot/js/branch/index.js`. Antiforgery is global, so both
+POSTs need the `X-CSRF-TOKEN` header (§0). Seven actions:
+
+| Verb | Route | Returns |
+|---|---|---|
+| GET | `/Branch/Index` | the page. **`/Branch` alone 404s** — the default route is `{controller=Account}/{action=Login}/{id?}`, so the action segment is not optional for anything but the login page |
+| GET | `/Branch/GetBranches` | a **bare JSON array** — no envelope |
+| GET | `/Branch/GetBranch?branchId=` | `{ success, data }` or `{ success = false, message }` |
+| POST | `/Branch/SaveBranch` | `{ success, message, branchId }` |
+| POST | `/Branch/DeleteBranch` | `{ success, message }` |
+| GET | `/Branch/GetStates` | a bare JSON array |
+| GET | `/Branch/GetOrganizations` | a bare JSON array |
+
+The exact shapes, which are the contract `wwwroot/js/branch/index.js` reads:
+
+```jsonc
+// GET /Branch/GetBranches                                   → 200, bare array
+[{ "branchId": "022367002", "name": "…", "location": "…", "state": "SELANGOR",
+   "status": true, "organizationId": "02", "organizationName": "MINISTRY OF HEALTH" }]
+
+// GET /Branch/GetBranch?branchId=022367002                  → 200
+{ "success": true, "data": { …the same seven camelCase fields… } }
+{ "success": false, "message": "Branch not found." }          // unknown id — 200, not 404
+// 400 { "success": false, "message": "Branch ID is required." }   // blank/missing branchId
+
+// POST /Branch/SaveBranch  { isNew, branchId, name, location, state, status,
+//                            organizationId, organizationName }
+{ "success": true,  "message": "Branch created successfully.", "branchId": "022367002" }
+{ "success": true,  "message": "Branch updated successfully.", "branchId": "022367002" }
+{ "success": false, "message": "Invalid request." }
+{ "success": false, "message": "Please fill in branch name, state and organization." }
+{ "success": false, "message": "Branch ID is required for update." }
+{ "success": false, "message": "Error saving branch.", "correlationId": "…" }   // ErrorResponse.ForUser
+
+// POST /Branch/DeleteBranch  { branchId }
+{ "success": true,  "message": "Branch deleted successfully." }
+{ "success": false, "message": "An unexpected error occurred." }
+// 400 { "success": false, "message": "Branch ID is required." }
+
+// GET /Branch/GetStates                                     → 200, bare array
+[{ "stateId": 2367, "stateName": "SELANGOR" }]               // stateId is a NUMBER
+
+// GET /Branch/GetOrganizations                              → 200, bare array
+[{ "organizationId": "01", "organizationName": "NATIONAL CANCER SOCIETY MALAYSIA" }]
+```
+
+Four behaviours that look like bugs, are not, and must be preserved:
+
+- **`status` is coerced from null to `false`.** `Branch_Status` is `BIT NOT NULL`, so the coercion can never
+  fire — but the model types it `bool?` anyway, because Dapper *throws* mapping a NULL onto a non-nullable
+  `bool` and a defensive `false` must not become a 500.
+- **`organizationId` and `organizationName` are coerced from null to `""`.** This one is live: those columns
+  really are nullable (§3.2), and the `DataTable` code returned `""` for them because `DBNull.ToString()` is
+  `""`. Without `?? string.Empty` the Dapper version serializes `null` and the table renders "null". This is
+  the single mapping that a before/after JSON diff caught in Prompt 1, and only because the diff included a
+  row with a null organization.
+- **A missing branch is `200 OK` with `success = false`**, not a 404. A *blank* `branchId` is a 400. Two
+  different failures, two different status codes, both in the same action.
+- **`DeleteBranch` swallows the exception without logging it** — `catch (Exception)` with no `_logger` call,
+  unlike `SaveBranch` — so a delete that fails is invisible outside the database. Left exactly as found;
+  Prompt 9 owns the logging sweep.
+
+### 4.2 My Profile (Staff)
+
+`CRC.Web/Controllers/MyProfileStaff/MyProfileStaffController.cs` —
+**`[Authorize(Policy = "AdminOrSuperOrStaff")]` on the class** (`UserType` 1, 2 or 3). Read-only page for the
+logged-in staff member; view `Views/MyProfileStaff/Index.cshtml`, script `wwwroot/js/myprofileStaff/`. Two
+actions, one of them data:
+
+| Verb | Route | Returns |
+|---|---|---|
+| GET | `/MyProfileStaff/Index` | the page, with `ViewData["StaffId"]` from the caller's own `StaffId` claim |
+| GET | `/MyProfileStaff/GetLocationNames?stateId=&cityId=&postcodeId=` | `{ success, stateName, cityName, postcodeName }` |
+
+```jsonc
+// GET /MyProfileStaff/GetLocationNames?stateId=1&cityId=2&postcodeId=3
+{ "success": true, "stateName": "JOHOR", "cityName": "AYER BALOI", "postcodeName": "82100" }
+{ "success": true, "stateName": "JOHOR", "cityName": "", "postcodeName": "" }   // ids that match nothing
+{ "success": false, "message": "Error loading location names." }               // any exception
+```
+
+**It resolves three names by fetching three whole levels of the tree** — up to 2,784 postcode rows to find
+one — because there is no `spLU_LOCATION_GetById`. That is what the page did before the Dapper layer and it
+is unchanged; adding the procedure is a later prompt's decision, not a mid-migration one. The cascade is
+strict: a city is only looked up if a state id was supplied, a postcode only if a city id was. An id that
+matches nothing yields `""` rather than an error, and `success` stays `true` — the page shows a blank field.
+The `StaffId` claim never touches this endpoint: the ids arrive as query parameters, so **any authenticated
+user can resolve any location name**, which is harmless for public geography and is why the page is allowed
+to skip the broader admin lookups.
 
 ---
 
 ## 5. Stored procedures
 
-> *Written in Prompts 1 and 3–9, by appending one `###` sub-section per feature area — not yet filled in.*
+> *Grows by appending one `###` sub-section per feature area, across Prompts 1 and 3–9. Prompts 3–9 add
+> theirs below; nothing already here is rewritten.*
+
+### 5.1 Lookups — `CRC.Database/Stored Procedures/LU_*/` (14)
+
+**None of the fourteen declares `@User_ID`**, none writes to `dbo.AuditTrails`, and none takes a filter other
+than a parent id. All are `SET NOCOUNT ON` and a single `SELECT`.
+
+| Procedure | Parameters | Returns | `IDatabaseData` method | `@User_ID` |
+|---|---|---|---|---|
+| `spLU_DischargeType_List` | — | `DischargeType_ID, DischargeType_Name` — by name | `GetDischargeTypesAsync` | no |
+| `spLU_MaritalStatus_List` | — | `MaritalStatus_ID, MaritalStatus_Name` — by name | `GetMaritalStatusesAsync` | no |
+| `spLU_Occupation_List` | — | `Occupation_ID, Occupation_Name` — by name | `GetOccupationsAsync` | no |
+| `spLU_ORGANIZATION_List` | — | `Organization_ID, Organization_Name` — by name | `GetOrganizationsAsync` | no |
+| `spLU_PatientDocumentType_List` | — | `PatientDocumentType_ID, PatientDocumentType_Name` — by name | `GetPatientDocumentTypesAsync` | no |
+| `spLU_PJ_AppType_List` | — | `PjAppType_ID, PjAppType_Name` — **by ID** | `GetJourneyAppointmentTypesAsync` | no |
+| `spLU_Race_List` | — | `Race_ID, Race_Name` — by name | `GetRacesAsync` | no |
+| `spLU_Religion_List` | — | `Religion_ID, Religion_Name` — by name | `GetReligionsAsync` | no |
+| `spLU_Source_List` | — | `Source_ID, Source_Name` — by name | `GetSourcesAsync` | no |
+| `spLU_STAFFDOCUMENTTYPE_List` | — | `StaffDocumentType_ID, StaffDocumentType_Name` — by name | `GetStaffDocumentTypesAsync` | no |
+| `spLU_STAFFTYPE_List` | — | `StaffType_ID, StaffType_Name` — by name | `GetStaffTypesAsync` | no |
+| `spLU_LOCATION_ListStates` | — | `LocationId, Name, SortOrder` where `LocationType = 1` | `GetStatesAsync` | no |
+| `spLU_LOCATION_ListCityByState` | `@StateId INT` (required) | `LocationId, ParentId, Name, SortOrder` where `LocationType = 2` | `GetCitiesByStateAsync` | no |
+| `spLU_LOCATION_ListPostcodesByCity` | `@CityId INT` (required) | `LocationId, ParentId, Name, SortOrder` where `LocationType = 3` | `GetPostcodesByCityAsync` | no |
+
+The eleven code procedures return **`LookupItem`** (mapped by ordinal — see §3.1); the three location
+procedures return **`LocationLookupItem`** (mapped by name). The two location procedures with a parameter
+return an **empty set**, not an error, for a parent id that matches nothing.
+
+### 5.2 Branch — `CRC.Database/Stored Procedures/Branch/` (6)
+
+| Procedure | Parameters | Returns | `IDatabaseData` method | `@User_ID` |
+|---|---|---|---|---|
+| `spBranch_ListAll` | — | all 7 `Branch` columns, ordered by `Branch_Name` | `GetAllBranchesAsync` → `List<BranchDetail>` | no |
+| `spBranch_GetById` | `@Branch_ID VARCHAR(100)` | `SELECT TOP 1` — the same 7 columns; **empty set** when the id is unknown | `GetBranchByIdAsync` → `BranchDetail?` | no |
+| `spBranch_ListActive` | — | `Branch_ID, Branch_Name, Branch_State` where `Branch_Status = 1` | `GetActiveBranchesAsync` → `List<BranchOption>` | no |
+| `spBranch_Insert` | `@Branch_Name`, `@Branch_Location`, `@Branch_State`, `@Branch_Status`, `@Organization_ID`, `@Organization_Name`, `@User_ID` | `SELECT @Branch_ID AS NewBranch_ID` — **one row, `VARCHAR(100)`** | `CreateBranchAsync` → `string` | **`INT = NULL` — ACTOR** |
+| `spBranch_Update` | the same seven plus `@Branch_ID` | nothing | `UpdateBranchAsync` | **`INT = NULL` — ACTOR** |
+| `spBranch_Delete` | `@Branch_ID`, `@User_ID` | nothing | `DeleteBranchAsync` | **`INT = NULL` — ACTOR** |
+
+The three writes each `INSERT` one `dbo.AuditTrails` row with `ISNULL(@User_ID, 0)`, action `INSERT` /
+`UPDATE` / `DELETE`, category `Branch`, and a `CONCAT`ed summary naming the branch id. **That `ISNULL` is the
+silent-failure surface of §0.1:** drop the parameter and the write still succeeds, with `User_Id = 0`.
+
+Three asymmetries between the writes, all of them real and none of them obviously intended:
+
+- **Only the insert validates.** It `RAISERROR`s (severity 16 → a `SqlException` in C#) on a blank
+  `@Organization_ID`, on a blank `@Branch_State`, and when `@Branch_State` matches no `LocationType = 1` row
+  in `LU_LOCATION` **by `Name`**. `spBranch_Update` re-writes all the same columns and checks **none** of it,
+  so a branch can be updated into a state that does not exist.
+- **The update and the delete are silent when the id matches nothing.** Both guard their audit `INSERT` with
+  `IF @@ROWCOUNT > 0`, so a no-op writes no audit row — and neither returns a row count, so the caller cannot
+  tell a real write from a missed one. Verified against the running site: `POST /Branch/DeleteBranch` with
+  `branchId = "NOSUCHBRANCHEVER"` answers `"Branch deleted successfully."`, `POST /Branch/SaveBranch` with
+  `isNew = false` and the same id answers `"Branch updated successfully."`, and `dbo.AuditTrails` gains
+  nothing from either. Making that visible means returning `@@ROWCOUNT`, which is an additive `.sql` change
+  and a later prompt's call.
+- **The insert is the only one that returns anything**, which is why `CreateBranchAsync` is the only Branch
+  write that is a `QuerySingleAsync` rather than an `ExecuteAsync`.
 
 ---
 

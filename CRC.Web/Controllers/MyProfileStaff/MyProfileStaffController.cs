@@ -1,11 +1,11 @@
 using System;
-using System.Data;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CRC.Data.Data;
+using CRC.Data.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
 
 namespace CRC.Web.Controllers.MyProfileStaff
 {
@@ -15,11 +15,11 @@ namespace CRC.Web.Controllers.MyProfileStaff
     [Authorize(Policy = "AdminOrSuperOrStaff")]
     public class MyProfileStaffController : Controller
     {
-        private readonly DatabaseHelper _db;
+        private readonly IDatabaseData _data;
 
-        public MyProfileStaffController(DatabaseHelper db)
+        public MyProfileStaffController(IDatabaseData data)
         {
-            _db = db;
+            _data = data;
         }
 
         private string GetOwnStaffId()
@@ -47,26 +47,25 @@ namespace CRC.Web.Controllers.MyProfileStaff
 
             try
             {
+                // Three whole levels of the LU_LOCATION tree are fetched to resolve three names, because
+                // there is no spLU_LOCATION_GetById. That is what this page did before the Dapper layer
+                // and it is unchanged here — a lookup that misses simply leaves its name empty.
                 if (stateId.HasValue && stateId.Value > 0)
                 {
-                    var dt = await _db.ExecuteDataTableAsync("spLU_LOCATION_ListStates");
-                    stateName = FindNameById(dt, stateId.Value);
+                    var states = await _data.GetStatesAsync();
+                    stateName = FindNameById(states, stateId.Value);
                 }
 
                 if (cityId.HasValue && cityId.Value > 0 && stateId.HasValue && stateId.Value > 0)
                 {
-                    var dt = await _db.ExecuteDataTableAsync(
-                        "spLU_LOCATION_ListCityByState",
-                        new[] { new SqlParameter("@StateId", stateId.Value) });
-                    cityName = FindNameById(dt, cityId.Value);
+                    var cities = await _data.GetCitiesByStateAsync(stateId.Value);
+                    cityName = FindNameById(cities, cityId.Value);
                 }
 
                 if (postcodeId.HasValue && postcodeId.Value > 0 && cityId.HasValue && cityId.Value > 0)
                 {
-                    var dt = await _db.ExecuteDataTableAsync(
-                        "spLU_LOCATION_ListPostcodesByCity",
-                        new[] { new SqlParameter("@CityId", cityId.Value) });
-                    postcodeName = FindNameById(dt, postcodeId.Value);
+                    var postcodes = await _data.GetPostcodesByCityAsync(cityId.Value);
+                    postcodeName = FindNameById(postcodes, postcodeId.Value);
                 }
 
                 return Ok(new
@@ -83,17 +82,9 @@ namespace CRC.Web.Controllers.MyProfileStaff
             }
         }
 
-        private static string FindNameById(DataTable dt, int id)
+        private static string FindNameById(List<LocationLookupItem> locations, int id)
         {
-            foreach (DataRow row in dt.Rows)
-            {
-                if (row["LocationId"] == DBNull.Value) continue;
-                if (Convert.ToInt32(row["LocationId"]) == id)
-                {
-                    return row["Name"]?.ToString() ?? string.Empty;
-                }
-            }
-            return string.Empty;
+            return locations.FirstOrDefault(location => location.LocationId == id)?.Name ?? string.Empty;
         }
     }
 }
