@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Threading.Tasks;
 using CRC.Data.Data;
 using CRC.Web.Infrastructure;
@@ -13,12 +12,12 @@ namespace CRC.Web.Controllers.Staff
     [Authorize(Policy = "AdminOrSuperOrStaff")]
     public class StaffPerformanceController : Controller
     {
-        private readonly DatabaseHelper _db;
+        private readonly IDatabaseData _data;
         private readonly ILogger<StaffPerformanceController> _logger;
 
-        public StaffPerformanceController(DatabaseHelper db, ILogger<StaffPerformanceController> logger)
+        public StaffPerformanceController(IDatabaseData data, ILogger<StaffPerformanceController> logger)
         {
-            _db = db;
+            _data = data;
             _logger = logger;
         }
 
@@ -54,65 +53,45 @@ namespace CRC.Web.Controllers.Staff
 
             try
             {
-                var parameters = new[]
-                {
-                    new SqlParameter("@Staff_ID", SqlDbType.VarChar, 100) { Value = trimmedStaffId }
-                };
+                // ONE CALL, FOUR RESULT SETS, READ IN THE PROCEDURE'S ORDER inside SqlData — see
+                // StaffPerformanceResult. The nulls coerced below are the same ones the DataTable code
+                // coerced: grid 1's two SUMs really are NULL for a clinician with no journey rows.
+                var performance = await _data.GetStaffPerformanceAsync(trimmedStaffId);
 
-                var ds = await _db.ExecuteDataSetAsync("dbo.spStaff_GetPerformance", parameters);
-
-                int totalColonoscopy = 0;
-                int totalColonoscopyThisMonth = 0;
-
-                if (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
-                {
-                    var r = ds.Tables[0].Rows[0];
-                    if (ds.Tables[0].Columns.Contains("TotalColonoscopy") && r["TotalColonoscopy"] != DBNull.Value)
-                        totalColonoscopy = Convert.ToInt32(r["TotalColonoscopy"]);
-                    if (ds.Tables[0].Columns.Contains("TotalColonoscopyThisMonth") && r["TotalColonoscopyThisMonth"] != DBNull.Value)
-                        totalColonoscopyThisMonth = Convert.ToInt32(r["TotalColonoscopyThisMonth"]);
-                }
+                int totalColonoscopy = performance.TotalColonoscopy ?? 0;
+                int totalColonoscopyThisMonth = performance.TotalColonoscopyThisMonth ?? 0;
 
                 var hoursByType = new List<object>();
-                if (ds.Tables.Count > 1)
+                foreach (var row in performance.HoursByType)
                 {
-                    foreach (DataRow r in ds.Tables[1].Rows)
+                    hoursByType.Add(new
                     {
-                        hoursByType.Add(new
-                        {
-                            pjAppTypeId = r["PjAppType_ID"] == DBNull.Value ? "" : Convert.ToString(r["PjAppType_ID"]),
-                            pjAppTypeName = r["PjAppType_Name"] == DBNull.Value ? "" : Convert.ToString(r["PjAppType_Name"]),
-                            totalHours = r["TotalHours"] == DBNull.Value
-                                ? 0m
-                                : Math.Round(Convert.ToDecimal(r["TotalHours"]), 2)
-                        });
-                    }
+                        pjAppTypeId = row.PjAppType_ID ?? string.Empty,
+                        pjAppTypeName = row.PjAppType_Name ?? string.Empty,
+                        totalHours = row.TotalHours == null
+                            ? 0m
+                            : Math.Round(row.TotalHours.Value, 2)
+                    });
                 }
 
                 var complications = new List<object>();
-                if (ds.Tables.Count > 2)
+                foreach (var row in performance.Complications)
                 {
-                    foreach (DataRow r in ds.Tables[2].Rows)
+                    complications.Add(new
                     {
-                        complications.Add(new
-                        {
-                            complication = r["Complication"] == DBNull.Value ? "" : Convert.ToString(r["Complication"]),
-                            total = r["Total"] == DBNull.Value ? 0 : Convert.ToInt32(r["Total"])
-                        });
-                    }
+                        complication = row.Complication ?? string.Empty,
+                        total = row.Total ?? 0
+                    });
                 }
 
                 var anomalies = new List<object>();
-                if (ds.Tables.Count > 3)
+                foreach (var row in performance.Anomalies)
                 {
-                    foreach (DataRow r in ds.Tables[3].Rows)
+                    anomalies.Add(new
                     {
-                        anomalies.Add(new
-                        {
-                            typeOfAnomaly = r["TypeOfAnomaly"] == DBNull.Value ? "" : Convert.ToString(r["TypeOfAnomaly"]),
-                            patientCount = r["PatientCount"] == DBNull.Value ? 0 : Convert.ToInt32(r["PatientCount"])
-                        });
-                    }
+                        typeOfAnomaly = row.TypeOfAnomaly ?? string.Empty,
+                        patientCount = row.PatientCount ?? 0
+                    });
                 }
 
                 return Ok(new

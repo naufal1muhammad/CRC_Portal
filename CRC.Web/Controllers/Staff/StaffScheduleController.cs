@@ -1,6 +1,5 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Globalization;
 using System.Threading.Tasks;
 using CRC.Data.Data;
@@ -14,12 +13,12 @@ namespace CRC.Web.Controllers.Staff
     [Authorize(Policy = "AdminOrSuperOrStaff")]
     public class StaffScheduleController : Controller
     {
-        private readonly DatabaseHelper _db;
+        private readonly IDatabaseData _data;
         private readonly ILogger<StaffScheduleController> _logger;
 
-        public StaffScheduleController(DatabaseHelper db, ILogger<StaffScheduleController> logger)
+        public StaffScheduleController(IDatabaseData data, ILogger<StaffScheduleController> logger)
         {
-            _db = db;
+            _data = data;
             _logger = logger;
         }
 
@@ -35,24 +34,6 @@ namespace CRC.Web.Controllers.Staff
         public sealed class DeleteSlotRequest
         {
             public int StaffSlotId { get; set; }
-        }
-
-        // Resolves the owning Staff_ID for a slot. Returns null when the slot doesn't exist.
-        // Used by Delete to enforce ownership without trusting a client-supplied staffId.
-        private async Task<string?> GetSlotOwnerAsync(int staffSlotId)
-        {
-            var parameters = new[]
-            {
-                new SqlParameter("@StaffSlot_ID", SqlDbType.Int) { Value = staffSlotId }
-            };
-
-            var dt = await _db.ExecuteDataTableAsync("dbo.spStaffSlots_GetOwner", parameters);
-            if (dt.Rows.Count == 0)
-                return null;
-
-            var ownerCol = dt.Columns.Contains("Staff_ID") ? "Staff_ID" : dt.Columns[0].ColumnName;
-            var value = dt.Rows[0][ownerCol];
-            return value == DBNull.Value ? null : value?.ToString();
         }
 
         // GET: /StaffSchedule/List?staffId=...&fromDate=yyyy-MM-dd&toDate=yyyy-MM-dd
@@ -86,26 +67,24 @@ namespace CRC.Web.Controllers.Staff
 
             try
             {
-                var parameters = new[]
-                {
-            new SqlParameter("@Staff_ID", SqlDbType.VarChar, 100) { Value = staffId },
-            new SqlParameter("@FromDate", SqlDbType.Date) { Value = (object?)from ?? DBNull.Value },
-            new SqlParameter("@ToDate", SqlDbType.Date) { Value = (object?)to ?? DBNull.Value }
-        };
-
-                var dt = await _db.ExecuteDataTableAsync("dbo.spStaffSlots_List", parameters);
+                var slots = await _data.GetStaffSlotsAsync(staffId, from, to);
 
                 var rows = new List<object>();
 
-                foreach (DataRow r in dt.Rows)
+                foreach (var slot in slots)
                 {
                     rows.Add(new
                     {
-                        staffSlotId = r["StaffSlot_ID"] == DBNull.Value ? 0 : Convert.ToInt32(r["StaffSlot_ID"]),
-                        slotDate = r["SlotDate"] == DBNull.Value ? "" : Convert.ToDateTime(r["SlotDate"]).ToString("yyyy-MM-dd"),
-                        slotStartTime = r["SlotStartTime"]?.ToString() ?? "",
-                        slotEndTime = r["SlotEndTime"]?.ToString() ?? "",
-                        patientAppointmentId = r["PatientAppointment_ID"] == DBNull.Value ? (int?)null : Convert.ToInt32(r["PatientAppointment_ID"])
+                        staffSlotId = slot.StaffSlot_ID,
+                        slotDate = slot.SlotDate.ToString("yyyy-MM-dd"),
+
+                        // The two times are already "09:00" strings — spStaffSlots_List CONVERTs the TIME(0)
+                        // columns to VARCHAR(5) — so they go out verbatim. Do not parse and re-format them.
+                        slotStartTime = slot.SlotStartTime,
+                        slotEndTime = slot.SlotEndTime,
+
+                        // Null means the hour is still open; the grid renders it as available.
+                        patientAppointmentId = slot.PatientAppointment_ID
                     });
                 }
 
@@ -157,37 +136,21 @@ namespace CRC.Web.Controllers.Staff
 
             try
             {
-                var parameters = new[]
-                {
-                    new SqlParameter("@Staff_ID", SqlDbType.VarChar, 100) { Value = model.StaffId },
-                    new SqlParameter("@FromDate", SqlDbType.Date) { Value = fromDate.Date },
-                    new SqlParameter("@ToDate", SqlDbType.Date) { Value = toDate.Date },
-                    new SqlParameter("@StartTime", SqlDbType.Time) { Value = startTime },
-                    new SqlParameter("@EndTime", SqlDbType.Time) { Value = endTime }
-                };
-
-                var dt = await _db.ExecuteDataTableAsync("dbo.spStaffSlots_CreateRange", parameters);
-
-                int created = 0;
-                int skipped = 0;
-
-                if (dt.Rows.Count > 0)
-                {
-                    var row = dt.Rows[0];
-                    if (dt.Columns.Contains("CreatedCount") && row["CreatedCount"] != DBNull.Value)
-                        created = Convert.ToInt32(row["CreatedCount"]);
-                    if (dt.Columns.Contains("SkippedExistingCount") && row["SkippedExistingCount"] != DBNull.Value)
-                        skipped = Convert.ToInt32(row["SkippedExistingCount"]);
-                }
+                // The procedure's own rules — a range over 31 days, ToDate before FromDate, EndTime at or
+                // before StartTime, a time that is not on the hour — are NOT checked above. They THROW, and
+                // land in the SqlException catch below as the generic error. That split predates this
+                // migration and is left as found.
+                var created = await _data.CreateStaffSlotRangeAsync(
+                    model.StaffId, fromDate.Date, toDate.Date, startTime, endTime);
 
                 AuditLog.StaffSlotRangeCreated(HttpContext, model.StaffId, fromDate.Date, toDate.Date,
-                    startTime, endTime, created, skipped);
+                    startTime, endTime, created.CreatedCount, created.SkippedExistingCount);
 
                 return Ok(new
                 {
                     success = true,
-                    createdCount = created,
-                    skippedExistingCount = skipped
+                    createdCount = created.CreatedCount,
+                    skippedExistingCount = created.SkippedExistingCount
                 });
             }
             catch (SqlException ex)
@@ -214,19 +177,14 @@ namespace CRC.Web.Controllers.Staff
                 // Ownership check: resolve the owning Staff_ID server-side rather than
                 // trusting any client-supplied identifier. Without this, a STAFF user could
                 // enumerate StaffSlot_ID (sequential PK) and delete other staff's slots.
-                var ownerStaffId = await GetSlotOwnerAsync(model.StaffSlotId);
+                var ownerStaffId = await _data.GetStaffSlotOwnerAsync(model.StaffSlotId);
                 if (ownerStaffId == null)
                     return Ok(new { success = false, message = "Slot not found." });
 
                 if (!User.CanAccessStaff(ownerStaffId))
                     return Forbid();
 
-                var parameters = new[]
-                {
-                    new SqlParameter("@StaffSlot_ID", SqlDbType.Int) { Value = model.StaffSlotId }
-                };
-
-                await _db.ExecuteNonQueryAsync("dbo.spStaffSlots_Delete", parameters);
+                await _data.DeleteStaffSlotAsync(model.StaffSlotId);
 
                 AuditLog.StaffSlotDeleted(HttpContext, model.StaffSlotId);
 

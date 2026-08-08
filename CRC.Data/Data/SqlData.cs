@@ -817,5 +817,136 @@ namespace CRC.Data.Data
 
             return results.ToList();
         }
+
+        // ----- Staff slots (Staff Schedule) -----
+        //
+        // 🔴 FOUR OF THE SIX PROCEDURES IN Stored Procedures/StaffSlots/ ARE HERE.
+        // spStaffSlots_AssignAppointment and spStaffSlots_ClearAppointment ARE DELIBERATELY ABSENT — they
+        // are only ever run inside PatientController.SaveAppointment's transaction, and PROMPT 6 adds them
+        // to SaveAppointmentAsync rather than here. See the matching banner in IDatabaseData.cs for why
+        // publishing them as standalone methods would be a mistake rather than a convenience.
+
+        public async Task<List<StaffSlotItem>> GetStaffSlotsAsync(string staffId, DateTime? fromDate,
+            DateTime? toDate)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // No @User_ID of either kind: this is a plain read and writes no audit row.
+            //
+            // @FromDate and @ToDate are DATE and both default to NULL in the procedure, where NULL means
+            // "unbounded at that end" (`@FromDate IS NULL OR SlotDate >= @FromDate`). Dapper sends a
+            // DateTime as DbType.DateTime and SQL Server narrows it to DATE on the way in; the caller
+            // already passes midnight, so nothing is lost. The old ADO code said SqlDbType.Date explicitly
+            // — same value, one fewer conversion.
+            var results = await connection.QueryAsync<StaffSlotItem>(
+                "dbo.spStaffSlots_List",
+                new { Staff_ID = staffId, FromDate = fromDate, ToDate = toDate },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<StaffSlotCreateResult> CreateStaffSlotRangeAsync(string staffId, DateTime fromDate,
+            DateTime toDate, TimeSpan startTime, TimeSpan endTime)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // spStaffSlots_CreateRange declares @User_ID INT = NULL: the ACTOR for its dbo.AuditTrails row,
+            // not a target. DatabaseHelper used to append it automatically off sys.parameters; Dapper
+            // cannot, so it is passed explicitly here. Drop it and the whole range is still created — with
+            // AuditTrails.User_Id = 0, and one audit row per range means one lost attribution per range.
+            //
+            // QuerySingleAsync, not …OrDefault: the procedure always ends with
+            // `SELECT @CreatedCount …, @SkippedExistingCount …`, and every path that skips it THROWs first,
+            // so the caller gets a SqlException rather than an empty result.
+            //
+            // The two TimeSpans map onto @StartTime / @EndTime TIME(0) — Dapper's default for TimeSpan is
+            // DbType.Time, which is what the procedure declares.
+            return await connection.QuerySingleAsync<StaffSlotCreateResult>(
+                "dbo.spStaffSlots_CreateRange",
+                new
+                {
+                    Staff_ID = staffId,
+                    FromDate = fromDate,
+                    ToDate = toDate,
+                    StartTime = startTime,
+                    EndTime = endTime,
+                    User_ID = _databaseHelper.CurrentUserId
+                },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task DeleteStaffSlotAsync(int staffSlotId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // spStaffSlots_Delete declares @User_ID INT = NULL: the ACTOR for its dbo.AuditTrails row,
+            // passed explicitly because Dapper has no equivalent of DatabaseHelper's sys.parameters
+            // injection.
+            //
+            // ExecuteAsync and no return value, because the procedure has no result set and no row count to
+            // report: it answers "refused" and "not found" by THROWing (50002 and 50003), which arrive at
+            // the controller as a SqlException. An audit row is written only on the path that actually
+            // deleted, since both THROWs abort before reaching it.
+            await connection.ExecuteAsync(
+                "dbo.spStaffSlots_Delete",
+                new { StaffSlot_ID = staffSlotId, User_ID = _databaseHelper.CurrentUserId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task<string?> GetStaffSlotOwnerAsync(int staffSlotId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // SELECT TOP 1 [Staff_ID] … WHERE StaffSlot_ID = @StaffSlot_ID over the primary key: at most one
+            // row, possibly none, and one VARCHAR column — so the row type is the column type and a missing
+            // slot is a null. No @User_ID; this is a read.
+            //
+            // The null is load-bearing: it is how StaffScheduleController.Delete tells "no such slot" from
+            // "not yours", which are two different answers to the caller.
+            return await connection.QuerySingleOrDefaultAsync<string?>(
+                "dbo.spStaffSlots_GetOwner",
+                new { StaffSlot_ID = staffSlotId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        // ----- Staff performance -----
+
+        public async Task<StaffPerformanceResult> GetStaffPerformanceAsync(string staffId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // 🔴 FOUR RESULT SETS, ALWAYS, IN THIS ORDER — which is why this is QueryMultipleAsync and why
+            // the controller used to reach for ExecuteDataSetAsync:
+            //
+            //   grid 1  one row   TotalColonoscopy, TotalColonoscopyThisMonth        (dbo.PatientJourney)
+            //   grid 2  N rows    PjAppType_ID, PjAppType_Name, TotalHours           (dbo.PatientAppointment)
+            //   grid 3  N rows    Complication, Total                                (dbo.PatientColonoscopy)
+            //   grid 4  N rows    TypeOfAnomaly, PatientCount                        (dbo.PatientColonoscopy)
+            //
+            // NOTHING IN THE DATA SAYS WHICH GRID IS WHICH. Grids 3 and 4 have identical shapes — one string
+            // and one int — so reading them in the wrong order compiles, runs, returns the right number of
+            // rows, and labels complications as anomalies. The reads below are in the procedure's order and
+            // the before/after JSON diff in Prompt 4 is what proves it.
+            //
+            // No @User_ID: a read, no audit row.
+            using var grids = await connection.QueryMultipleAsync(
+                "dbo.spStaff_GetPerformance",
+                new { Staff_ID = staffId },
+                commandType: CommandType.StoredProcedure);
+
+            // Grid 1 is an aggregate with NO GROUP BY, so it returns exactly one row even when the staff
+            // member has no journeys at all — in which case both SUMs are NULL, which is why the two
+            // properties are int? and why ReadSingleAsync is correct rather than optimistic. It maps the two
+            // counts by name and leaves the three lists at their initialisers, exactly as
+            // StaffDeleteResult.BlobNames is left for the second grid.
+            var result = await grids.ReadSingleAsync<StaffPerformanceResult>();
+
+            result.HoursByType = (await grids.ReadAsync<StaffPerformanceHours>()).ToList();
+            result.Complications = (await grids.ReadAsync<StaffPerformanceComplication>()).ToList();
+            result.Anomalies = (await grids.ReadAsync<StaffPerformanceAnomaly>()).ToList();
+
+            return result;
+        }
     }
 }

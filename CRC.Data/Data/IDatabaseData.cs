@@ -495,5 +495,106 @@ namespace CRC.Data.Data
         //
         // NOTHING IN PROMPT 3 CALLS THIS either. CALLED BY PROMPT 8: DocumentsController.
         Task<List<string>> GetStaffDocumentStaffNamesAsync();
+
+        // ----- Staff slots (Staff Schedule) -----
+        //
+        // dbo.StaffSlots is the availability an administrator (or a clinician, for themselves) publishes in
+        // advance: ONE ROW IS ONE HOUR of one staff member's day, unique per (Staff_ID, SlotDate,
+        // SlotStartTime), and booking an appointment consumes one or more of them. See CoreFlow.md §3.7.
+        //
+        // 🔴 THE FOLDER HOLDS SIX PROCEDURES AND THIS BANNER WRAPS FOUR. spStaffSlots_AssignAppointment and
+        // spStaffSlots_ClearAppointment ARE DELIBERATELY ABSENT, NOT FORGOTTEN. Neither has a caller of its
+        // own: both are run only from inside PatientController.SaveAppointment's transaction, which stamps
+        // an appointment id onto the slots it consumes and clears it off the ones it releases. Wrapping them
+        // here as standalone methods would publish two ways to change a slot's booking state — one atomic
+        // and one not — and the non-atomic one is exactly the race the transaction exists to prevent. They
+        // belong to SaveAppointmentAsync, the second of this file's two transactional units of work, and
+        // PROMPT 6 ADDS THEM THERE. Do not add them to this banner.
+        //
+        // TWO OF THE FOUR DECLARE `@User_ID INT = NULL` — spStaffSlots_CreateRange and spStaffSlots_Delete —
+        // which is THE ACTOR for the dbo.AuditTrails row each one writes, so it is absent from both
+        // signatures and SqlData supplies it from DatabaseHelper.CurrentUserId. spStaffSlots_List and
+        // spStaffSlots_GetOwner declare no @User_ID and write no audit row.
+
+        // The hours one staff member has published, optionally narrowed to a date range, ordered by date
+        // then start time. Calls spStaffSlots_List. Both dates are optional and independent: pass null for
+        // either and that end is unbounded. An unknown Staff_ID is not an error — it returns an empty list.
+        //
+        // 🔴 TWO CALLERS, AND THE SECOND ONE IS A CONCURRENCY CHECK. StaffScheduleController.List renders
+        // the schedule grid; PROMPT 6's PatientController.SaveAppointment runs this SAME procedure INSIDE
+        // the appointment transaction to decide whether the hours being booked are still free. Both need
+        // the same five columns, so StaffSlotItem serves both — read it before changing anything here,
+        // especially the note about why the two time columns are strings and why the appointment id is the
+        // only nullable one.
+        //
+        // Prompt 6 will need this call to run on the transaction's own connection. Adding an overload that
+        // takes a connection and a transaction is the intended way to do that; do NOT make it read outside
+        // the transaction, because the read IS the availability check.
+        Task<List<StaffSlotItem>> GetStaffSlotsAsync(string staffId, DateTime? fromDate, DateTime? toDate);
+
+        // Opens every whole hour between startTime and endTime, on every day from fromDate to toDate
+        // inclusive, for one staff member — and reports how many it created and how many were already open.
+        // Calls spStaffSlots_CreateRange.
+        //
+        // IT IS IDEMPOTENT BY DESIGN: a MERGE … WHEN NOT MATCHED against the unique index means re-running a
+        // range that is already open creates nothing, errors on nothing, and answers { 0, N }. See
+        // StaffSlotCreateResult.
+        //
+        // THE PROCEDURE VALIDATES, AND IT THROWS RATHER THAN RETURNING A STATUS. Five `THROW 50001` guards —
+        // a blank Staff_ID, ToDate before FromDate, a range longer than 31 days, EndTime at or before
+        // StartTime, and a time that is not on the hour — all surface as a SqlException here. The controller
+        // pre-validates the shape of its inputs but NOT those five rules, so this can and does throw on
+        // input the controller accepted (a 40-day range is the easy one to hit).
+        //
+        // Writes ONE dbo.AuditTrails row per call — not one per slot — summarising the whole range.
+        Task<StaffSlotCreateResult> CreateStaffSlotRangeAsync(string staffId, DateTime fromDate,
+            DateTime toDate, TimeSpan startTime, TimeSpan endTime);
+
+        // Removes one published hour. Calls spStaffSlots_Delete.
+        //
+        // 🔴 IT REFUSES TO DELETE A BOOKED SLOT, and it says so by THROWING: `THROW 50002, 'Cannot delete a
+        // slot that is already taken.'` when PatientAppointment_ID is not null, and `THROW 50003, 'Slot not
+        // found.'` when the delete matched nothing. Both arrive here as a SqlException — there is no status
+        // code and no row count — so a caller that wants to distinguish "gone" from "refused" must catch it.
+        // That is the only thing stopping a slot vanishing out from under an appointment: dbo.StaffSlots has
+        // a foreign key to dbo.PatientAppointment, but the FK constrains the appointment's existence, not
+        // the slot's.
+        //
+        // OWNERSHIP IS NOT CHECKED HERE. The procedure deletes any slot id it is given. Resolve the owner
+        // with GetStaffSlotOwnerAsync first — see that method.
+        Task DeleteStaffSlotAsync(int staffSlotId);
+
+        // The Staff_ID that owns a slot, or null when no slot has that id. Calls spStaffSlots_GetOwner
+        // (SELECT TOP 1 Staff_ID — an empty result set for an unknown id, not an error).
+        //
+        // 🔴 THIS EXISTS FOR ONE REASON AND IT IS A SECURITY ONE. StaffSlot_ID is a sequential IDENTITY, so
+        // a STAFF user can guess every other clinician's slot ids by counting. StaffScheduleController.Delete
+        // therefore resolves the owner SERVER-SIDE and runs it through User.CanAccessStaff() before calling
+        // DeleteStaffSlotAsync — it never trusts a staff id from the request body, because the delete request
+        // does not carry one and could not be believed if it did. Do not "simplify" the delete by dropping
+        // this round trip.
+        Task<string?> GetStaffSlotOwnerAsync(int staffSlotId);
+
+        // ----- Staff performance -----
+
+        // Everything the Staff Performance panel shows for one clinician, in one call. Calls
+        // spStaff_GetPerformance.
+        //
+        // 🔴 IT RETURNS FOUR RESULT SETS AND THE ORDER IS THE CONTRACT — summary counts, then hours by
+        // appointment type, then complications, then anomalies. (DapperLayerPlan.md's Prompt 4 says five;
+        // the .sql, the deployed procedure and the controller all say four. The phantom fifth is the SELECT
+        // inside grid 4's CTE.) Grids 3 and 4 are both {string, int} and are told apart by position alone,
+        // so reading them out of order produces convincing, wrong output. See StaffPerformanceResult.
+        //
+        // The four grids answer four different questions from three different tables — journeys, attended
+        // appointments, and colonoscopies — so an empty list is "none recorded", never "something failed".
+        // An unknown Staff_ID is not an error: grid 1 comes back as one row of NULLs (hence the nullable
+        // ints) and grids 2–4 come back empty.
+        //
+        // "This month" is decided on THE SQL SERVER'S CLOCK, from SYSDATETIME() — local server time, not
+        // UTC and not the web server's. On one machine that is the same clock; split across an App Service
+        // and Azure SQL it is not, and a colonoscopy recorded near midnight on the 1st can fall on either
+        // side of the boundary.
+        Task<StaffPerformanceResult> GetStaffPerformanceAsync(string staffId);
     }
 }

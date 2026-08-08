@@ -675,6 +675,76 @@ column, and do not add one**: a settings row is deleted, not un-flagged
 **An empty table means nothing is mandatory anywhere**, which is the state a freshly published `CRC_DB` is
 in — every staff type saves with no documents at all until somebody configures the Settings screen.
 
+### 3.7 `dbo.StaffSlots`
+
+**One row is one hour of one staff member's published availability.** An administrator (or a clinician, for
+themselves) opens a range of hours in advance; booking a `PatientAppointment` consumes one or more of them.
+This is the only table in nucentra that is *pre-created empty and then consumed* — everything else is
+written when the fact it records happens.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `StaffSlot_ID` | **`INT IDENTITY(1,1)`** | NOT NULL | PK. One of the few numeric keys in nucentra (§0) — and **sequential, which is a security fact, not a detail**; see §4.5 |
+| `Staff_ID` | `VARCHAR(100)` | NOT NULL | a `Staff.Staff_ID`, **by convention only — no foreign key** |
+| `SlotDate` | `DATE` | NOT NULL | date only, no time component |
+| `SlotStartTime` | `TIME(0)` | NOT NULL | whole seconds; **always on the hour**, by check constraint |
+| `SlotEndTime` | `TIME(0)` | NOT NULL | **always exactly one hour after the start**, by check constraint |
+| `PatientAppointment_ID` | `INT` | **NULL** | 🔴 **NULL is what "available" means.** See below |
+
+🔴 **`PatientAppointment_ID` BEING NULL *IS* AVAILABILITY. There is no `IsBooked` column, no status, and no
+"released" state.** A slot with a null appointment id is open; a slot with one is consumed by that
+appointment. Every availability decision in the portal — the schedule grid's rendering, the appointment
+form's slot picker, and the concurrency check inside `PatientController.SaveAppointment` — is that one
+`IS NULL` test. Adding a status column would create a second answer to a question that already has one.
+
+**This is the most constrained table in nucentra, and the only one whose rules are in the schema rather than
+in a procedure.** Everywhere else — `dbo.Staff`, `dbo.Branch`, `dbo.Users` — referential integrity lives
+inside stored procedures (§3.4, §5.4) and a direct `INSERT` bypasses it. Here it does not:
+
+```sql
+CK_StaffSlots_OnTheHour   CHECK (DATEPART(MINUTE, SlotStartTime) = 0 AND DATEPART(MINUTE, SlotEndTime) = 0)
+CK_StaffSlots_OneHour     CHECK (SlotEndTime = DATEADD(HOUR, 1, SlotStartTime))
+FK_StaffSlots_PatientAppointment   FOREIGN KEY (PatientAppointment_ID) REFERENCES PatientAppointment(...)
+UX_StaffSlots_Staff_ID_SlotDate_SlotStartTime   UNIQUE (Staff_ID, SlotDate, SlotStartTime)
+```
+
+Four things follow, and each is load-bearing somewhere:
+
+- **A slot is always exactly one on-the-hour hour.** A half-hour or a two-hour slot cannot be inserted at
+  all — not by a procedure, not by hand. `spStaffSlots_CreateRange` re-checks the on-the-hour rule anyway
+  and `THROW`s a friendlier message before the constraint can fire (§5.5); the constraint is the backstop.
+- **The unique index is what makes opening a range idempotent.** `spStaffSlots_CreateRange` `MERGE`s against
+  exactly those three columns, so re-opening a range that is already open creates nothing and errors on
+  nothing — it just reports the hours as skipped (§5.5).
+- 🔴 **The one foreign key in this area points the wrong way for deletion.** It constrains
+  `StaffSlots.PatientAppointment_ID` to an existing appointment; it does **not** stop the *slot* being
+  deleted out from under a live appointment. That protection is a `THROW` inside `spStaffSlots_Delete`
+  (§5.5) and nowhere else, so a direct `DELETE FROM dbo.StaffSlots` orphans the appointment silently.
+- **Deleting a staff member deletes their slots**, by hand, inside `spStaff_Delete` (§5.4) — but only when
+  that delete is not already blocked by a `PatientAppointment` reference, which a booked slot implies.
+
+#### 🔴 The two baseline `SQL71502` warnings — they live here, and they are expected
+
+Building `CRC.Database.sqlproj` reports **exactly two warnings, both in
+`Stored Procedures/StaffSlots/spStaffSlots_CreateRange.sql`, at lines 46 and 52**:
+
+```
+SQL71502: Procedure: [dbo].[spStaffSlots_CreateRange] has an unresolved reference to object [sys].[all_objects].
+```
+
+**What they are.** The procedure builds its day list and its hour list with the standard
+`SELECT TOP (n) ROW_NUMBER() OVER (…) FROM sys.all_objects` trick — a system catalogue view used purely as
+a row generator, because nucentra has no numbers table. `sys.all_objects` is not part of the project model,
+so SSDT cannot resolve the reference and warns. The reference is perfectly valid at runtime; every SQL
+Server has that view.
+
+**They pre-date the Dapper migration, they are the *whole* of the database project's warning output, and
+they are the pass condition, not a defect.** A `CRC.Database` build is correct when it says
+`Build succeeded`, `0 Error(s)` and these two warnings and nothing else. Do not "fix" them by adding a
+master database reference or by rewriting the row generator: the first adds a build dependency for a
+cosmetic gain, and the second changes a procedure this plan is not permitted to change. **If the count is
+anything other than two, something you did caused it.**
+
 ---
 
 ## 4. Pages, endpoints, policies
@@ -1080,6 +1150,164 @@ document type ids **case-insensitively** (`StringComparer.OrdinalIgnoreCase`), a
 id as "no type" and skip it. Neither counts documents: one row of the required type is enough, and three
 are no better.
 
+### 4.5 Staff Schedule (Staff > Edit > Schedule tab)
+
+`CRC.Web/Controllers/Staff/StaffScheduleController.cs` — **`[Authorize(Policy = "AdminOrSuperOrStaff")]` on
+the class** (`UserType` 1, 2 or 3), with no per-action policy. **It has no `Index` action and no view of its
+own**: the schedule is a tab inside `Views/Staff/StaffEdit.cshtml`, driven by
+`wwwroot/js/staff/edit-staffschedule.js`, so the three actions below are the whole controller. Antiforgery
+is global, so both POSTs need `X-CSRF-TOKEN` (§0).
+
+| # | Verb | Route | Policy | Returns |
+|---|---|---|---|---|
+| 1 | GET | `/StaffSchedule/List?staffId=&fromDate=&toDate=` | `AdminOrSuperOrStaff` | `{ success, data[] }` — or the access-denied redirect |
+| 2 | POST | `/StaffSchedule/CreateRange` | `AdminOrSuperOrStaff` | `{ success, createdCount, skippedExistingCount }` |
+| 3 | POST | `/StaffSchedule/Delete` | `AdminOrSuperOrStaff` | `{ success }` |
+
+```jsonc
+// GET /StaffSchedule/List?staffId=END-00001&fromDate=2026-09-01&toDate=2026-09-03   → 200
+{ "success": true, "data": [
+    { "staffSlotId": 1, "slotDate": "2026-09-01", "slotStartTime": "09:00",
+      "slotEndTime": "10:00", "patientAppointmentId": null },      // null = the hour is open
+    { "staffSlotId": 7, "slotDate": "2026-09-03", "slotStartTime": "09:00",
+      "slotEndTime": "10:00", "patientAppointmentId": 4 }] }       // taken by appointment 4
+{ "success": true,  "data": [] }                       // blank staffId, unknown staffId, or no slots
+{ "success": false, "message": "Invalid From Date." }  // fromDate not yyyy-MM-dd
+{ "success": false, "message": "Invalid To Date." }    // toDate not yyyy-MM-dd
+{ "success": false, "message": "An unexpected error occurred. …", "correlationId": "…" }
+
+// POST /StaffSchedule/CreateRange  { staffId, fromDate, toDate, startTime, endTime }
+{ "success": true,  "createdCount": 4, "skippedExistingCount": 0 }   // a fresh range
+{ "success": true,  "createdCount": 0, "skippedExistingCount": 4 }   // the same range again — see below
+{ "success": false, "message": "Please fill in all required fields." }
+{ "success": false, "message": "Invalid date range." }               // either date not yyyy-MM-dd
+{ "success": false, "message": "Invalid time range." }               // either time not HH:mm
+{ "success": false, "message": "An unexpected error occurred. …", "correlationId": "…" }
+// 400 { "success": false, "message": "Invalid data." }              // no body at all
+
+// POST /StaffSchedule/Delete  { staffSlotId }
+{ "success": true }                                                  // NO message property
+{ "success": false, "message": "Slot not found." }                   // no slot has that id
+{ "success": false, "message": "An unexpected error occurred. …", "correlationId": "…" }
+// 400 { "success": false, "message": "Invalid slot." }              // staffSlotId <= 0 or no body
+```
+
+**`{ "success": true }` from `Delete` is the whole response** — no `message`, unlike every other write in the
+portal. `edit-staffschedule.js` supplies the toast text itself. Do not add one.
+
+**Re-opening a range that already exists is a SUCCESS, not a conflict.** `spStaffSlots_CreateRange` `MERGE`s
+against the unique index (§3.7), so the second call over the same hours answers
+`{ createdCount: 0, skippedExistingCount: 4 }` with `success = true`. Both counts verified against the
+running site. `createdCount + skippedExistingCount` is the size of the requested range.
+
+#### 🔴 The ownership check — what it protects and why `Delete` is different
+
+All three actions gate on `User.CanAccessStaff(...)` (`CRC.Web/Infrastructure/StaffAccessExtensions.cs`):
+ADMIN and SUPERUSER pass unconditionally; a STAFF user passes only when the staff id matches their own
+`StaffId` claim, trimmed and compared case-insensitively. **But `List` and `CreateRange` check a staff id
+that came from the request, and `Delete` cannot** — its body is `{ staffSlotId }` and carries no staff id at
+all.
+
+```csharp
+// Ownership check: resolve the owning Staff_ID server-side rather than
+// trusting any client-supplied identifier. Without this, a STAFF user could
+// enumerate StaffSlot_ID (sequential PK) and delete other staff's slots.
+var ownerStaffId = await _data.GetStaffSlotOwnerAsync(model.StaffSlotId);
+if (ownerStaffId == null)
+    return Ok(new { success = false, message = "Slot not found." });
+
+if (!User.CanAccessStaff(ownerStaffId))
+    return Forbid();
+```
+
+**That extra round trip to `spStaffSlots_GetOwner` is the only thing standing between a STAFF login and every
+other clinician's schedule**, and the reason is §3.7's first row: `StaffSlot_ID` is a sequential `IDENTITY`,
+so the ids of slots a user has never seen are `1, 2, 3, …`. Adding a `staffId` to the request body and
+checking *that* would be no check at all. Verified end to end: signed in as a STAFF user bound to
+`END-00001`, `POST /StaffSchedule/Delete { staffSlotId: <a NUR-00002 slot> }` was refused and the row was
+still there afterwards, while the same user deleting their own slot succeeded and audited.
+
+**The order of the two failures matters and is deliberate.** An unknown slot id answers *"Slot not found."*
+**before** ownership is consulted, so the endpoint does not tell a STAFF user whether an id they cannot touch
+exists. A slot that does exist and is not theirs is refused by the authorization stack instead.
+
+🔴 **`Forbid()` under cookie authentication is a 302 to `/Account/AccessDenied`, not a 403.** Measured on all
+five refusal paths in §4.5 and §4.6: the response is
+`302 Location: /Account/AccessDenied?ReturnUrl=%2FStaffSchedule%2FDelete`, with an empty body — the cookie
+handler's `AccessDeniedPath` (§2.5) turns the forbid into a redirect. §4.4 describes the same `Forbid()` on
+`/Staff/GetStaff` as "403 with an empty body"; that is the MVC result, not what goes over the wire.
+**Flagged for Prompt 10's consistency pass**; §4.4 belongs to Prompt 3 and is not rewritten here. The
+practical consequence is for the `.js`: a `fetch` sees a 302 it follows to an HTML page, so `response.ok` is
+`true` and `response.json()` is what fails.
+
+#### Two more asymmetries worth knowing
+
+- **A blank `staffId` means different things to the two controllers.** `List` answers
+  `{ success: true, data: [] }` **before** it reaches the ownership check, so any authenticated user gets the
+  empty payload. `/StaffPerformance/Get` (§4.6) checks ownership **first**, and `CanAccessStaff("")` is false
+  for a STAFF user — so the same blank input is an empty list from one endpoint and an access-denied redirect
+  from the other. Both are correct for their screen: the schedule tab opens on a *new* staff member with no
+  id yet, and the performance tab renders its own placeholder in that case.
+- 🔴 **`CreateRange` validates the SHAPE of its inputs and the procedure validates the RULES**, and only the
+  first kind produces a useful message. The controller rejects blank fields, a date that is not `yyyy-MM-dd`
+  and a time that is not `HH:mm`. Everything else — a range over 31 days, `toDate` before `fromDate`,
+  `endTime` at or before `startTime`, a time that is not on the hour — is a `THROW` inside
+  `spStaffSlots_CreateRange` (§5.5) that arrives as a `SqlException` and is answered with the generic
+  *"An unexpected error occurred."* plus a correlation id. So a user who asks for 40 days gets no hint that
+  31 is the limit. The same is true of `Delete` refusing a booked slot: verified against the running site,
+  `POST /StaffSchedule/Delete` on a slot with a `PatientAppointment_ID` returns the generic error with a
+  correlation id, and the real message — *"Cannot delete a slot that is already taken."* — reaches only
+  `Logs/app-*.log`. Both predate this migration and are left exactly as found.
+
+### 4.6 Staff Performance (Staff > Edit > Performance tab)
+
+`CRC.Web/Controllers/Staff/StaffPerformanceController.cs` —
+**`[Authorize(Policy = "AdminOrSuperOrStaff")]` on the class**, one action, no view of its own. Like §4.5 it
+is a tab in `Views/Staff/StaffEdit.cshtml`; the script is `wwwroot/js/staff/edit-staffperformance.js`, which
+loads it **once, lazily, on `shown.bs.tab`** — open the Staff Edit page and never click Performance and this
+endpoint is never called.
+
+| Verb | Route | Policy | Returns |
+|---|---|---|---|
+| GET | `/StaffPerformance/Get?staffId=` | `AdminOrSuperOrStaff` | `{ success, data }` — or the access-denied redirect |
+
+```jsonc
+// GET /StaffPerformance/Get?staffId=END-00001                → 200
+{ "success": true, "data": {
+    "totalColonoscopy": 2,
+    "totalColonoscopyThisMonth": 1,
+    "hoursByType":   [{ "pjAppTypeId": "02", "pjAppTypeName": "COLONOSCOPY",        "totalHours": 3.00 },
+                      { "pjAppTypeId": "01", "pjAppTypeName": "PATIENT ASSESSMENT", "totalHours": 1.00 }],
+    "complications": [{ "complication": "BLEEDING", "total": 1 },
+                      { "complication": "PERFORATION", "total": 1 }],
+    "anomalies":     [{ "typeOfAnomaly": "MASS",  "patientCount": 1 },
+                      { "typeOfAnomaly": "POLYP", "patientCount": 2 }] } }
+
+// GET /StaffPerformance/Get?staffId=          (blank, ADMIN or SUPERUSER)   → 200
+// GET /StaffPerformance/Get?staffId=NOSUCHSTAFF                             → 200 — the same shape
+{ "success": true, "data": { "totalColonoscopy": 0, "totalColonoscopyThisMonth": 0,
+                             "hoursByType": [], "complications": [], "anomalies": [] } }
+
+{ "success": false, "message": "An unexpected error occurred. …", "correlationId": "…" }
+```
+
+**One endpoint, four result sets, five JSON fields** — grid 1 supplies the two counts and grids 2, 3 and 4
+supply the three arrays, in that order (§5.5). `staffId` is `Trim()`med before anything else, so
+`?staffId=%20END-00001%20` and `?staffId=END-00001` return the same thing (verified).
+
+Three behaviours that look like bugs, are not, and must be preserved:
+
+- 🔴 **An unknown staff id and a staff member with no history are indistinguishable**, and both are
+  `success: true` with zeroes. That is not a swallowed error: `spStaff_GetPerformance` never looks up
+  `dbo.Staff` at all — it aggregates three other tables by `Staff_ID` — so "no such clinician" and "nothing
+  recorded yet" genuinely are the same query result. The panel renders "No anomalies detected." for both.
+- **The two counts come back as SQL `NULL`, not 0, for a staff member with no journey rows**, because grid 1
+  is a `SUM` with no `GROUP BY` over an empty set (§5.5). The controller coerces with `?? 0`; the
+  `DataTable` code it replaced coerced a `DBNull` the same way. This is the one nullability in this area
+  that is real rather than defensive, and it is why `StaffPerformanceResult`'s counts are `int?`.
+- **`totalHours` serializes with two decimal places** — `3.00`, not `3` — because the procedure `CAST`s to
+  `DECIMAL(10, 2)` and the controller `Math.Round`s to 2. It is a JSON number all the same.
+
 ---
 
 ## 5. Stored procedures
@@ -1375,6 +1603,119 @@ fails (§6.6).
   table**, so it returns all eight document types with `IsMandatory` computed per row (§3.6). Its row count
   is therefore constant and answers nothing; every caller filters `IsMandatory = 1` itself. `IsMandatory`
   is an `INT`, not a `BIT`.
+
+### 5.5 Staff slots and staff performance (5 wrapped, 2 deferred)
+
+**Two of the five declare `@User_ID INT = NULL` — the ACTOR** (§0.1): `spStaffSlots_CreateRange` and
+`spStaffSlots_Delete`. Both write a `dbo.AuditTrails` row with `ISNULL(@User_ID, 0)`, which is the
+silent-failure surface. The other three declare no `@User_ID` and write no audit row.
+
+| Procedure | Parameters | Returns | `IDatabaseData` method | `@User_ID` |
+|---|---|---|---|---|
+| `spStaffSlots_List` | `@Staff_ID VARCHAR(100)`, `@FromDate DATE = NULL`, `@ToDate DATE = NULL` | 5 columns, ordered `SlotDate, SlotStartTime`; **empty set** for an unknown staff id | `GetStaffSlotsAsync` → `List<StaffSlotItem>` | no |
+| `spStaffSlots_GetOwner` | `@StaffSlot_ID INT` | `SELECT TOP 1 Staff_ID`; **empty set** for an unknown slot | `GetStaffSlotOwnerAsync` → `string?` | no |
+| `spStaffSlots_CreateRange` | `@Staff_ID`, `@FromDate DATE`, `@ToDate DATE`, `@StartTime TIME(0)`, `@EndTime TIME(0)`, `@User_ID` | `SELECT @CreatedCount, @SkippedExistingCount` — **one row** | `CreateStaffSlotRangeAsync` → `StaffSlotCreateResult` | **`INT = NULL` — ACTOR** |
+| `spStaffSlots_Delete` | `@StaffSlot_ID INT`, `@User_ID` | nothing — it answers by `THROW`ing | `DeleteStaffSlotAsync` | **`INT = NULL` — ACTOR** |
+| `spStaff_GetPerformance` | `@Staff_ID VARCHAR(100)` | 🔴 **FOUR result sets** — see below | `GetStaffPerformanceAsync` → `StaffPerformanceResult` | no |
+
+`spStaff_GetPerformance` lives in `Stored Procedures/Staff/` with the other five `spStaff_*` procedures
+(§5.4) but belongs to the Performance tab, so it is documented here.
+
+#### 🔴 The two `StaffSlots` procedures that are NOT wrapped, and why
+
+`Stored Procedures/StaffSlots/` holds **six** files. The two missing from the table are
+**`spStaffSlots_AssignAppointment`** (`@ApptId INT`, `@StaffSlotIds VARCHAR(MAX)` — a comma-separated list
+split with `STRING_SPLIT`, stamping the appointment id onto every named slot) and
+**`spStaffSlots_ClearAppointment`** (`@ApptId INT` — clearing it off every slot that carries it).
+
+**They are deliberately absent from `IDatabaseData`, not forgotten.** Neither has a caller of its own:
+both are run only from inside `PatientController.SaveAppointment`'s transaction, which reads
+`spStaffSlots_List` under a lock, checks that every chosen hour is still free, writes the appointment, and
+*then* claims the slots. Publishing them as standalone data-layer methods would offer a second way to change
+a slot's booking state — one that is not inside that transaction — and that race is precisely what the
+transaction exists to prevent. **Prompt 6 adds them to `SaveAppointmentAsync`**, the second of the two
+transactional units of work (§6.6). The banner comment in `IDatabaseData.cs` says the same thing at the
+place a future author would otherwise add them.
+
+#### 🔴 `spStaff_GetPerformance` returns FOUR result sets, and the order is the whole contract
+
+**`DapperLayerPlan.md`'s Prompt 4 calls this a "five-result-set procedure". It has four.** The `.sql` has
+four statement-level `SELECT`s; the fifth thing that looks like one is the `SELECT` inside the `Findings`
+CTE that feeds grid 4. This was checked three ways and all three agree: the file, the deployed definition in
+`CRC_DB` (`sys.sql_modules`), and `StaffPerformanceController`, which has only ever read `ds.Tables[0..3]`.
+Four is the contract.
+
+| # | Rows | Columns | From | What it is |
+|---|---|---|---|---|
+| **1** | **exactly 1** | `TotalColonoscopy INT`, `TotalColonoscopyThisMonth INT` | `dbo.PatientJourney` | Two conditional `SUM`s over this clinician's journey rows, matched on `UPPER(PjAppType_Name) = 'COLONOSCOPY'` — **on the denormalized NAME, not on `PjAppType_ID`**. "This month" is `Created_At` within `[DATEFROMPARTS(YEAR(SYSDATETIME()), MONTH(SYSDATETIME()), 1), +1 month)`. |
+| **2** | N | `PjAppType_ID`, `PjAppType_Name`, `TotalHours DECIMAL(10,2)` | `dbo.PatientAppointment` | Hours per appointment type: `SUM(DATEDIFF(MINUTE, start, end)) / 60.0`, **only where `PatientAppointment_Status = 'Attended'`** and the times are present and ordered. `LEFT JOIN LU_PJ_APP_TYPE`, grouped by type, **ordered by `PjAppType_Name`**. |
+| **3** | N | `Complication VARCHAR`, `Total INT` | `dbo.PatientColonoscopy` | One row per distinct `Complications` value, `COUNT(*)` of colonoscopies. `INNER JOIN PatientJourney` on `Staff_ID`; NULL and blank values excluded; ordered by the value. |
+| **4** | N | `TypeOfAnomaly`, `PatientCount INT` | `dbo.PatientColonoscopy` | One row per anomaly kind, `COUNT(DISTINCT Patient_ID)`. See below — this is the interesting one. |
+
+**Nothing in a result set says which grid it is, and grids 3 and 4 have identical shapes — one string and
+one integer.** Read them out of order and the Performance panel renders complications under the Anomalies
+heading and vice versa: no exception, no log line, the right number of rows, plausible words in the wrong
+box. `SqlData.GetStaffPerformanceAsync` reads them strictly in the order above, and the before/after JSON
+diff over a database seeded so that **all four grids are non-empty and grids 3 and 4 differ** is what proves
+it. A diff taken against a clinician with no history would have proved nothing.
+
+**Grid 4 is nine JSON columns flattened into one.** `dbo.PatientColonoscopy` records its findings per bowel
+segment — anus, rectum, sigmoid colon, descending colon, splenic flexure, transverse colon, hepatic flexure,
+ascending colon, caecum — each in its own `NVARCHAR` column holding a JSON document. The procedure
+`CROSS APPLY (VALUES …)`s all nine into a single column, keeps the rows where `ISJSON() = 1`, and pulls
+`JSON_VALUE(…, '$.TypeOfAnomaly')` out of each. So **a finding recorded in three segments of one patient is
+one row with `PatientCount = 1`** — the `COUNT(DISTINCT Patient_ID)` is what makes this grid answer a
+different question from grid 3's `COUNT(*)`, despite the identical shape. A JSON document with no
+`TypeOfAnomaly` key, or a column that is not valid JSON, contributes nothing and raises nothing.
+
+🔴 **Grid 1 returns one row of NULLs, not zero rows, for a clinician with no journeys.** It is an aggregate
+with no `GROUP BY`, so `SUM` over an empty set is `NULL` and the row still comes back. `ReadSingleAsync` is
+therefore correct — but the two properties on `StaffPerformanceResult` **must** be `int?`, or Dapper throws
+and "a staff member who has done nothing yet" becomes a 500. This is the one nullability in the area that is
+real rather than defensive, and it is why `/StaffPerformance/Get?staffId=NOSUCHSTAFF` answers `0` and not an
+error (§4.6).
+
+#### The other findings, from reading all five
+
+- 🔴 **`spStaffSlots_Delete` HAS NO RESULT SET AND NO ROW COUNT — IT ANSWERS BY THROWING.**
+  `THROW 50002, 'Cannot delete a slot that is already taken.'` when `PatientAppointment_ID` is not null, and
+  `THROW 50003, 'Slot not found.'` when the `DELETE` matched nothing. Both arrive in C# as a `SqlException`,
+  and `StaffScheduleController` answers both with the generic *"An unexpected error occurred."* plus a
+  correlation id (§4.5). **That 50002 is the only thing protecting a booked hour**: the foreign key on
+  `StaffSlots.PatientAppointment_ID` constrains the appointment's existence, not the slot's (§3.7), so a
+  direct `DELETE` orphans the appointment. Verified against the running site.
+- **The `DELETE` is itself guarded a second time** — `WHERE StaffSlot_ID = @x AND PatientAppointment_ID IS
+  NULL` — after the `IF EXISTS` check has already thrown for that case. The redundancy is deliberate: the
+  check and the delete are two statements and nothing holds a lock between them.
+- **`spStaffSlots_CreateRange` validates five rules and reports none of them usefully.** A blank
+  `@Staff_ID`, `@ToDate` before `@FromDate`, a range over **31 days**, `@EndTime` at or before `@StartTime`,
+  and a time that is not on the hour are all `THROW 50001` with a specific message — which the controller
+  never shows, because it catches `SqlException` generically. The 31-day cap exists nowhere else in the
+  product and is invisible from the UI.
+- **It builds its rows from `sys.all_objects`, twice, and that is where the two baseline `SQL71502` build
+  warnings come from** (§3.7). `SELECT TOP (n) ROW_NUMBER() OVER (ORDER BY (SELECT NULL))` over the
+  catalogue view is a row generator standing in for a numbers table nucentra does not have: one CTE for the
+  days, one for the hours, `CROSS JOIN`ed. Lines 46 and 52. Expected, pre-existing, not to be chased.
+- **The insert is a `MERGE … WITH (HOLDLOCK) … WHEN NOT MATCHED`, `OUTPUT $action`** into a table variable,
+  which is how it counts what it created without a duplicate-key error. `HOLDLOCK` is what makes
+  "check then insert" atomic against a concurrent identical request. `SkippedExistingCount` is derived by
+  subtraction, not counted. **One `dbo.AuditTrails` row per call**, summarising the range — not one per
+  slot — and it is written **whether or not anything was created**: re-running an existing range writes an
+  `INSERT` audit row saying `CreatedCount=0`.
+- **`spStaffSlots_Delete` captures the slot's details into local variables BEFORE deleting**, for the same
+  reason `spStaff_Delete` captures blob keys into a table variable (§5.4): the audit summary names the staff
+  id, date and times of a row that no longer exists by the time the `INSERT` runs.
+- **`spStaffSlots_List` returns the two time columns as `VARCHAR(5)`, not `TIME`.**
+  `CONVERT(VARCHAR(5), SlotStartTime, 108)` — so `"09:00"` reaches C# as a string even though the column is
+  `TIME(0)`. `StaffSlotItem` keeps them as strings and the appointment flow parses them with
+  `TimeSpan.Parse` at its own call site; moving that parse into the data layer would move where a malformed
+  value throws, which is a behaviour change disguised as a tidy-up. Its trailing comment —
+  `-- keeps same ordering behavior` — records that the `ORDER BY SlotDate, SlotStartTime` is inherited
+  contract — though the schedule grid does re-sort it: `edit-staffschedule.js` initialises DataTables with
+  `ordering: true` and no explicit default, so the browser re-sorts on the first column.
+- **`spStaffSlots_GetOwner` exists purely for an authorization check**, which is unusual enough to say out
+  loud: it is a one-column, one-row read whose only caller is `StaffScheduleController.Delete`, and its whole
+  job is to answer "whose slot is this?" without trusting the request. Its header comment says so. See §4.5.
 
 ---
 
