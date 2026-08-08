@@ -596,5 +596,116 @@ namespace CRC.Data.Data
         // and Azure SQL it is not, and a colonoscopy recorded near midnight on the 1st can fall on either
         // side of the boundary.
         Task<StaffPerformanceResult> GetStaffPerformanceAsync(string staffId);
+
+        // ----- Patient (Admin > Patient) -----
+        //
+        // dbo.PatientBasic is the registration record every other patient table hangs off: demographics, a
+        // residential address, an emergency contact, the iFOBT result, and — when the patient leaves the
+        // programme — a discharge reason. A NULL DischargeType_ID IS THE DEFINITION OF AN ACTIVE PATIENT;
+        // there is no status column and no IsActive flag (CoreFlow.md §3.8).
+        //
+        // THREE OF THE SEVEN DECLARE `@User_ID INT = NULL` — spPatientBasic_Insert, spPatientBasic_Update
+        // and spPatient_DeleteCascade — which is THE ACTOR for the dbo.AuditTrails row each one writes, so
+        // it is absent from all three signatures below and SqlData supplies it from
+        // DatabaseHelper.CurrentUserId. The four reads declare no @User_ID and write no audit row.
+        //
+        // THE ID IS A STRING AND IT IS COMPOSED, NOT AN IDENTITY: 'PAT-' + a six-digit zero-padded
+        // sequence, "PAT-000042". See CreatePatientAsync.
+        //
+        // 🔴 EVERY DERIVATION AND EVERY VALIDATION STAYS IN PatientController AND NONE OF IT IS HERE. The
+        // NRIC → birth date and NRIC → gender derivations, the twelve-digit rule, the age arithmetic, the
+        // upper-casing of the two name fields, the "clear the iFOBT completion fields unless the status is
+        // complete" rule and every user-facing message are the controller's, exactly as they were before
+        // this layer existed. These methods send values; they do not decide them. See PatientSaveInput.
+        //
+        // Lookups are NOT duplicated here. The Patient Edit form's dropdowns — race, source, religion,
+        // marital status, occupation, discharge type, and the state/city/postcode tree — all go through the
+        // fourteen spLU_* methods at the top of this file, and the appointment half of the same controller
+        // reuses GetActiveBranchesAsync and GetAllStaffAsync. One method per procedure, whoever calls it.
+
+        // Every patient still in the programme, for the Admin > Patient list. Calls
+        // spPatientBasic_ListActive, whose whole filter is `DischargeType_ID IS NULL`, ordered by
+        // Patient_ID DESC — newest first, and the caller must not re-sort.
+        //
+        // It selects the three iFOBT columns as well as the id and name; /Patient/GetActivePatients
+        // projects only the first two. See PatientListItem for why this and the discharged list are two
+        // models rather than one shared shape.
+        Task<List<PatientListItem>> GetActivePatientsAsync();
+
+        // Every patient who has left the programme. Calls spPatientBasic_ListDischarged — the exact
+        // complement of the above (`DischargeType_ID IS NOT NULL`), ordered by
+        // Patient_DischargeDate DESC then Patient_ID DESC. The tiebreak is part of the contract: the dates
+        // are midnights in a DATETIME column and tie constantly.
+        Task<List<PatientDischargedItem>> GetDischargedPatientsAsync();
+
+        // One patient with every column plus the six joined lookup names; null when no patient has that id.
+        // Calls spPatientBasic_GetById.
+        //
+        // All six joins are LEFT JOINs onto lookup tables that nothing constrains the codes to, so any
+        // _Name can be null while its _ID is set — a patient holding a retired Race_ID is a state the
+        // schema permits. Only DischargeType_Name is projected to the browser today.
+        //
+        // REUSED BY PROMPT 7: StaffPatientController.GetBasic loads the same row for the clinical pages.
+        // Do not add a second method for it.
+        Task<PatientBasicDetail?> GetPatientByIdAsync(string patientId);
+
+        // The mandatory document types this patient is MISSING for a given discharge reason. Calls
+        // spPatient_Discharge_CheckMissingDocuments.
+        //
+        // 🔴 AN EMPTY LIST IS THE PASS CONDITION. The procedure returns what is missing, not what is
+        // required, so an empty result means "cleared to discharge" and any row at all blocks the save.
+        // Reading it the other way round lets every discharge through. See PatientDocumentRequirement.
+        //
+        // The requirement is data, not code — one dbo.PatientDocumentSettings row per (discharge type,
+        // document type) pair, where the row's existence is the rule. A freshly published database has
+        // none, so nothing is mandatory until the Settings screen (Prompt 8) is used.
+        Task<List<PatientDocumentRequirement>> GetMissingDischargeDocumentsAsync(string patientId,
+            string dischargeTypeId);
+
+        // Creates a patient and RETURNS THE NEW Patient_ID, which the caller cannot predict: calls
+        // spPatientBasic_Insert, which composes the id itself as
+        // 'PAT-' + RIGHT('000000' + sequence, 6) — "PAT-000042" — where the sequence is
+        // MAX(CAST(SUBSTRING(Patient_ID, 5, 6) AS INT)) + 1 over the surviving rows. So it REUSES NUMBERS
+        // after a delete, exactly like spBranch_Insert and spStaff_Insert, and unlike both of those the
+        // prefix is a constant rather than a code — every patient id starts "PAT-" (CoreFlow.md §3.8).
+        //
+        // 🔴 IT ANSWERS THROUGH AN OUTPUT PARAMETER, NOT A TRAILING SELECT — `@NewPatient_ID VARCHAR(100)
+        // OUTPUT` — which makes it the THIRD procedure in nucentra with one, after
+        // spUsers_RegisterFailedLogin and spStaffDocument_Delete. SqlData therefore reads it through
+        // DynamicParameters; see that method for why the .sql was not changed instead.
+        //
+        // It VALIDATES NOTHING — no RAISERROR, no uniqueness check, nothing. Two patients may share an
+        // NRIC, an email, a phone number and a name; the only rules that exist are PatientController's.
+        // The three discharge columns are hard-coded NULL: a new patient is always active.
+        // Writes an INSERT row to dbo.AuditTrails.
+        Task<string> CreatePatientAsync(PatientSaveInput patient);
+
+        // Updates every column of a patient except the id, INCLUDING the three discharge columns — which is
+        // how a patient is discharged, and, because the write is unconditional, how one is un-discharged.
+        // Calls spPatientBasic_Update.
+        //
+        // It is SILENT when the id matches nothing: no error, no audit row (the audit INSERT is guarded by
+        // `IF @RowsAffected > 0`), and no row count returned — so this method cannot tell a real write from
+        // a missed one, the same asymmetry spBranch_Update and spStaff_Update have (§5.2, §5.4).
+        Task UpdatePatientAsync(PatientSaveInput patient);
+
+        // Deletes a patient and everything hanging off them, and hands back the storage keys the caller
+        // must clean up. Calls spPatient_DeleteCascade — READ PatientDeleteResult BEFORE CALLING THIS.
+        //
+        //   • IT CASCADES BY HAND to SEVEN tables, in order: PatientAppointment, PatientJourney,
+        //     PatientDocument, PatientFollowUp, PatientColonoscopy, PatientAssessment, then PatientBasic.
+        //     Nothing in the schema enforces any of it (there are no foreign keys), and NOTHING BLOCKS THE
+        //     DELETE — unlike spStaff_Delete, which refuses when a clinician is still referenced, this
+        //     procedure has no guard at all. A patient with a completed journey is removed as readily as
+        //     one registered five minutes ago.
+        //   • THERE IS NO TRANSACTION AROUND THE SEVEN DELETES. spStaff_Delete wraps its four in
+        //     BEGIN TRANSACTION … THROW; this one does not, so a failure partway through leaves the earlier
+        //     tables emptied and the patient row present.
+        //   • It RETURNS THE BLOB KEYS of the documents it removed rows for, captured before the delete.
+        //     Storage is outside the database entirely, so the caller deletes those objects afterwards —
+        //     which is not housekeeping: leaving them retains patient data after the patient is gone.
+        //   • A delete against an UNKNOWN id is a silent success. Nothing in the result says whether a row
+        //     went; only the dbo.AuditTrails row, written solely when one did, records that it happened.
+        Task<PatientDeleteResult> DeletePatientCascadeAsync(string patientId);
     }
 }

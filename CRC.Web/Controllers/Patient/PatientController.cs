@@ -1,4 +1,5 @@
 ﻿using CRC.Data.Data;
+using CRC.Data.Models;
 using CRC.Web.Infrastructure;
 using CRC.Web.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -12,12 +13,28 @@ namespace CRC.Web.Controllers.Patient
     [Authorize(Policy = "AdminOrSuper")]
     public class PatientController : Controller
     {
+        // 🔴 THIS CONTROLLER HOLDS BOTH DATA SURFACES ON PURPOSE, AND ONLY UNTIL PROMPT 6.
+        //
+        // PatientController is two screens wearing one class name: the PATIENT half (the Active and
+        // Discharged lists, and the Basic Details + Discharge tabs of /Patient/Edit) and the APPOINTMENT
+        // half (the Appointment tab). Prompt 5 migrated the patient half to the Dapper layer; the
+        // appointment half — GetAppointmentLookups, GetAppointmentStaffList, GetAppointmentSlots,
+        // GetAppointments, SaveAppointment, DeleteAppointment — is Prompt 6's work and still builds
+        // SqlParameter[] arrays against DatabaseHelper, including the hand-rolled SqlTransaction in
+        // SaveAppointment that becomes SaveAppointmentAsync, the second of the data layer's two
+        // transactional units of work (CoreFlow.md §6.6).
+        //
+        // So `_data` is the destination and `_db` is what is left of the journey. PROMPT 6 REMOVES `_db`,
+        // along with `using System.Data;` and `using Microsoft.Data.SqlClient;`, once nothing below needs
+        // them. Do not add a new call to `_db` in the patient half to keep the two sides looking alike.
+        private readonly IDatabaseData _data;
         private readonly DatabaseHelper _db;
         private readonly IDocumentStorage _documentStorage;
         private readonly ILogger<PatientController> _logger;
 
-        public PatientController(DatabaseHelper db, IDocumentStorage documentStorage, ILogger<PatientController> logger)
+        public PatientController(IDatabaseData data, DatabaseHelper db, IDocumentStorage documentStorage, ILogger<PatientController> logger)
         {
+            _data = data;
             _db = db;
             _documentStorage = documentStorage;
             _logger = logger;
@@ -38,16 +55,15 @@ namespace CRC.Web.Controllers.Patient
         {
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spPatientBasic_ListActive",
-                    Array.Empty<SqlParameter>()
-                );
+                var patients = await _data.GetActivePatientsAsync();
 
-                var list = dt.Rows.Cast<DataRow>()
-                    .Select(r => new
+                // The procedure also returns the three iFOBT columns; this list has never shown them, and
+                // the JSON is a contract wwwroot/js/patient/active-list.js reads. Two properties only.
+                var list = patients
+                    .Select(p => new
                     {
-                        patientId = r["Patient_ID"]?.ToString(),
-                        name = r["Patient_Name"]?.ToString()
+                        patientId = p.Patient_ID,
+                        name = p.Patient_Name
                     })
                     .ToList();
 
@@ -76,39 +92,32 @@ namespace CRC.Web.Controllers.Patient
 
             try
             {
-                var parameters = new[]
-                {
-            new SqlParameter("@Patient_ID", patientId)
-        };
-
                 // spPatient_DeleteCascade captures the patient's document blob keys before it removes the
-                // PatientDocument rows and returns them as its final result set, so this reads a DataSet
+                // PatientDocument rows and returns them as its result set, so this reads the keys back
                 // rather than firing and forgetting. Without deleting those blobs the documents would sit in
                 // storage forever: that costs money, and — far worse — it retains patient data after the
                 // patient record itself has been deleted.
-                var ds = await _db.ExecuteDataSetAsync("spPatient_DeleteCascade", parameters);
+                //
+                // THE BLOB DELETION STAYS HERE, IN THE CONTROLLER. IDocumentStorage is a CRC.Web service and
+                // CRC.Data has no reference to CRC.Web and must not gain one, so the data layer hands back
+                // keys and this loop acts on them (CoreFlow.md §6.6).
+                var result = await _data.DeletePatientCascadeAsync(patientId);
 
                 var blobCount = 0;
-                if (ds.Tables.Count > 0)
+                foreach (var blobName in result.BlobNames)
                 {
-                    foreach (DataRow row in ds.Tables[0].Rows)
+                    try
                     {
-                        var blobName = row["BlobName"]?.ToString();
-                        if (string.IsNullOrWhiteSpace(blobName)) continue;
-
-                        try
-                        {
-                            await _documentStorage.DeleteAsync(blobName);
-                            blobCount++;
-                        }
-                        catch (Exception ex)
-                        {
-                            // Best effort, per blob. The database rows are already gone and the patient is
-                            // deleted, so a storage hiccup must not fail the request — it leaves an orphaned
-                            // blob to clean up, which is an operational problem, not a user-facing one.
-                            _logger.LogWarning(ex, "Failed to delete blob {BlobName} for deleted PatientId={PatientId}",
-                                blobName, patientId);
-                        }
+                        await _documentStorage.DeleteAsync(blobName);
+                        blobCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Best effort, per blob. The database rows are already gone and the patient is
+                        // deleted, so a storage hiccup must not fail the request — it leaves an orphaned
+                        // blob to clean up, which is an operational problem, not a user-facing one.
+                        _logger.LogWarning(ex, "Failed to delete blob {BlobName} for deleted PatientId={PatientId}",
+                            blobName, patientId);
                     }
                 }
 
@@ -139,19 +148,20 @@ namespace CRC.Web.Controllers.Patient
         {
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spPatientBasic_ListDischarged",
-                    Array.Empty<SqlParameter>()
-                );
+                var patients = await _data.GetDischargedPatientsAsync();
 
-                var list = dt.Rows.Cast<DataRow>()
-                    .Select(r => new
+                // dischargeDate is dd/MM/yyyy for display and "" when the column is null — NOT the
+                // yyyy-MM-dd the rest of the portal uses, because this one is rendered straight into a
+                // table cell rather than into an <input type="date">. wwwroot/js/patient/discharged-list.js
+                // prints it verbatim, so both the format and the empty string are contract.
+                var list = patients
+                    .Select(p => new
                     {
-                        patientId = r["Patient_ID"]?.ToString(),
-                        name = r["Patient_Name"]?.ToString(),
-                        dischargeDate = r["Patient_DischargeDate"] == DBNull.Value
-                            ? ""
-                            : Convert.ToDateTime(r["Patient_DischargeDate"]).ToString("dd/MM/yyyy")
+                        patientId = p.Patient_ID,
+                        name = p.Patient_Name,
+                        dischargeDate = p.Patient_DischargeDate.HasValue
+                            ? p.Patient_DischargeDate.Value.ToString("dd/MM/yyyy")
+                            : ""
                     })
                     .ToList();
 
@@ -185,14 +195,18 @@ namespace CRC.Web.Controllers.Patient
             return age;
         }
 
-        private static string? ToDateInputString(object value)
+        // yyyy-MM-dd for an <input type="date">, or null when there is no date. The DataTable version of
+        // this took an `object` and had to defend against DBNull and against a value that would not parse;
+        // Dapper hands over a DateTime? already typed, so the guard is the null check and nothing else.
+        //
+        // The format string is left WITHOUT an explicit culture, exactly as it was, so the output is
+        // byte-identical to what this endpoint returned before. (It is not strictly culture-free: "yyyy"
+        // renders the year of the CURRENT CULTURE'S CALENDAR, so a server running under a non-Gregorian
+        // calendar would emit a year an <input type="date"> cannot read. Pinning it to InvariantCulture
+        // would be the correct fix and is a behaviour change, however small — not this prompt's to make.)
+        private static string? ToDateInputString(DateTime? value)
         {
-            if (value == null || value == DBNull.Value) return null;
-            if (DateTime.TryParse(value.ToString(), out var dt))
-            {
-                return dt.ToString("yyyy-MM-dd");
-            }
-            return null;
+            return value?.ToString("yyyy-MM-dd");
         }
 
         [HttpGet]
@@ -200,36 +214,42 @@ namespace CRC.Web.Controllers.Patient
         {
             try
             {
-                var emptyParams = Array.Empty<SqlParameter>();
+                // Five of the fourteen spLU_* procedures, all wrapped in Prompt 1 and shared with the Staff
+                // and Branch screens. Each returns {code, name} with the columns named after its own table
+                // (Race_ID/Race_Name, Source_ID/Source_Name, …), which is why SqlData maps them by ORDINAL
+                // onto LookupItem — see SqlData.QueryLookupAsync. Their ORDER BY is part of the contract;
+                // this endpoint must not re-sort.
+                var raceItems = await _data.GetRacesAsync();
+                var sourceItems = await _data.GetSourcesAsync();
+                var religionItems = await _data.GetReligionsAsync();
+                var maritalItems = await _data.GetMaritalStatusesAsync();
+                var occupationItems = await _data.GetOccupationsAsync();
 
-                var dtRace = await _db.ExecuteDataTableAsync("spLU_Race_List", emptyParams);
-                var dtSource = await _db.ExecuteDataTableAsync("spLU_Source_List", emptyParams);
-                var dtReligion = await _db.ExecuteDataTableAsync("spLU_Religion_List", emptyParams);
-                var dtMarital = await _db.ExecuteDataTableAsync("spLU_MaritalStatus_List", emptyParams);
-                var dtOccupation = await _db.ExecuteDataTableAsync("spLU_Occupation_List", emptyParams);
-
-                var races = dtRace.Rows.Cast<DataRow>()
-                    .Select(r => new { id = r["Race_ID"]?.ToString(), name = r["Race_Name"]?.ToString() })
+                // The blank-id filter is kept on all five. It cannot fire — both columns of every LU_* code
+                // table are NOT NULL — but it is what the endpoint has always done, and a dropdown with a
+                // valueless option is a worse failure than a shorter list.
+                var races = raceItems
+                    .Select(x => new { id = x.Id, name = x.Name })
                     .Where(x => !string.IsNullOrWhiteSpace(x.id))
                     .ToList();
 
-                var sources = dtSource.Rows.Cast<DataRow>()
-                    .Select(r => new { id = r["Source_ID"]?.ToString(), name = r["Source_Name"]?.ToString() })
+                var sources = sourceItems
+                    .Select(x => new { id = x.Id, name = x.Name })
                     .Where(x => !string.IsNullOrWhiteSpace(x.id))
                     .ToList();
 
-                var religions = dtReligion.Rows.Cast<DataRow>()
-                    .Select(r => new { id = r["Religion_ID"]?.ToString(), name = r["Religion_Name"]?.ToString() })
+                var religions = religionItems
+                    .Select(x => new { id = x.Id, name = x.Name })
                     .Where(x => !string.IsNullOrWhiteSpace(x.id))
                     .ToList();
 
-                var maritalStatuses = dtMarital.Rows.Cast<DataRow>()
-                    .Select(r => new { id = r["MaritalStatus_ID"]?.ToString(), name = r["MaritalStatus_Name"]?.ToString() })
+                var maritalStatuses = maritalItems
+                    .Select(x => new { id = x.Id, name = x.Name })
                     .Where(x => !string.IsNullOrWhiteSpace(x.id))
                     .ToList();
 
-                var occupations = dtOccupation.Rows.Cast<DataRow>()
-                    .Select(r => new { id = r["Occupation_ID"]?.ToString(), name = r["Occupation_Name"]?.ToString() })
+                var occupations = occupationItems
+                    .Select(x => new { id = x.Id, name = x.Name })
                     .Where(x => !string.IsNullOrWhiteSpace(x.id))
                     .ToList();
 
@@ -255,14 +275,14 @@ namespace CRC.Web.Controllers.Patient
         {
             try
             {
-                var dt = await _db.ExecuteDataTableAsync("spLU_LOCATION_ListStates", Array.Empty<SqlParameter>());
+                // `id` is a JSON NUMBER here, because LU_LOCATION is the one reference table keyed on an
+                // INT (CoreFlow.md §3.1) and edit-basic.js sends it straight back as the stateId query
+                // parameter. /Staff/GetStaffLookups serializes the same column as a STRING; both shapes are
+                // live and this migration changes neither.
+                var states = await _data.GetStatesAsync();
 
-                var list = dt.Rows.Cast<DataRow>()
-                    .Select(r => new
-                    {
-                        id = r["LocationId"] == DBNull.Value ? 0 : Convert.ToInt32(r["LocationId"]),
-                        name = r["Name"]?.ToString() ?? ""
-                    })
+                var list = states
+                    .Select(x => new { id = x.LocationId, name = x.Name })
                     .Where(x => x.id > 0 && !string.IsNullOrWhiteSpace(x.name))
                     .ToList();
 
@@ -282,16 +302,12 @@ namespace CRC.Web.Controllers.Patient
 
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spLU_LOCATION_ListCityByState",
-                    new[] { new SqlParameter("@StateId", SqlDbType.Int) { Value = stateId } });
+                // An unknown stateId is not an error: the procedure returns an empty set and the page shows
+                // an empty City dropdown.
+                var cities = await _data.GetCitiesByStateAsync(stateId);
 
-                var list = dt.Rows.Cast<DataRow>()
-                    .Select(r => new
-                    {
-                        id = r["LocationId"] == DBNull.Value ? 0 : Convert.ToInt32(r["LocationId"]),
-                        name = r["Name"]?.ToString() ?? ""
-                    })
+                var list = cities
+                    .Select(x => new { id = x.LocationId, name = x.Name })
                     .Where(x => x.id > 0 && !string.IsNullOrWhiteSpace(x.name))
                     .ToList();
 
@@ -311,16 +327,12 @@ namespace CRC.Web.Controllers.Patient
 
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spLU_LOCATION_ListPostcodesByCity",
-                    new[] { new SqlParameter("@CityId", SqlDbType.Int) { Value = cityId } });
+                // A postcode's Name IS the postcode ("82100"), which is why it is text and the id beside it
+                // is the number.
+                var postcodes = await _data.GetPostcodesByCityAsync(cityId);
 
-                var list = dt.Rows.Cast<DataRow>()
-                    .Select(r => new
-                    {
-                        id = r["LocationId"] == DBNull.Value ? 0 : Convert.ToInt32(r["LocationId"]),
-                        name = r["Name"]?.ToString() ?? ""
-                    })
+                var list = postcodes
+                    .Select(x => new { id = x.LocationId, name = x.Name })
                     .Where(x => x.id > 0 && !string.IsNullOrWhiteSpace(x.name))
                     .ToList();
 
@@ -343,54 +355,61 @@ namespace CRC.Web.Controllers.Patient
 
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spPatientBasic_GetById",
-                    new[] { new SqlParameter("@Patient_ID", patientId.Trim()) }
-                );
+                var row = await _data.GetPatientByIdAsync(patientId.Trim());
 
-                if (dt.Rows.Count == 0)
+                if (row == null)
                 {
                     return Ok(new { success = false, message = "Patient not found." });
                 }
 
-                var row = dt.Rows[0];
-
+                // 🔴 THE THREE COERCIONS BELOW ARE THE CONTRACT, NOT TIDINESS, and the difference between
+                // them is what edit-basic.js reads:
+                //   • addLine2 and dischargeRemarks become "" when the column is NULL, because the DataTable
+                //     code produced "" (DBNull.ToString() is "") and the form assigns them to input values
+                //     — a JSON null would put the word "null" in the box via `p.addLine2 || ''`… which is
+                //     actually safe, but dischargeRemarks is read the same way and neither is worth risking.
+                //   • dischargeTypeId and dischargeTypeName stay NULL, and that null is load-bearing:
+                //     edit-basic.js computes `hasDischarge = !!(dischargeTypeId || dischargeTypeName)` to
+                //     decide whether to open the Discharge tab in its discharged state. Coercing those two
+                //     to "" would change nothing today (both are falsy) but would erase the one signal that
+                //     distinguishes an active patient from a discharged one in this payload.
+                //   • age falls back to 0, and the three date fields to null, exactly as before.
                 var patient = new
                 {
-                    patientId = row["Patient_ID"]?.ToString() ?? "",
-                    name = row["Patient_Name"]?.ToString() ?? "",
-                    email = row["Patient_Email"]?.ToString() ?? "",
-                    phone = row["Patient_Phone"]?.ToString() ?? "",
-                    nric = row["Patient_NRIC"]?.ToString() ?? "",
+                    patientId = row.Patient_ID,
+                    name = row.Patient_Name,
+                    email = row.Patient_Email,
+                    phone = row.Patient_Phone,
+                    nric = row.Patient_NRIC,
 
-                    birthDate = ToDateInputString(row["Patient_BirthDate"]),
-                    age = row["Patient_Age"] == DBNull.Value ? 0 : Convert.ToInt32(row["Patient_Age"]),
-                    gender = row["Patient_Gender"]?.ToString() ?? "",
+                    birthDate = ToDateInputString(row.Patient_BirthDate),
+                    age = row.Patient_Age ?? 0,
+                    gender = row.Patient_Gender,
 
-                    raceId = row["Race_ID"]?.ToString() ?? "",
-                    sourceId = row["Source_ID"]?.ToString() ?? "",
-                    religionId = row["Religion_ID"]?.ToString() ?? "",
-                    maritalStatusId = row["MaritalStatus_ID"]?.ToString() ?? "",
-                    occupationId = row["Occupation_ID"]?.ToString() ?? "",
+                    raceId = row.Race_ID,
+                    sourceId = row.Source_ID,
+                    religionId = row.Religion_ID,
+                    maritalStatusId = row.MaritalStatus_ID,
+                    occupationId = row.Occupation_ID,
 
-                    resState = row["Patient_ResState"]?.ToString() ?? "",
-                    resCity = row["Patient_ResCity"]?.ToString() ?? "",
-                    resPostcode = row["Patient_ResPostcode"]?.ToString() ?? "",
-                    addLine1 = row["Patient_AddLine1"]?.ToString() ?? "",
-                    addLine2 = row["Patient_AddLine2"] == DBNull.Value ? "" : row["Patient_AddLine2"]?.ToString() ?? "",
+                    resState = row.Patient_ResState,
+                    resCity = row.Patient_ResCity,
+                    resPostcode = row.Patient_ResPostcode,
+                    addLine1 = row.Patient_AddLine1,
+                    addLine2 = row.Patient_AddLine2 ?? "",
 
-                    emergencyName = row["Patient_EmergencyName"]?.ToString() ?? "",
-                    emergencyRelationship = row["Patient_EmergencyRelationship"]?.ToString() ?? "",
-                    emergencyNumber = row["Patient_EmergencyNumber"]?.ToString() ?? "",
+                    emergencyName = row.Patient_EmergencyName,
+                    emergencyRelationship = row.Patient_EmergencyRelationship,
+                    emergencyNumber = row.Patient_EmergencyNumber,
 
-                    iFobtStatus = row["Patient_iFOBTStatus"] == DBNull.Value ? (bool?)null : Convert.ToBoolean(row["Patient_iFOBTStatus"]),
-                    iFobtCompletionDate = ToDateInputString(row["Patient_iFOBTCompletionDate"]),
-                    iFobtResults = row["Patient_iFOBTResults"] == DBNull.Value ? (bool?)null : Convert.ToBoolean(row["Patient_iFOBTResults"]),
+                    iFobtStatus = row.Patient_iFOBTStatus,
+                    iFobtCompletionDate = ToDateInputString(row.Patient_iFOBTCompletionDate),
+                    iFobtResults = row.Patient_iFOBTResults,
 
-                    dischargeTypeId = row["DischargeType_ID"] == DBNull.Value ? null : row["DischargeType_ID"]?.ToString(),
-                    dischargeTypeName = row["DischargeType_Name"] == DBNull.Value ? null : row["DischargeType_Name"]?.ToString(),
-                    dischargeDate = ToDateInputString(row["Patient_DischargeDate"]),
-                    dischargeRemarks = row["Patient_DischargeRemarks"] == DBNull.Value ? "" : row["Patient_DischargeRemarks"]?.ToString() ?? ""
+                    dischargeTypeId = row.DischargeType_ID,
+                    dischargeTypeName = row.DischargeType_Name,
+                    dischargeDate = ToDateInputString(row.Patient_DischargeDate),
+                    dischargeRemarks = row.Patient_DischargeRemarks ?? ""
                 };
 
                 return Ok(new { success = true, patient });
@@ -444,16 +463,16 @@ namespace CRC.Web.Controllers.Patient
         {
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spLU_DischargeType_List",
-                    Array.Empty<SqlParameter>()
-                );
+                // NORMAL / BENIGN POLYPS / PRECANCEROUS POLYPS / CANCER, ordered by name. Note this list is
+                // NOT filtered on a blank id, unlike GetBasicLookups above — a difference with no practical
+                // effect (both columns are NOT NULL) that is preserved because it is what the endpoint does.
+                var dischargeTypes = await _data.GetDischargeTypesAsync();
 
-                var list = dt.Rows.Cast<DataRow>()
-                    .Select(r => new
+                var list = dischargeTypes
+                    .Select(x => new
                     {
-                        dischargeTypeId = r["DischargeType_ID"]?.ToString(),
-                        dischargeTypeName = r["DischargeType_Name"]?.ToString()
+                        dischargeTypeId = x.Id,
+                        dischargeTypeName = x.Name
                     })
                     .ToList();
 
@@ -591,18 +610,15 @@ namespace CRC.Web.Controllers.Patient
                         });
                     }
 
-                    var dtMissing = await _db.ExecuteDataTableAsync(
-                        "spPatient_Discharge_CheckMissingDocuments",
-                        new[]
-                        {
-                            new SqlParameter("@Patient_ID", model.PatientId!.Trim()),
-                            new SqlParameter("@DischargeType_ID", dischargeTypeId)
-                        });
+                    // The procedure returns what is MISSING, so an EMPTY RESULT IS THE PASS CONDITION and
+                    // any row at all blocks the save. Nothing is written when it does.
+                    var missing = await _data.GetMissingDischargeDocumentsAsync(
+                        model.PatientId!.Trim(), dischargeTypeId);
 
-                    if (dtMissing.Rows.Count > 0)
+                    if (missing.Count > 0)
                     {
-                        var missingNames = dtMissing.Rows.Cast<DataRow>()
-                            .Select(r => r["PatientDocumentType_Name"]?.ToString())
+                        var missingNames = missing
+                            .Select(m => m.PatientDocumentType_Name)
                             .Where(s => !string.IsNullOrWhiteSpace(s))
                             .ToList();
 
@@ -614,90 +630,78 @@ namespace CRC.Web.Controllers.Patient
                     }
                 }
 
+                // ----------- THE VALUES, DERIVED AND VALIDATED ABOVE, IN ONE OBJECT -----------
+                //
+                // PatientSaveInput mirrors spPatientBasic_Insert's and spPatientBasic_Update's parameter
+                // lists one-for-one, minus @User_ID (the audit ACTOR, which SqlData supplies) and minus
+                // @NewPatient_ID (the insert's OUTPUT parameter, which is an answer rather than an
+                // argument). It decides nothing: everything above this line — the mandatory-field check,
+                // the twelve-digit NRIC rule, the birth date and gender derived FROM the NRIC, the age, the
+                // upper-casing, the iFOBT clearing rule, the discharge-document check and every message —
+                // stays here in the controller, exactly as it was.
+                //
+                // 🔴 THE NULLS ARE THE POINT. The DataTable code this replaces wrote
+                // `(object?)x ?? DBNull.Value` at four of these assignments; a C# null on a Dapper
+                // parameter object already sends SQL NULL, so the dance goes and the value stays. Each one
+                // was checked individually and NOTHING in this flow is deliberately sent as "": the only
+                // optional free-text field is AddLine2, which was DBNull.Value when blank and is null now
+                // (and both procedures NULLIF a blank one regardless). Verified by round trip — see the
+                // Prompt 5 write-up.
+                var input = new PatientSaveInput
+                {
+                    Patient_ID = isNew ? string.Empty : model.PatientId!.Trim(),
+
+                    Patient_Name = name.ToUpperInvariant(),
+                    Patient_Email = email,
+                    Patient_Phone = phone,
+                    Patient_NRIC = nricDigits,
+                    Patient_BirthDate = birthDate,
+                    Patient_Age = age,
+                    Race_ID = raceId,
+                    Source_ID = sourceId,
+                    Patient_Gender = gender,
+                    Religion_ID = religionId,
+                    MaritalStatus_ID = maritalStatusId,
+                    Occupation_ID = occupationId,
+
+                    Patient_ResState = resState,
+                    Patient_ResCity = resCity,
+                    Patient_ResPostcode = resPostcode,
+                    Patient_AddLine1 = addLine1,
+                    Patient_AddLine2 = string.IsNullOrWhiteSpace(addLine2) ? null : addLine2,
+
+                    Patient_EmergencyName = emergencyName.ToUpperInvariant(),
+                    Patient_EmergencyRelationship = emergencyRel,
+                    Patient_EmergencyNumber = emergencyNum,
+
+                    Patient_iFOBTStatus = ifobtStatus,
+                    Patient_iFOBTCompletionDate = ifobtCompletionDate,
+                    Patient_iFOBTResults = ifobtResults,
+
+                    // Update path only — spPatientBasic_Insert takes no discharge parameters and hard-codes
+                    // NULL into all three columns. Sent unconditionally on an update, including as nulls,
+                    // because that procedure assigns all three columns on every call.
+                    DischargeType_ID = isDischarged ? dischargeTypeId : null,
+                    Patient_DischargeDate = isDischarged && dischargeDate.HasValue ? dischargeDate.Value : null,
+                    Patient_DischargeRemarks = isDischarged
+                        ? (string.IsNullOrWhiteSpace(dischargeRemarks) ? null : dischargeRemarks)
+                        : null
+                };
+
                 // ----------- INSERT NEW PATIENT -----------
                 if (isNew)
                 {
-                    var parameters = new List<SqlParameter>
-                    {
-                        new SqlParameter("@Patient_Name",                  name.ToUpperInvariant()),
-                        new SqlParameter("@Patient_Email",                 email),
-                        new SqlParameter("@Patient_Phone",                 phone),
-                        new SqlParameter("@Patient_NRIC",                  nricDigits),
-                        new SqlParameter("@Patient_BirthDate",             birthDate),
-                        new SqlParameter("@Patient_Age",                   age),
-                        new SqlParameter("@Race_ID",                       raceId),
-                        new SqlParameter("@Source_ID",                     sourceId),
-                        new SqlParameter("@Patient_Gender",                gender),
-                        new SqlParameter("@Religion_ID",                   religionId),
-                        new SqlParameter("@MaritalStatus_ID",              maritalStatusId),
-                        new SqlParameter("@Occupation_ID",                 occupationId),
-                        new SqlParameter("@Patient_ResState",              resState),
-                        new SqlParameter("@Patient_ResCity",               resCity),
-                        new SqlParameter("@Patient_ResPostcode",           resPostcode),
-                        new SqlParameter("@Patient_AddLine1",              addLine1),
-                        new SqlParameter("@Patient_AddLine2",              string.IsNullOrWhiteSpace(addLine2) ? (object)DBNull.Value : addLine2),
-                        new SqlParameter("@Patient_EmergencyName",         emergencyName.ToUpperInvariant()),
-                        new SqlParameter("@Patient_EmergencyRelationship", emergencyRel),
-                        new SqlParameter("@Patient_EmergencyNumber",       emergencyNum),
-
-                        new SqlParameter("@Patient_iFOBTStatus", SqlDbType.Bit) { Value = (object?)ifobtStatus ?? DBNull.Value },
-                        new SqlParameter("@Patient_iFOBTCompletionDate", SqlDbType.Date) { Value = ifobtCompletionDate.HasValue ? (object)ifobtCompletionDate.Value : DBNull.Value },
-                        new SqlParameter("@Patient_iFOBTResults", SqlDbType.Bit) { Value = (object?)ifobtResults ?? DBNull.Value }
-                        // Discharge columns for new records will default to NULL
-                    };
-
-                    var outParam = new SqlParameter("@NewPatient_ID", SqlDbType.VarChar, 100)
-                    {
-                        Direction = ParameterDirection.Output
-                    };
-                    parameters.Add(outParam);
-
-                    await _db.ExecuteNonQueryAsync("spPatientBasic_Insert", parameters.ToArray());
-
-                    var newId = outParam.Value?.ToString() ?? string.Empty;
+                    // The id is generated inside spPatientBasic_Insert ('PAT-' + a six-digit sequence) and
+                    // comes back through its OUTPUT parameter; the caller cannot predict it.
+                    var newId = await _data.CreatePatientAsync(input);
 
                     return Ok(new { success = true, patientId = newId });
                 }
 
                 // ----------- UPDATE EXISTING PATIENT (including discharge info) -----------
-                string patientId = model.PatientId!.Trim();
+                await _data.UpdatePatientAsync(input);
 
-                var updateParams = new List<SqlParameter>
-                {
-                    new SqlParameter("@Patient_ID",                    patientId),
-                    new SqlParameter("@Patient_Name",                  name.ToUpperInvariant()),
-                    new SqlParameter("@Patient_Email",                 email),
-                    new SqlParameter("@Patient_Phone",                 phone),
-                    new SqlParameter("@Patient_NRIC",                  nricDigits),
-                    new SqlParameter("@Patient_BirthDate",             birthDate),
-                    new SqlParameter("@Patient_Age",                   age),
-                    new SqlParameter("@Race_ID",                       raceId),
-                    new SqlParameter("@Source_ID",                     sourceId),
-                    new SqlParameter("@Patient_Gender",                gender),
-                    new SqlParameter("@Religion_ID",                   religionId),
-                    new SqlParameter("@MaritalStatus_ID",              maritalStatusId),
-                    new SqlParameter("@Occupation_ID",                 occupationId),
-                    new SqlParameter("@Patient_ResState",              resState),
-                    new SqlParameter("@Patient_ResCity",               resCity),
-                    new SqlParameter("@Patient_ResPostcode",           resPostcode),
-                    new SqlParameter("@Patient_AddLine1",              addLine1),
-                    new SqlParameter("@Patient_AddLine2",              string.IsNullOrWhiteSpace(addLine2) ? (object)DBNull.Value : addLine2),
-                    new SqlParameter("@Patient_EmergencyName",         emergencyName.ToUpperInvariant()),
-                    new SqlParameter("@Patient_EmergencyRelationship", emergencyRel),
-                    new SqlParameter("@Patient_EmergencyNumber",       emergencyNum),
-
-                    new SqlParameter("@Patient_iFOBTStatus", SqlDbType.Bit) { Value = (object?)ifobtStatus ?? DBNull.Value },
-                    new SqlParameter("@Patient_iFOBTCompletionDate", SqlDbType.Date) { Value = ifobtCompletionDate.HasValue ? (object)ifobtCompletionDate.Value : DBNull.Value },
-                    new SqlParameter("@Patient_iFOBTResults", SqlDbType.Bit) { Value = (object?)ifobtResults ?? DBNull.Value },
-
-                    new SqlParameter("@DischargeType_ID", (object?)(isDischarged ? dischargeTypeId : null) ?? DBNull.Value),
-                    new SqlParameter("@Patient_DischargeDate", isDischarged && dischargeDate.HasValue ? (object)dischargeDate.Value : DBNull.Value),
-                    new SqlParameter("@Patient_DischargeRemarks", (object?)(isDischarged ? (string.IsNullOrWhiteSpace(dischargeRemarks) ? null : dischargeRemarks) : null) ?? DBNull.Value)
-                };
-
-                await _db.ExecuteNonQueryAsync("spPatientBasic_Update", updateParams.ToArray());
-
-                return Ok(new { success = true, patientId });
+                return Ok(new { success = true, patientId = input.Patient_ID });
             }
             catch
             {

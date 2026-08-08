@@ -948,5 +948,234 @@ namespace CRC.Data.Data
 
             return result;
         }
+
+        // ----- Patient (Admin > Patient) -----
+        //
+        // Seven procedures; three declare `@User_ID INT = NULL` — the ACTOR — and each of those three says
+        // so on its own call below. The four reads take none and must not be given one.
+
+        public async Task<List<PatientListItem>> GetActivePatientsAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // No @User_ID of either kind: a plain read, no audit row. The procedure takes no parameters at
+            // all — "active" is `DischargeType_ID IS NULL`, hard-coded in its WHERE clause.
+            var results = await connection.QueryAsync<PatientListItem>(
+                "dbo.spPatientBasic_ListActive",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<PatientDischargedItem>> GetDischargedPatientsAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var results = await connection.QueryAsync<PatientDischargedItem>(
+                "dbo.spPatientBasic_ListDischarged",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<PatientBasicDetail?> GetPatientByIdAsync(string patientId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // WHERE pb.Patient_ID = @Patient_ID over the primary key: at most one row, possibly none. Note
+            // there is no SELECT TOP 1 here, unlike spBranch_GetById and spStaff_GetById — the key alone
+            // guarantees it, and QuerySingleOrDefaultAsync would throw if that ever stopped being true,
+            // which is the behaviour worth having.
+            return await connection.QuerySingleOrDefaultAsync<PatientBasicDetail>(
+                "dbo.spPatientBasic_GetById",
+                new { Patient_ID = patientId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task<List<PatientDocumentRequirement>> GetMissingDischargeDocumentsAsync(
+            string patientId, string dischargeTypeId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // Returns the mandatory document types this patient does NOT have for this discharge reason.
+            // AN EMPTY SET IS THE PASS CONDITION — every row is a blocker. No @User_ID; a read.
+            var results = await connection.QueryAsync<PatientDocumentRequirement>(
+                "dbo.spPatient_Discharge_CheckMissingDocuments",
+                new { Patient_ID = patientId, DischargeType_ID = dischargeTypeId },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<string> CreatePatientAsync(PatientSaveInput patient)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // 🔴 THE THIRD PROCEDURE IN NUCENTRA WITH AN OUTPUT PARAMETER, and the second place in this
+            // file that has to use DynamicParameters because of one. spPatientBasic_Insert hands the id it
+            // generated back through `@NewPatient_ID VARCHAR(100) OUTPUT` — there is no trailing
+            // `SELECT … AS NewPatient_ID` the way spBranch_Insert and spStaff_Insert have one, so
+            // QuerySingleAsync<string> would return nothing and throw "Sequence contains no elements".
+            //
+            // Prompt 2 solved the same problem on spUsers_RegisterFailedLogin by APPENDING a trailing
+            // SELECT to the .sql. That was not an option here: Prompt 5 is permitted to touch no .sql at
+            // all, and the additive change would have to be made and published before the C# could rely on
+            // it. So the untyped bag stays, confined to four lines, with the parameter's name and type
+            // written out where a reader can check them against the procedure.
+            //
+            // AnsiString, not String: @NewPatient_ID is VARCHAR(100), and DbType.String would send NVARCHAR
+            // for SQL Server to convert back.
+            //
+            // AddDynamicParams takes the same anonymous object the other writes in this file pass directly,
+            // so the parameter list still reads as one block and still mirrors PatientSaveInput.
+            //
+            // 🔴 spPatientBasic_Insert declares @User_ID INT = NULL for its dbo.AuditTrails row: the ACTOR,
+            // not a target. DatabaseHelper used to append it automatically off sys.parameters; Dapper
+            // cannot, so it is passed explicitly here. Drop it and the patient is still created — with
+            // AuditTrails.User_Id = 0, and nothing anywhere fails. See CoreFlow.md §0.1.
+            //
+            // NOTE WHAT IS ABSENT: the three discharge parameters. spPatientBasic_Insert does not declare
+            // them — it hard-codes NULL into all three columns, because a new patient is by definition
+            // active. Sending them would fail with "procedure has no parameter named …".
+            var parameters = new DynamicParameters();
+
+            parameters.AddDynamicParams(new
+            {
+                patient.Patient_Name,
+                patient.Patient_Email,
+                patient.Patient_Phone,
+                patient.Patient_NRIC,
+                patient.Patient_BirthDate,
+                patient.Patient_Age,
+                patient.Race_ID,
+                patient.Source_ID,
+                patient.Patient_Gender,
+                patient.Religion_ID,
+                patient.MaritalStatus_ID,
+                patient.Occupation_ID,
+                patient.Patient_ResState,
+                patient.Patient_ResCity,
+                patient.Patient_ResPostcode,
+                patient.Patient_AddLine1,
+                patient.Patient_AddLine2,
+                patient.Patient_EmergencyName,
+                patient.Patient_EmergencyRelationship,
+                patient.Patient_EmergencyNumber,
+                patient.Patient_iFOBTStatus,
+                patient.Patient_iFOBTCompletionDate,
+                patient.Patient_iFOBTResults,
+                User_ID = _databaseHelper.CurrentUserId
+            });
+
+            parameters.Add("NewPatient_ID", dbType: DbType.AnsiString, size: 100,
+                direction: ParameterDirection.Output);
+
+            await connection.ExecuteAsync(
+                "dbo.spPatientBasic_Insert",
+                parameters,
+                commandType: CommandType.StoredProcedure);
+
+            // The procedure SETs this before it INSERTs and has no path that skips doing so, so an empty
+            // value here would mean the row went in under a blank primary key rather than that the id is
+            // merely unknown. The caller returns it to the browser, which uses it as the patient's identity
+            // from that moment on — so it fails loudly instead of handing back "".
+            var newPatientId = parameters.Get<string?>("NewPatient_ID");
+
+            if (string.IsNullOrWhiteSpace(newPatientId))
+            {
+                throw new InvalidOperationException(
+                    "spPatientBasic_Insert did not return a new Patient_ID.");
+            }
+
+            return newPatientId;
+        }
+
+        public async Task UpdatePatientAsync(PatientSaveInput patient)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // spPatientBasic_Update declares @User_ID INT = NULL: the ACTOR for its dbo.AuditTrails row,
+            // passed explicitly because Dapper has no equivalent of DatabaseHelper's sys.parameters
+            // injection.
+            //
+            // ExecuteAsync and no return value: the procedure emits no result set and reports no row count,
+            // so an update against an unknown id succeeds silently and writes no audit row.
+            //
+            // 🔴 THE THREE DISCHARGE PARAMETERS ARE SENT UNCONDITIONALLY, INCLUDING AS NULLS. The procedure
+            // assigns all three columns on every call, so omitting them (they all default to NULL) would
+            // silently un-discharge every patient this method touched. They are properties on
+            // PatientSaveInput for exactly that reason — the caller decides, per save, and always answers.
+            await connection.ExecuteAsync(
+                "dbo.spPatientBasic_Update",
+                new
+                {
+                    patient.Patient_ID,
+                    patient.Patient_Name,
+                    patient.Patient_Email,
+                    patient.Patient_Phone,
+                    patient.Patient_NRIC,
+                    patient.Patient_BirthDate,
+                    patient.Patient_Age,
+                    patient.Race_ID,
+                    patient.Source_ID,
+                    patient.Patient_Gender,
+                    patient.Religion_ID,
+                    patient.MaritalStatus_ID,
+                    patient.Occupation_ID,
+                    patient.Patient_ResState,
+                    patient.Patient_ResCity,
+                    patient.Patient_ResPostcode,
+                    patient.Patient_AddLine1,
+                    patient.Patient_AddLine2,
+                    patient.Patient_EmergencyName,
+                    patient.Patient_EmergencyRelationship,
+                    patient.Patient_EmergencyNumber,
+                    patient.Patient_iFOBTStatus,
+                    patient.Patient_iFOBTCompletionDate,
+                    patient.Patient_iFOBTResults,
+                    patient.DischargeType_ID,
+                    patient.Patient_DischargeDate,
+                    patient.Patient_DischargeRemarks,
+                    User_ID = _databaseHelper.CurrentUserId
+                },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task<PatientDeleteResult> DeletePatientCascadeAsync(string patientId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // spPatient_DeleteCascade declares @User_ID INT = NULL: the ACTOR for its dbo.AuditTrails row,
+            // passed explicitly because Dapper has no equivalent of DatabaseHelper's sys.parameters
+            // injection. The audit row is the ONLY record that this delete happened — there is no status,
+            // no row count and no soft-delete flag — so losing the actor here loses the whole "who".
+            //
+            // 🔴 ONE RESULT SET, NOT TWO — WHICH IS NOT WHAT DapperLayerPlan.md's Prompt 5 EXPECTS. The plan
+            // describes a summary grid followed by the blob keys, by analogy with spStaff_Delete (§5.4).
+            // The .sql has a single statement-level SELECT, its last line, `SELECT [BlobName] FROM
+            // @DocBlobs;`, and the DataTable code this replaces read ds.Tables[0] and indexed it by
+            // "BlobName" — grid 0 IS the keys. So this is QueryAsync, not QueryMultipleAsync; using the
+            // latter and calling ReadAsync twice would throw on the second read. See PatientDeleteResult.
+            //
+            // The keys are captured by the procedure into a table variable BEFORE it deletes the
+            // dbo.PatientDocument rows, which is the only reason they can be returned at all. Removing the
+            // objects is the caller's job: IDocumentStorage is a CRC.Web service and CRC.Data has no
+            // reference to CRC.Web (CoreFlow.md §6.6).
+            var blobNames = await connection.QueryAsync<string?>(
+                "dbo.spPatient_DeleteCascade",
+                new { Patient_ID = patientId, User_ID = _databaseHelper.CurrentUserId },
+                commandType: CommandType.StoredProcedure);
+
+            // The procedure already excludes NULL and blank keys when it captures them, so this filter is
+            // belt-and-braces; it is here so the list's element type is honest under nullable reference
+            // types rather than carrying nulls a caller would have to re-check. Same as DeleteStaffAsync.
+            return new PatientDeleteResult
+            {
+                BlobNames = blobNames
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Select(name => name!)
+                    .ToList()
+            };
+        }
     }
 }
