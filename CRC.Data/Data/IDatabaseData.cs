@@ -707,5 +707,178 @@ namespace CRC.Data.Data
         //   • A delete against an UNKNOWN id is a silent success. Nothing in the result says whether a row
         //     went; only the dbo.AuditTrails row, written solely when one did, records that it happened.
         Task<PatientDeleteResult> DeletePatientCascadeAsync(string patientId);
+
+        // ----- Patient appointments -----
+        //
+        // A dbo.PatientAppointment row is a patient booked with a staff member, at a branch, on a date, for
+        // a strictly on-the-hour block — and it CONSUMES one or more of that staff member's published
+        // dbo.StaffSlots hours. The two tables are joined by StaffSlots.PatientAppointment_ID, and 🔴 THAT
+        // COLUMN BEING NULL IS THE ENTIRE DEFINITION OF "AVAILABLE" (CoreFlow.md §3.7): there is no
+        // IsBooked flag and no released state. Booking stamps the id on; deleting clears it off.
+        //
+        // TWELVE PROCEDURES ARE WRAPPED HERE, and they split cleanly:
+        //
+        //   six reads    _ListByPatient, _Search and the four _Lookup* — no @User_ID, no audit row
+        //   four writes  _Insert, _Update, _Delete, _UpdateStatus — 🔴 ALL FOUR DECLARE `@User_ID INT =
+        //                NULL`, which is THE ACTOR for the dbo.AuditTrails row each one writes. It is
+        //                absent from every signature below; SqlData supplies it from
+        //                DatabaseHelper.CurrentUserId. Verified against the .sql, not assumed: the six
+        //                reads declare no @User_ID at all, and neither does either slot procedure.
+        //   two slot     spStaffSlots_AssignAppointment and spStaffSlots_ClearAppointment, which have NO
+        //                methods of their own — they exist only inside SaveAppointmentAsync's
+        //                transaction. See that method, and the Staff slots banner above.
+        //
+        // 🔴 THREE OF THE FOUR WRITES ANSWER THROUGH OUTPUT PARAMETERS, which brings nucentra's total from
+        // three (§5.6) to six. spPatientAppointment_Insert returns its new identity through
+        // `@NewPatientAppointment_ID INT OUTPUT` with no trailing SELECT — the same trap
+        // spPatientBasic_Insert sets — and _Update and _UpdateStatus each re-read the saved row into EIGHT
+        // `@Out_*` parameters so a caller can audit database state rather than the request payload. All
+        // three are read with DynamicParameters in SqlData; none of them can be a QuerySingleAsync.
+        //
+        // LOOKUPS ARE NOT DUPLICATED HERE. The appointment form's type dropdown is
+        // GetJourneyAppointmentTypesAsync, its branch dropdown is GetActiveBranchesAsync, its staff
+        // dropdown is GetAllStaffAsync and its slot picker is GetStaffSlotsAsync — all four already exist
+        // above, created by Prompts 1, 3 and 4. One method per procedure, whoever calls it.
+
+        // Every appointment belonging to one patient, for the Appointment tab of /Patient/Edit. Calls
+        // spPatientAppointment_ListByPatient; ordered by date DESC, then start time DESC, then id DESC —
+        // newest first, and the caller must not re-sort.
+        //
+        // The three joined names are LEFT JOINs onto tables nothing constrains the ids to, so each can be
+        // null while its id is set. An unknown patient id is not an error: it returns an empty list.
+        Task<List<PatientAppointmentItem>> GetAppointmentsByPatientAsync(string patientId);
+
+        // The appointment search behind BOTH the /Appointment page and /AdminDashboard's "today" panel.
+        // Calls spPatientAppointment_Search. EVERY PARAMETER IS OPTIONAL AND NULL MEANS "DO NOT FILTER"
+        // (`@X IS NULL OR column = @X`) — so a blank string is NOT the same as no filter and would match
+        // nothing. Callers convert blank to null themselves.
+        //
+        // Two filters are not the plain equality the rest are:
+        //   • @ToDate is INCLUSIVE — the procedure compares `< DATEADD(DAY, 1, @ToDate)`, so an
+        //     appointment on the end date is returned.
+        //   • @PjAppTypeName matches the type's NAME, its ID, or the raw PjAppType_ID stored on the
+        //     appointment — three ways, so the dropdown works and legacy rows that stored a name rather
+        //     than a code are still findable.
+        //
+        // The result's PatientAppointment_Date is the DATE column WITH THE START TIME FOLDED IN, under the
+        // date column's own name. See AppointmentSearchItem before projecting it.
+        Task<List<AppointmentSearchItem>> SearchAppointmentsAsync(string? patientName, string? staffName,
+            string? status, DateTime? fromDate, DateTime? toDate, string? pjAppTypeName, string? branchName);
+
+        // The four filter dropdowns on the appointment search page. Each calls one spPatientAppointment_
+        // Lookup* procedure, and each returns ONE COLUMN — so all four are List<string> rather than a
+        // lookup pair, exactly like GetStaffDocumentStaffNamesAsync.
+        //
+        // 🔴 ALL FOUR ARE DISTINCT READS OVER dbo.PatientAppointment ITSELF, NOT OVER A LOOKUP TABLE. They
+        // answer "what values are actually in use", so a portal with no appointments returns four empty
+        // lists, and a branch, patient or clinician with no booking never appears. That is what a filter
+        // control wants — offering a value that can only ever return nothing is worse than omitting it —
+        // and it is why the branch filter here is NOT GetActiveBranchesAsync.
+        //
+        // They return NAMES, not ids, and the first three INNER JOIN their parent table: a booking whose
+        // Branch_ID, Patient_ID or Staff_ID no longer resolves contributes nothing, and two rows sharing a
+        // name collapse into one entry. The search filters on the displayed name, so that is correct.
+
+        // Distinct branch names with at least one appointment, ordered by name. Calls
+        // spPatientAppointment_LookupBranches, which additionally requires Branch_Status = 1 — the only
+        // one of the four that filters on anything but blankness, so a booking into a branch that has
+        // since been deactivated drops out of the filter while the booking itself remains.
+        Task<List<string>> GetAppointmentBranchNamesAsync();
+
+        // Distinct patient names with at least one appointment, ordered by name. Calls
+        // spPatientAppointment_LookupPatientNames.
+        Task<List<string>> GetAppointmentPatientNamesAsync();
+
+        // Distinct staff names with at least one appointment, ordered by name. Calls
+        // spPatientAppointment_LookupStaffNames.
+        Task<List<string>> GetAppointmentStaffNamesAsync();
+
+        // The distinct statuses actually in use, ordered by value. Calls
+        // spPatientAppointment_LookupStatuses.
+        //
+        // NOTE THAT THIS IS NOT THE LIST OF VALID STATUSES. dbo.PatientAppointment.PatientAppointment_Status
+        // is a VARCHAR(100) with no check constraint and no lookup table; the three real values —
+        // "Scheduled", "Attended", "Not Attended" — are a convention held in C# HashSets in three
+        // controllers and in the .js. This procedure reports what is stored, so a database with no
+        // "Not Attended" appointment offers only two entries, and a value written by hand would appear.
+        // The appointment FORM's status dropdown is a hard-coded array in the controller, not this.
+        Task<List<string>> GetAppointmentStatusesAsync();
+
+        // 🔴 THE SECOND AND LAST OF EXACTLY TWO TRANSACTIONAL UNITS OF WORK IN THIS FILE, and the other of
+        // the only two methods in nucentra's data layer that call more than one stored procedure. (The
+        // first is SaveStaffWithDocumentsAsync, above.) Everything else here is one method, one procedure.
+        //
+        // Books or re-books an appointment ATOMICALLY, on one connection inside one SqlTransaction:
+        //
+        //   1. spStaffSlots_List          — read the staff member's hours for that date  🔴 SEE BELOW
+        //   2. (validate the requested slots against what that read returned)
+        //   3. spPatientAppointment_Insert  OR  spPatientAppointment_Update
+        //   4. spStaffSlots_ClearAppointment — release the hours this appointment held  (update path only)
+        //   5. spStaffSlots_AssignAppointment — stamp it onto the hours it now holds
+        //   6. commit
+        //
+        // ── 🔴 WHY STEP 1 IS INSIDE THE TRANSACTION, AND MUST STAY THERE ────────────────────────────────
+        //
+        // THE READ IS THE CONCURRENCY CHECK. It is not a convenience lookup that happens to be nearby: it
+        // is the only thing that decides whether the hours being consumed are still free, and the answer
+        // is only worth anything for as long as the transaction that asked holds its locks. Move it out —
+        // "read the slots in the controller, validate, then call the save method" — and two administrators
+        // booking the same hour both read it as free, both validate, and both write. The second one wins,
+        // the first one's appointment silently loses its slot, and nothing anywhere reports it.
+        //
+        // dbo.StaffSlots has a UNIQUE index on (Staff_ID, SlotDate, SlotStartTime) but NOTHING unique on
+        // PatientAppointment_ID, so the database will not catch that double booking either. The
+        // read-inside-the-transaction is the whole defence.
+        //
+        // ── 🔴 WHY THE VALIDATION IS HERE AND THE MESSAGES ARE NOT ──────────────────────────────────────
+        //
+        // The four slot checks operate on the rows step 1 returned, so they can only live where that read
+        // lives. But the sentence a user sees is a presentation decision, so this method returns a TYPED
+        // REASON and the controller maps it to the string it has always shown. THE DATA LAYER DECIDES WHAT
+        // FAILED; THE CONTROLLER DECIDES WHAT THE USER IS TOLD. Read AppointmentSaveFailure — that
+        // convention is the most reusable thing in this area and it is written up there in full.
+        //
+        // A non-Ok Reason means the transaction was ROLLED BACK and nothing was written. Genuine faults
+        // still throw, and a throw also means a rollback.
+        //
+        // ── The clear-then-assign ordering ──────────────────────────────────────────────────────────────
+        //
+        // On an UPDATE the appointment's existing hours are cleared BEFORE the new ones are assigned, and
+        // the order matters: an hour kept across the edit would otherwise be cleared after being
+        // re-assigned and end up free while the appointment believed it held it. Both steps are inside the
+        // transaction, so an edit that drops one hour and takes another either does both or neither.
+        // spStaffSlots_ClearAppointment is keyed on the APPOINTMENT id, not on a slot list, so it releases
+        // every hour the appointment held whether or not the caller knew about it.
+        Task<AppointmentSaveResult> SaveAppointmentAsync(AppointmentSaveInput input);
+
+        // Deletes an appointment. Calls spPatientAppointment_Delete.
+        //
+        // 🔴 IT FREES THE APPOINTMENT'S SLOTS ON THE WAY PAST — `UPDATE dbo.StaffSlots SET
+        // PatientAppointment_ID = NULL WHERE PatientAppointment_ID = @id` — before the DELETE, and its
+        // comment calls that "FK safety". It is not merely tidiness: FK_StaffSlots_PatientAppointment
+        // would refuse the delete outright while any slot still pointed at the row. So deleting an
+        // appointment is also what returns those hours to the schedule, and there is no separate step for
+        // it. Both statements run bare, with no transaction of their own.
+        //
+        // It is SILENT when the id matches nothing: no error, no audit row (the audit INSERT is guarded by
+        // `IF @RowsAffected > 0`), and no row count returned — so this method cannot tell a real delete
+        // from a missed one, the same asymmetry spBranch_Delete and spPatientBasic_Update have.
+        Task DeleteAppointmentAsync(int appointmentId);
+
+        // Changes only an appointment's status, and returns the row as it now stands so the caller can
+        // audit database state rather than its own request. Calls spPatientAppointment_UpdateStatus.
+        //
+        // 🔴 UNLIKE EVERY OTHER WRITE IN THIS AREA IT IS NOT SILENT ON A BAD ID: it RAISERRORs
+        // 'Appointment not found.' (severity 16) when the UPDATE matches nothing, which arrives here as a
+        // SqlException. Both callers answer that with their generic error message plus a correlation id,
+        // so the real sentence reaches only Logs/app-*.log.
+        //
+        // It touches NO slots. An appointment marked "Not Attended" keeps its hours; only a delete or a
+        // re-save releases them.
+        //
+        // CALLED BY TWO CONTROLLERS — /Appointment/UpdateAppointmentStatus, which audits from the result,
+        // and /AdminDashboard/UpdateAppointmentStatus, which discards it and writes no AuditLog line at
+        // all. See AppointmentStatusResult for why that is one method and not two.
+        Task<AppointmentStatusResult> UpdateAppointmentStatusAsync(int appointmentId, string status);
     }
 }

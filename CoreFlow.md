@@ -935,6 +935,135 @@ Two more absences worth stating plainly, because both are things a reader may ex
   dependent tables outright (§5.6). Contrast `dbo.Staff`, whose delete *refuses* while a clinician is still
   referenced — a patient with a completed journey is removed as readily as one registered five minutes ago.
 
+### 3.9 `dbo.PatientAppointment`
+
+**One booking: a patient, with a staff member, at a branch, on a date, for a whole number of on-the-hour
+hours.** It is the row that turns a `StaffSlots` hour from available into consumed, and it is what a
+`PatientJourney` step is scheduled as (§1).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `PatientAppointment_ID` | **`INT IDENTITY(1,1)`** | NOT NULL | PK. One of the few numeric keys in nucentra (§0) — and, unlike `Branch_ID`, `Staff_ID` and `Patient_ID`, **it is a real identity and is not composed**: there is no prefix, no sequence scan and no number reuse. See below |
+| `Patient_ID` | `VARCHAR(100)` | NOT NULL | a `PatientBasic.Patient_ID`, **by convention only** |
+| `PatientAppointment_Date` | `DATE` | NOT NULL | date only, no time component |
+| `Staff_ID` | `VARCHAR(100)` | NOT NULL | a `Staff.Staff_ID`, by convention only |
+| `PatientAppointment_StartTime` | `TIME(0)` | NOT NULL | **always on the hour**, by check constraint |
+| `PatientAppointment_EndTime` | `TIME(0)` | NOT NULL | on the hour, and **strictly after the start** |
+| `PjAppType_ID` | `VARCHAR(100)` | NOT NULL | a `LU_PJ_APP_TYPE.PjAppType_ID`, by convention only |
+| `Branch_ID` | `VARCHAR(100)` | NOT NULL | a `Branch.Branch_ID`, by convention only |
+| `PatientAppointment_Status` | `VARCHAR(100)` | NOT NULL | see below — **not a lookup, not constrained** |
+
+```sql
+CK_PatientAppointment_OnTheHour   CHECK (DATEPART(MINUTE, StartTime) = 0 AND DATEPART(MINUTE, EndTime) = 0)
+CK_PatientAppointment_TimeOrder   CHECK (EndTime > StartTime)
+IX_PatientAppointment_Patient_ID                            (Patient_ID)
+IX_PatientAppointment_Staff_ID_PatientAppointment_Date      (Staff_ID, PatientAppointment_Date)
+```
+
+**Two check constraints, two non-unique indexes, no foreign keys of its own, and — this is the one that
+matters — NOTHING UNIQUE except the primary key.** In particular nothing stops two appointments claiming
+the same clinician at the same hour: the only thing that does is the availability check inside
+`SaveAppointmentAsync` (§6.7), which is why that check has to hold a transaction open rather than trusting
+the database to catch a collision it has no constraint for.
+
+**It is the only table in this area with an incoming foreign key**, and it points the wrong way for
+deletion: `FK_StaffSlots_PatientAppointment` constrains `StaffSlots.PatientAppointment_ID` to an existing
+appointment (§3.7), so **an appointment cannot be deleted while a slot still points at it**. That is what
+makes `spPatientAppointment_Delete` release the slots before deleting the row rather than after — its own
+comment calls the release "FK safety" (§5.7).
+
+#### 🔴 The `StaffSlots` ↔ `PatientAppointment` relationship, stated once
+
+**A slot is "available" when `StaffSlots.PatientAppointment_ID IS NULL`.** There is no `IsBooked` column,
+no status and no released state anywhere in either table (§3.7). The whole lifecycle is that one column:
+
+| Event | What happens to `StaffSlots.PatientAppointment_ID` | By |
+|---|---|---|
+| an administrator opens hours | rows are created with it **NULL** | `spStaffSlots_CreateRange` |
+| an appointment is **booked** | **set** to the new appointment's id, on each chosen hour | `spStaffSlots_AssignAppointment` |
+| an appointment is **edited** | **cleared** off every hour it held, then **set** on the new ones | `spStaffSlots_ClearAppointment` then `spStaffSlots_AssignAppointment` |
+| an appointment is **deleted** | **cleared** back to NULL on every hour it held | `spPatientAppointment_Delete` itself |
+| the patient is deleted | the appointment row goes, and 🔴 **the slot keeps the dead id** | `spPatient_DeleteCascade` — see below |
+
+Four consequences, and each is load-bearing somewhere:
+
+- **The two tables disagree about time, and the appointment is the summary.** A three-hour appointment is
+  **three `StaffSlots` rows** — each exactly one hour, by check constraint — and **one
+  `PatientAppointment` row** carrying only the first slot's start and the last slot's end. That is why the
+  hours must be contiguous (§5.7): a booking with a gap would store a span that covers an hour it does not
+  hold, and nothing in the schema would notice.
+- **The appointment does not record which slots it consumed.** The link exists only on the slot side, so
+  "which hours does this appointment hold" is a query against `StaffSlots`, and
+  `spStaffSlots_ClearAppointment` is keyed on the **appointment id** rather than on a slot list precisely
+  because the caller cannot be trusted to know the answer.
+- **A slot whose appointment id equals THIS appointment is not "taken" during an edit.** Re-saving a
+  booking over hours it already holds must succeed, and that single exception is what makes the edit path
+  work at all (§5.7, §6.7).
+- 🔴 **`spPatient_DeleteCascade` CANNOT DELETE A PATIENT WHO HOLDS A BOOKED SLOT, AND NOTHING SAYS SO.**
+  It runs `DELETE FROM dbo.PatientAppointment WHERE Patient_ID = @Patient_ID` as its **first** statement
+  (§5.6) and never mentions `dbo.StaffSlots` — it has no equivalent of `spPatientAppointment_Delete`'s
+  `UPDATE dbo.StaffSlots SET PatientAppointment_ID = NULL`. Measured directly against `CRC_DB` with a
+  patient, one appointment and one slot pointing at it:
+
+  ```
+  The DELETE statement conflicted with the REFERENCE constraint "FK_StaffSlots_PatientAppointment".
+  The conflict occurred in database "CRC_DB", table "dbo.StaffSlots", column 'PatientAppointment_ID'.
+  ```
+
+  The patient row and the appointment row were both still there afterwards. **That it fails safely is
+  luck, not design**: the conflict is on statement 1 of 7, and this procedure has no transaction (§5.6),
+  so the same constraint firing later would have left the earlier tables already emptied. The user-facing
+  effect is that `POST /Patient/DeletePatient` answers with the generic *"Error deleting patient."* and a
+  correlation id, and the real reason reaches only `Logs/app-*.log`. Deleting the appointments first is
+  what a caller has to do, and it is what the portal does in practice because the Appointment tab is where
+  a booking is removed.
+
+#### How a `PatientAppointment_ID` is generated — it is the exception
+
+`INT IDENTITY(1,1)`, and that is the whole of it. **This is worth stating precisely because nucentra's
+three *other* business keys are all composed strings** — `Branch_ID` encodes the organization and state
+(§3.2), `Staff_ID` encodes the staff type (§3.4), `Patient_ID` is `PAT-` plus a scanned sequence (§3.8),
+and all three **reuse numbers after a delete**. An appointment id does none of that: the database assigns
+it, it never collides, and a deleted appointment's number is never re-issued.
+
+The cost is that the id is **not returned by a `SELECT`**. `spPatientAppointment_Insert` hands it back
+through `@NewPatientAppointment_ID INT OUTPUT` — the same shape as `spPatientBasic_Insert` and **not** the
+trailing `SELECT` that `spBranch_Insert` and `spStaff_Insert` use (§5.7). It is also **sequential and
+therefore guessable**, exactly like `StaffSlot_ID` (§3.7) — but unlike a slot id nothing in the portal
+takes an appointment id as an ownership-free authorization input, so there is no equivalent of
+`spStaffSlots_GetOwner` here.
+
+#### 🔴 The status values, and where they are actually defined
+
+`PatientAppointment_Status` is a `VARCHAR(100)` with **no check constraint, no default and no lookup
+table** — there is no `LU_APPOINTMENTSTATUS`. The three real values are:
+
+```
+Scheduled        Attended        Not Attended
+```
+
+**They are defined in C#, four times, and nowhere else.** `PatientController.SaveAppointment` validates
+against a `HashSet<string>(StringComparer.OrdinalIgnoreCase)` of those three; `AppointmentController.
+UpdateAppointmentStatus` and `AdminDashboardController.UpdateAppointmentStatus` each declare their own
+identical `HashSet`; and `PatientController.GetAppointmentLookups` returns a hard-coded `string[]` of them
+for the booking form's dropdown. A row with `PatientAppointment_Status = 'Cancelled'` inserts fine by hand,
+satisfies no screen, and is invisible to every filter that offers only the three.
+
+**The comparison is case-insensitive on the way in and case-sensitive on the way out.** The `HashSet`s
+accept `"attended"`, and the value is then stored **as the caller sent it** — no `ToUpperInvariant`, unlike
+`Patient_Name` and `Patient_EmergencyName` (§3.8). Since `spPatientAppointment_Search`'s status filter is a
+plain `=` against the database's collation, and `spPatientAppointment_LookupStatuses` returns `DISTINCT`
+values verbatim, a row saved as `"attended"` would appear in the filter dropdown as its own separate
+entry beside `"Attended"`.
+
+**One status has real behaviour attached**: `spStaff_GetPerformance`'s hours-by-type grid sums only
+appointments `WHERE PatientAppointment_Status = 'Attended'` (§5.5) — a plain equality, so the lower-case
+variant above would silently stop counting toward a clinician's hours.
+
+🔴 **A status change touches no slots.** Marking an appointment `"Not Attended"` leaves every hour it holds
+consumed; only a delete or a re-save releases them. There is no cancellation concept in nucentra — the way
+to free an hour is to delete the appointment.
+
 ---
 
 ## 4. Pages, endpoints, policies
@@ -1689,6 +1818,305 @@ one thing that genuinely changed shape is that a save which somehow produced no 
 (and is caught into the generic message) where it previously returned `{ success: true, patientId: "" }` —
 an unreachable path, and the same choice Prompt 3 made for `spStaff_Insert` (§6.6).
 
+### 4.8 Appointments — three controllers, thirteen actions
+
+Booking is spread across **three** controllers, and the split is by screen rather than by feature:
+
+| Controller | Screen | Actions | What it is |
+|---|---|---|---|
+| `PatientController` | the **Appointment tab** of `/Patient/Edit` | 6 | booking, editing and deleting one patient's appointments |
+| `AppointmentController` | `/Appointment/Index` | 4 | the cross-patient **search** page |
+| `AdminDashboardController` | `/AdminDashboard/Index` | 3 | **today's** appointments, at a glance |
+
+**All three carry `[Authorize(Policy = "AdminOrSuper")]` on the class** (`UserType` 1 or 2), none has a
+per-action policy, none has `[AllowAnonymous]`, and **none has any ownership check** — there is no
+per-branch or per-clinician scoping anywhere in nucentra (§2.7), so every ADMIN sees every appointment.
+Antiforgery is global, so every POST needs `X-CSRF-TOKEN` (§0).
+
+**Two procedures are shared across controllers and have exactly one method each**:
+`spPatientAppointment_Search` backs both `/Appointment/Search` and `/AdminDashboard/GetTodayAppointments`,
+and `spPatientAppointment_UpdateStatus` backs the identically-named action on both of those controllers.
+
+#### 4.8.1 `PatientController` — the appointment half
+
+Views: `Views/Patient/Edit.cshtml`. Script: `wwwroot/js/patient/edit-appointment.js`.
+
+> This completes the controller §4.7 describes half of. **After Prompt 6, `PatientController` injects
+> `IDatabaseData` and nothing else data-related** — the `DatabaseHelper _db` field, its constructor
+> parameter and `using System.Data;` are gone, and the file contains no `SqlParameter`, no `DataTable` and
+> no `DataRow`. §4.7's note about the class holding both surfaces described a state that lasted exactly
+> one prompt.
+
+| # | Verb | Route | Returns |
+|---|---|---|---|
+| 1 | GET | `/Patient/GetAppointmentLookups` | `{ success, types[], branches[], statuses[] }` |
+| 2 | GET | `/Patient/GetAppointmentStaffList` | `{ success, data[] }` |
+| 3 | GET | `/Patient/GetAppointmentSlots?staffId=&date=&appointmentId=` | `{ success, data[], appointmentId }` |
+| 4 | GET | `/Patient/GetAppointments?patientId=` | `{ success, data[] }` |
+| 5 | POST | `/Patient/SaveAppointment` | `{ success, appointmentId }` or `{ success: false, message }` |
+| 6 | POST | `/Patient/DeleteAppointment` | `{ success }` — **no `message` on the happy path** |
+
+```jsonc
+// GET /Patient/GetAppointmentLookups                        → 200
+{ "success": true,
+  "types":    [{ "id": "01", "name": "PATIENT ASSESSMENT" },     // spLU_PJ_AppType_List order — BY ID,
+               { "id": "02", "name": "COLONOSCOPY" }],           // i.e. clinical sequence. NOT re-sorted
+  "branches": [{ "branchId": "022367001", "branchName": "…", "branchState": "SELANGOR" }],
+  "statuses": ["Scheduled", "Attended", "Not Attended"] }        // a HARD-CODED string[], not a read
+{ "success": false, "message": "Error loading appointment lookups." }
+
+// GET /Patient/GetAppointmentStaffList                      → 200
+{ "success": true, "data": [{ "staffId": "END-00001", "staffName": "P6 DOCTOR ALPHA" }] }
+{ "success": false, "message": "Error loading staff list." }
+
+// GET /Patient/GetAppointmentSlots?staffId=END-00001&date=2026-09-01&appointmentId=5   → 200
+{ "success": true,
+  "data": [{ "staffSlotId": 15, "slotDate": "2026-09-01", "slotStartTime": "08:00",
+             "slotEndTime": "09:00", "patientAppointmentId": 5 },      // taken by appointment 5
+           { "staffSlotId": 17, "slotDate": "2026-09-01", "slotStartTime": "10:00",
+             "slotEndTime": "11:00", "patientAppointmentId": null }],  // null = this hour is open
+  "appointmentId": 5 }                                         // ECHOED BACK — see below
+{ "success": true,  "data": [], "appointmentId": null }         // blank staffId — echoed as null
+{ "success": false, "message": "Invalid date." }                // date not yyyy-MM-dd
+{ "success": false, "message": "Error loading staff slots." }
+
+// GET /Patient/GetAppointments?patientId=PAT-000001         → 200
+{ "success": true, "data": [
+    { "appointmentId": 5,
+      "appointmentDate": "01/09/2026",          // dd/MM/yyyy, for the table cell — culture-formatted
+      "appointmentDateRaw": "2026-09-01",       // yyyy-MM-dd, for the <input type="date">
+      "from": "08:00", "to": "10:00",           // VARCHAR(5) straight from the procedure
+      "typeId": "02", "typeName": "COLONOSCOPY",
+      "branchId": "022367001", "branchName": "P6 SMOKE BRANCH",
+      "status": "Scheduled",
+      "staffId": "END-00001", "staffName": "P6 DOCTOR ALPHA" }] }
+{ "success": true,  "data": [] }                                // blank patientId, or none booked
+{ "success": false, "message": "Error loading appointments." }
+
+// POST /Patient/SaveAppointment
+//   { appointmentId, patientId, appointmentDate, staffId, slotIds[], pjAppTypeId, branchId, status }
+{ "success": true,  "appointmentId": 8 }                        // insert AND update return the same shape
+{ "success": false, "message": "Please fill in all mandatory appointment fields and select at least one slot." }
+{ "success": false, "message": "Invalid appointment date." }
+{ "success": false, "message": "Invalid attendance status." }
+{ "success": false, "message": "One or more selected slots are invalid. Please reload the slots and try again." }
+{ "success": false, "message": "Selected slots do not match the selected staff." }
+{ "success": false, "message": "Selected slots do not match the selected appointment date." }
+{ "success": false, "message": "One or more selected slots are no longer available. Please reload the slots and try again." }
+{ "success": false, "message": "Please select consecutive slots (e.g. 08:00-09:00 then 09:00-10:00)." }
+{ "success": false, "message": "Failed to create appointment." }
+{ "success": false, "message": "Error saving appointment.", "correlationId": "…" }
+// 400 { "success": false, "message": "Invalid request." }      // no body at all
+
+// POST /Patient/DeleteAppointment  { appointmentId }
+{ "success": true }                                             // NO message — and the same answer for
+                                                                // an id that matched nothing
+{ "success": false, "message": "Error deleting appointment.", "correlationId": "…" }
+// 400 { "success": false, "message": "Invalid request." }      // appointmentId <= 0 or no body
+```
+
+Five behaviours that look like bugs, are not, and must be preserved. All five were measured against the
+running site before and after the Dapper migration, and all fourteen captured payloads came back
+byte-identical.
+
+- 🔴 **`slotDate` is the REQUEST's date, not the row's.** `GetAppointmentSlots` formats the `date` query
+  parameter it parsed, not `StaffSlotItem.SlotDate`. The two are always equal — `spStaffSlots_List` is
+  called with `@FromDate = @ToDate =` that date — so it is invisible today and would stop being invisible
+  the moment that bound moved.
+- **`appointmentId` is echoed back from the query string, untouched, including as `null`.** The slot
+  picker sends it so it can tell "taken by the appointment I am editing" from "taken by someone else"
+  without a second request; the endpoint neither validates it nor uses it. A blank `staffId` short-circuits
+  to an empty list **before** the date is parsed, so `?staffId=&date=rubbish` is a success and
+  `?staffId=END-00001&date=rubbish` is *"Invalid date."*
+- 🔴 **The same date is serialized twice, in two formats, and both are load-bearing.**
+  `appointmentDate` is `dd/MM/yyyy` for the table cell and **culture-formatted** (`ToString` with no
+  `CultureInfo`, so the separator is the server's); `appointmentDateRaw` is `yyyy-MM-dd` for the
+  `<input type="date">` the edit dialog opens with. Both are `""` when the column is null, never `null`,
+  because both are assigned straight into the page.
+- **`DeleteAppointment` answers `{ success: true }` for an id that matched nothing**, because
+  `spPatientAppointment_Delete` has no existence check and returns no row count (§5.7). Same silent-success
+  shape as `spBranch_Delete` and `spPatient_DeleteCascade`.
+- **The three status strings are hard-coded in `GetAppointmentLookups` and are not a database read**,
+  while `/Appointment/GetLookups` builds *its* status filter from `spPatientAppointment_LookupStatuses`.
+  That is not an inconsistency to fix: **a form wants the values that are allowed, a filter wants the
+  values that are stored** (§3.9).
+
+#### 🔴 4.8.2 `SaveAppointment` — the one endpoint with a transaction behind it
+
+It handles **both** insert and update — `appointmentId <= 0` means insert — and the client decides which by
+what it sends. The order of the work is the feature:
+
+1. **Trim and normalise.** Seven fields, plus `slotIds` filtered to `> 0`, `Distinct()`ed and listed. The
+   de-duplication matters: the slot-count check downstream compares against this list's length.
+2. **The seven-field mandatory check**, one `if`, **including `slotIds.Count == 0`** → *"Please fill in all
+   mandatory appointment fields and select at least one slot."*
+3. **The date must parse as `yyyy-MM-dd` exactly** (`TryParseExact`, `InvariantCulture`) →
+   *"Invalid appointment date."*
+4. **The status must be one of the three**, case-insensitively → *"Invalid attendance status."*
+5. **`IDatabaseData.SaveAppointmentAsync` — everything else, inside one transaction** (§6.7): the slot
+   read, the four slot checks, the contiguity check, the insert or update, the slot release and the slot
+   assignment.
+6. **Map the returned `AppointmentSaveFailure` to a message**, or write the audit line and return the id.
+
+**Steps 1–4 are the controller's and steps 5's contents are the data layer's, and the boundary is not
+arbitrary.** Everything above the line can be decided from the request alone; everything below it needs
+rows read under a lock. That is the whole test for where a check belongs.
+
+🔴 **The four slot messages are the controller's, and the reasons are the data layer's.** The data method
+returns a typed `AppointmentSaveFailure`; a `switch` in this action turns each value into the exact string
+above. Both halves are necessary and neither is the other's job — see §6.7, which writes the convention up
+in full.
+
+**What the four rejection paths actually do, measured.** The in-transaction read is
+`spStaffSlots_List(@Staff_ID, @FromDate = @ToDate = the appointment's date)`, so it is **already narrowed
+by staff and by date** — and that makes three of the four inputs land on the same message:
+
+| Input | Reason returned | Message the user sees |
+|---|---|---|
+| a `StaffSlot_ID` that does not exist | `SlotNotFound` | *"One or more selected slots are invalid. Please reload the slots and try again."* |
+| a slot belonging to a **different staff member** | `SlotNotFound` | the same string |
+| a slot on a **different date** | `SlotNotFound` | the same string |
+| a slot already booked by a **different appointment** | `SlotTaken` | *"One or more selected slots are no longer available. Please reload the slots and try again."* |
+
+**`SlotWrongStaff` and `SlotWrongDate` are therefore unreachable, and they were unreachable before the
+migration too.** The pre-Dapper code wrote both checks: the staff one compared a field it had just
+populated from the request against that same request value — a tautology, not a test — and the date one
+compared a date the query had already bounded. Both strings are kept, and the `switch` still maps them, so
+the reasons are available the day `spStaffSlots_List` projects `Staff_ID` or stops filtering. Verified end
+to end: all four inputs produce the same messages before and after, and in every case **nothing persisted**
+— no appointment row changed, no slot changed, and `MAX(AuditTrail_Id)` did not move.
+
+**The edit path is the one that is easy to break**, and it is `spStaffSlots_ClearAppointment` then
+`spStaffSlots_AssignAppointment`, in that order, inside the transaction. Verified: an appointment holding
+08:00 and 09:00, re-saved with 09:00 and 10:00, ended up holding 09:00 and 10:00 — **the dropped 08:00 slot
+went back to `PatientAppointment_ID IS NULL`, the kept 09:00 slot was still held, and 10:00 was newly
+taken** — and the row's stored span moved from 08:00–10:00 to 09:00–11:00.
+
+**Two audit lines, and which values each carries.** `AuditLog.AppointmentCreated` names the **request's**
+values (the row is new, so there is nothing else it could describe) plus the two times the data layer
+derived from the slots; `AuditLog.AppointmentUpdated` names the values `spPatientAppointment_Update`
+**re-read from the row**, because a security line that reports what was asked for can be wrong in exactly
+the case somebody is reading it to investigate. 🔴 **Both are written only after the commit has returned** —
+the same deferral `SaveStaffWithDocuments` uses, for the same reason (§6.6).
+
+#### 4.8.3 `AppointmentController` — the search page
+
+`CRC.Web/Controllers/Appointment/AppointmentController.cs`. View `Views/Appointment/Index.cshtml`, script
+`wwwroot/js/appointment/`. Four actions.
+
+| # | Verb | Route | Returns |
+|---|---|---|---|
+| 1 | GET | `/Appointment/Index` | the search page |
+| 2 | GET | `/Appointment/GetLookups` | `{ success, patients[], staff[], statuses[], types[], branches[] }` |
+| 3 | POST | `/Appointment/Search` | `{ success, data[] }` |
+| 4 | POST | `/Appointment/UpdateAppointmentStatus` | `{ success }` |
+
+```jsonc
+// GET /Appointment/GetLookups                               → 200
+{ "success": true,
+  "patients": [{ "name": "P6 SMOKE PATIENT" }],       // 🔴 FOUR OF THE FIVE ARE {name} ONLY — no ids
+  "staff":    [{ "name": "P6 DOCTOR ALPHA" }],
+  "statuses": [{ "name": "Attended" }, { "name": "Scheduled" }],
+  "types":    [{ "id": "02", "name": "COLONOSCOPY" },  // the only one with an id — and SORTED BY NAME
+               { "id": "01", "name": "PATIENT ASSESSMENT" }],
+  "branches": [{ "name": "P6 SMOKE BRANCH" }] }
+{ "success": false, "message": "Error loading appointment lookups." }
+
+// POST /Appointment/Search
+//   { patientName?, staffName?, status?, fromDate?, toDate?, pjAppTypeName?, branchName? }
+{ "success": true, "data": [
+    { "patientAppointmentId": 5, "patientId": "PAT-000001",
+      "patientName": "P6 SMOKE PATIENT", "patientPhone": "0111222333",
+      "patientEmail": "p6@nucentra.local",
+      "appointmentType": "COLONOSCOPY", "status": "Scheduled",
+      "staffName": "P6 DOCTOR ALPHA", "branchName": "P6 SMOKE BRANCH",
+      "appointmentDateTime": "01/09/2026 08:00" }] }   // ONE field — date and start time together
+{ "success": false, "message": "Error searching appointments." }
+// 400 { "success": false, "message": "Invalid request." }   // no body at all
+
+// POST /Appointment/UpdateAppointmentStatus  { patientAppointmentId, status }
+{ "success": true }                                          // NO message
+{ "success": false, "message": "Error updating appointment status.", "correlationId": "…" }
+                                                             // ↑ ALSO what an unknown id returns
+// 400 { "success": false, "message": "Invalid request." }      // id <= 0, blank status, or no body
+// 400 { "success": false, "message": "Invalid status value." }  // a status outside the three
+```
+
+Four things worth knowing:
+
+- 🔴 **Four of the five lookups are reads over `dbo.PatientAppointment` itself, not over a lookup table.**
+  They answer *"what values are actually in use"*, so **a portal with no appointments returns four empty
+  dropdowns**, and a branch, patient or clinician that has never been booked never appears. That is what a
+  search filter wants — offering a value that can only ever return nothing is worse than omitting it — and
+  it is why the branch filter here is `spPatientAppointment_LookupBranches` and **not** the
+  `spBranch_ListActive` the booking form uses. The fifth, the appointment type, *is* the plain lookup,
+  because filtering by type is filtering by a fixed clinical vocabulary rather than by what happens to be
+  booked.
+- 🔴 **This endpoint re-sorts the appointment types BY NAME and `/Patient/GetAppointmentLookups` does
+  not.** `spLU_PJ_AppType_List` orders by ID because the ids are in clinical sequence (§3.1); the booking
+  form keeps that, and this search filter sorts alphabetically because that is what a user scans. Two
+  callers, one procedure, two correct orders — removing the `OrderBy` to make them match would change this
+  dropdown.
+- **Blank must become `null` before it reaches the procedure**, and that conversion is the whole of the
+  filtering: every predicate is `@X IS NULL OR column = @X`, so `""` would match only rows whose column is
+  the empty string, i.e. nothing. The dates use `DateTime.TryParse` — **not `TryParseExact`** — so this
+  endpoint accepts whatever the server's culture parses, and an unparseable date is silently treated as
+  *no filter* rather than rejected. Both predate the migration and are left as found.
+- **The `_UpdateStatus` procedure `RAISERROR`s on an unknown id**, unlike every other write in this area,
+  so *"Appointment not found."* arrives as a `SqlException` and the user gets the generic message plus a
+  correlation id. The real sentence reaches only `Logs/app-*.log`.
+
+#### 4.8.4 `AdminDashboardController` — today's appointments
+
+`CRC.Web/Controllers/AdminDashboard/AdminDashboardController.cs`. View
+`Views/AdminDashboard/Index.cshtml`. **This is where an ADMIN lands after login** (§2.1). Three actions.
+
+| # | Verb | Route | Returns |
+|---|---|---|---|
+| 1 | GET | `/AdminDashboard/Index` | the dashboard page |
+| 2 | GET | `/AdminDashboard/GetBranches` | `{ success, data[] }` |
+| 3 | GET | `/AdminDashboard/GetTodayAppointments?branchName=` | `{ success, data[] }` |
+| 4 | POST | `/AdminDashboard/UpdateAppointmentStatus` | `{ success }` |
+
+```jsonc
+// GET /AdminDashboard/GetBranches                           → 200
+{ "success": true, "data": [{ "name": "P6 SMOKE BRANCH" }] }
+{ "success": false, "message": "Error loading branches." }
+
+// GET /AdminDashboard/GetTodayAppointments?branchName=P6%20SMOKE%20BRANCH   → 200
+{ "success": true, "data": [                                 // the SAME ten fields as /Appointment/Search
+    { "patientAppointmentId": 6, "patientId": "PAT-000001",
+      "patientName": "…", "patientPhone": "…", "patientEmail": "…",
+      "appointmentType": "PATIENT ASSESSMENT", "status": "Attended",
+      "staffName": "…", "branchName": "…",
+      "appointmentDateTime": "09/08/2026 14:00" }] }
+{ "success": false, "message": "Error loading today's appointments." }
+
+// POST /AdminDashboard/UpdateAppointmentStatus  { patientAppointmentId, status }
+// — byte-identical to /Appointment/UpdateAppointmentStatus's four shapes
+```
+
+Three things worth knowing:
+
+- **`GetBranches` is `/Appointment/GetLookups`'s branch filter, not the booking form's branch list.** Same
+  procedure, same reasoning: a branch nobody has ever been booked into would filter this dashboard down to
+  nothing.
+- 🔴 **`GetTodayAppointments` re-sorts the search result, reversing the procedure's own order.**
+  `spPatientAppointment_Search` orders date **DESC** (newest day first) because it spans a range; this
+  panel shows one day and wants clock order, so it sorts **ascending** on the composed start datetime, with
+  a null date sorting **last** via `DateTime.MaxValue`. The sort key is then projected away so it never
+  reaches the JSON.
+- 🔴 **"Today" is the WEB SERVER's `DateTime.Today`, not the database's.** It is passed in as both
+  `@FromDate` and `@ToDate`. On one machine that is the same clock; split across an App Service and Azure
+  SQL it agrees only as well as the two clocks and time zones do, and this panel is where that would show
+  first. Compare `spStaff_GetPerformance`'s "this month", which is decided on the **SQL Server's** clock
+  (§4.6) — nucentra decides "now" on both sides of the wire, in different places.
+- 🔴 **This action writes NO `AuditLog` line, and its twin on `AppointmentController` does.** Both write the
+  same `dbo.AuditTrails` row, because the procedure writes that itself — but only `/Appointment` adds a
+  line to the Serilog security channel. Verified after the migration: changing a status here produced the
+  database audit row and **zero** new lines in `audit-*.log`. That asymmetry predates this work and is left
+  exactly as found; adding a line would be a new audit event, not a migration.
+
 ---
 
 ## 5. Stored procedures
@@ -2274,6 +2702,190 @@ What it enforces, precisely:
   today; the other five exist on `PatientBasicDetail` because the procedure returns them, and Prompt 7
   reuses this same procedure for `StaffPatientController.GetBasic`.
 
+### 5.7 Patient appointments — `Stored Procedures/{PatientAppointment,StaffSlots}/` (12)
+
+**Four of the twelve declare `@User_ID INT = NULL` — the ACTOR** (§0.1): `spPatientAppointment_Insert`,
+`_Update`, `_Delete` and `_UpdateStatus`. All four write a `dbo.AuditTrails` row with `ISNULL(@User_ID, 0)`,
+which is the silent-failure surface: drop the parameter and the write still succeeds, naming nobody. **The
+other eight declare no `@User_ID` and write no audit row** — including both slot procedures, which was
+checked in the `.sql` rather than inferred from the fact that they mutate a table.
+
+| Procedure | Parameters | Returns | `IDatabaseData` method | `@User_ID` |
+|---|---|---|---|---|
+| `spPatientAppointment_ListByPatient` | `@Patient_ID VARCHAR(100)` | 12 columns, 3 `LEFT JOIN`ed names, ordered date DESC, start DESC, id DESC | `GetAppointmentsByPatientAsync` → `List<PatientAppointmentItem>` | no |
+| `spPatientAppointment_Search` | 7, **all `= NULL`** — `@PatientName`, `@StaffName`, `@Status`, `@FromDate DATE`, `@ToDate DATE`, `@PjAppTypeName`, `@BranchName` | 10 columns; ordered date DESC, start **ASC**, id DESC | `SearchAppointmentsAsync` → `List<AppointmentSearchItem>` | no |
+| `spPatientAppointment_LookupBranches` | — | `Branch_Name`, `DISTINCT`, `INNER JOIN`, **`Branch_Status = 1`** | `GetAppointmentBranchNamesAsync` → `List<string>` | no |
+| `spPatientAppointment_LookupPatientNames` | — | `Patient_Name`, `DISTINCT`, `INNER JOIN` | `GetAppointmentPatientNamesAsync` → `List<string>` | no |
+| `spPatientAppointment_LookupStaffNames` | — | `Staff_Name`, `DISTINCT`, `INNER JOIN` | `GetAppointmentStaffNamesAsync` → `List<string>` | no |
+| `spPatientAppointment_LookupStatuses` | — | `PatientAppointment_Status`, `DISTINCT`, **no join** | `GetAppointmentStatusesAsync` → `List<string>` | no |
+| `spPatientAppointment_Insert` | the 8 business columns, plus **`@NewPatientAppointment_ID INT OUTPUT`** and `@User_ID` | 🔴 **nothing — no result set.** The id is the OUTPUT parameter | `SaveAppointmentAsync` **only** | **`INT = NULL` — ACTOR** |
+| `spPatientAppointment_Update` | `@PatientAppointment_ID` + 7 business columns + `@User_ID`, plus **8 `@Out_* OUTPUT`** | nothing; the answer is the 8 OUTPUT parameters | `SaveAppointmentAsync` **only** | **`INT = NULL` — ACTOR** |
+| `spPatientAppointment_Delete` | `@PatientAppointment_ID`, `@User_ID` | nothing | `DeleteAppointmentAsync` | **`INT = NULL` — ACTOR** |
+| `spPatientAppointment_UpdateStatus` | `@PatientAppointment_ID`, `@PatientAppointment_Status`, `@User_ID`, plus the **same 8 `@Out_* OUTPUT`** | nothing; the 8 OUTPUT parameters | `UpdateAppointmentStatusAsync` → `AppointmentStatusResult` | **`INT = NULL` — ACTOR** |
+| `spStaffSlots_AssignAppointment` | `@ApptId INT`, `@StaffSlotIds VARCHAR(MAX)` | nothing | `SaveAppointmentAsync` **only** | no |
+| `spStaffSlots_ClearAppointment` | `@ApptId INT` | nothing | `SaveAppointmentAsync` **only** | no |
+
+**Four of the twelve have no method of their own** — `_Insert`, `_Update` and the two slot procedures are
+reachable only through `SaveAppointmentAsync`. That is the point of the transaction, not an oversight
+(§5.5, §6.7).
+
+#### 🔴 THREE OF THE FOUR WRITES ANSWER THROUGH OUTPUT PARAMETERS — nucentra now has six such procedures
+
+§5.3 called `spUsers_RegisterFailedLogin` *"the only procedure in nucentra with OUTPUT parameters"*. §5.4
+corrected it once (`spStaffDocument_Delete`), §5.6 a second time (`spPatientBasic_Insert`), and this area
+adds **three more**, bringing the total to **six**. The claim in §5.3 is simply wrong and should be read as
+"the only one Prompt 2 had met".
+
+| Procedure | Prompt | OUTPUT parameters | `.sql` change allowed? | How `SqlData` reads it |
+|---|---|---|---|---|
+| `spUsers_RegisterFailedLogin` | 2 | 3 | **yes** — appended a trailing `SELECT` | `QuerySingleOrDefaultAsync<FailedLoginResult>` |
+| `spStaffDocument_Delete` | 3 | 1 | no | `DynamicParameters` |
+| `spPatientBasic_Insert` | 5 | 1 | no | `DynamicParameters` |
+| `spPatientAppointment_Insert` | **6** | **1** | no | `DynamicParameters` |
+| `spPatientAppointment_Update` | **6** | **8** | no | `DynamicParameters` |
+| `spPatientAppointment_UpdateStatus` | **6** | **8** | no | `DynamicParameters` |
+
+**`spPatientAppointment_Insert` sets the same trap `spPatientBasic_Insert` does.** It ends by assigning
+`@NewPatientAppointment_ID = CONVERT(INT, SCOPE_IDENTITY())` and **there is no trailing `SELECT`** — so
+`QuerySingleAsync<int>` would throw *"Sequence contains no elements"* on every successful insert. The
+family resemblance to `spBranch_Insert` and `spStaff_Insert`, which both *do* end with a `SELECT`, is the
+trap. Read the `.sql`.
+
+**The eight `@Out_*` parameters are the interesting ones, and they exist for the audit trail.** Both
+`_Update` and `_UpdateStatus` finish by selecting the saved row back into
+`@Out_Patient_ID`, `@Out_Staff_ID`, `@Out_Date`, `@Out_StartTime`, `@Out_EndTime`, `@Out_PjAppType_ID`,
+`@Out_Branch_ID` and `@Out_Status`, under a comment that says exactly why:
+
+```sql
+-- Re-read persisted values so callers can audit DB state, not request payload
+```
+
+That is a genuinely good idea and it is worth naming: **an audit line built from the request can be wrong
+in precisely the case somebody is reading it to find out what happened.** `_UpdateStatus` is the one that
+shows the value — it is handed only an id and a status, so without the re-read its audit line could not name
+the patient, the clinician, the branch or the times at all.
+
+🔴 **The two differ in whether the OUTPUT parameters can come back NULL, and the difference is load-bearing.**
+
+| | `_Update` | `_UpdateStatus` |
+|---|---|---|
+| unknown id | **silent** — `IF @RowsAffected > 0` skips the re-read, the audit row **and** the OUTPUTs | **`RAISERROR('Appointment not found.', 16, 1)` + `RETURN`** |
+| so the OUTPUTs are | **NULL**, and the caller must have a fallback | never read — the `SqlException` arrives first |
+| hence the model | `AppointmentSaveResult` **seeds** all eight from the request and overwrites only what came back | `AppointmentStatusResult` has eight non-nullable properties and no seed |
+
+The seeding is not defensive decoration: it reproduces the pre-Dapper controller exactly, which initialised
+eight locals from the request and overwrote each one only `if (outX.Value is string …)`.
+
+#### 🔴 `spPatientAppointment_Delete` releases the slots itself, and it has to
+
+```sql
+-- Release any booked slots first (FK safety)
+UPDATE dbo.StaffSlots SET PatientAppointment_ID = NULL WHERE PatientAppointment_ID = @PatientAppointment_ID;
+DELETE FROM [dbo].[PatientAppointment] WHERE [PatientAppointment_ID] = @PatientAppointment_ID;
+```
+
+**Its comment says "FK safety" and that is literally true**: `FK_StaffSlots_PatientAppointment` (§3.7)
+constrains the slot to an existing appointment, so the `DELETE` would fail outright while any slot still
+pointed at the row. So **"delete the appointment" and "return its hours to the schedule" are one procedure,
+not two**, and there is no separate release step for a caller to forget — or to get wrong.
+
+It captures the appointment's details into local variables **before** deleting, for the same reason
+`spStaffSlots_Delete` and `spStaff_Delete` do (§5.4, §5.5): the audit summary names a row that no longer
+exists by the time the `INSERT` runs. Both statements run **bare, with no transaction** — so a failure
+between them would leave the slots released and the appointment still present, which is the benign
+direction to fail in.
+
+The audit row is guarded by `IF @RowsAffected > 0` on the `DELETE`, so **a delete against an unknown id
+writes nothing and returns normally** — the same silent success `spBranch_Delete`, `spBranch_Update`,
+`spStaff_Update`, `spPatientBasic_Update` and `spPatient_DeleteCascade` all have. Six procedures, one habit.
+
+#### The four validation rules, and the exact strings they produce
+
+The rules live in `SqlData.SaveAppointmentAsync`, against the slots read inside its own transaction. The
+data layer returns an `AppointmentSaveFailure`; `PatientController.SaveAppointment` owns every sentence
+(§4.8.2, §6.7).
+
+| # | Rule | `AppointmentSaveFailure` | The exact message |
+|---|---|---|---|
+| 1 | every requested `StaffSlot_ID` came back from the in-transaction read | `SlotNotFound` | `One or more selected slots are invalid. Please reload the slots and try again.` |
+| 2 | every slot belongs to the selected staff member | `SlotWrongStaff` | `Selected slots do not match the selected staff.` |
+| 3 | every slot is on the selected date | `SlotWrongDate` | `Selected slots do not match the selected appointment date.` |
+| 4 | no slot is already booked by a **different** appointment | `SlotTaken` | `One or more selected slots are no longer available. Please reload the slots and try again.` |
+| 5 | the hours are contiguous | `SlotsNotConsecutive` | `Please select consecutive slots (e.g. 08:00-09:00 then 09:00-10:00).` |
+| 6 | the insert produced a usable identity | `InsertFailed` | `Failed to create appointment.` |
+
+🔴 **Rules 2 and 3 cannot fire, and could not before the migration either.** The read is
+`spStaffSlots_List` narrowed to `@Staff_ID` and to `@FromDate = @ToDate =` the appointment's date, so
+another clinician's slot and another day's slot are **not in the result at all** and are caught by rule 1
+as missing ids. Measured against the running site, before and after: a non-existent id, another staff
+member's slot and another date's slot all produce rule 1's message. Rule 3 is still written out in code,
+because `spStaffSlots_List` projects `SlotDate` and so there is a real per-row value to assert; **rule 2 is
+not**, because the procedure does not project `Staff_ID` and the pre-Dapper check compared a field it had
+just populated from the request against that same request value. Both enum values and both strings are
+kept, so the reason exists the day the read stops being narrowed.
+
+Rule 4 is the one the transaction exists for, and its exception is what makes editing work: a slot carrying
+**this** appointment's own id passes. On an insert the id is `0`, which no `IDENTITY` can be, so every
+taken slot fails.
+
+#### The other findings, from reading all twelve
+
+- 🔴 **`spStaffSlots_AssignAppointment` SILENTLY IGNORES AN ID THAT MATCHES NO ROW.** It splits
+  `@StaffSlotIds` with `STRING_SPLIT` + `TRY_CAST` (discarding anything non-numeric) and `UPDATE`s through
+  an **`INNER JOIN`** against the result — so a slot id that does not exist updates nothing, reports
+  nothing and returns success. That is only safe because rule 1 above has already proved every requested id
+  was in the in-transaction read; it is the strongest argument against ever publishing this procedure as a
+  standalone data-layer method. Its one guard is `THROW 50001, 'At least one staff slot ID is required.'`
+  on a blank list, which the controller's "select at least one slot" check makes unreachable.
+- **It takes the ids as ONE comma-separated `VARCHAR(MAX)`**, not a table-valued parameter, which is why
+  `SqlData` passes `string.Join(",", …)`. `STRING_SPLIT` requires compatibility level 130+; nothing in the
+  build checks that.
+- **Neither slot procedure is idempotent in the same way `spStaffSlots_CreateRange` is.** Assign is a blind
+  `UPDATE`: running it twice with the same arguments is harmless, but running it with a *different*
+  appointment id simply overwrites, with no check that the slot was free. The freeness check is entirely
+  the caller's, which is the whole design (§6.7).
+- **`spStaffSlots_ClearAppointment` is keyed on the APPOINTMENT, not on a slot list** —
+  `WHERE PatientAppointment_ID = @ApptId`. That is deliberate: `dbo.PatientAppointment` does not record
+  which slots it consumed (§3.9), so the appointment id is the only reliable way to find them, and a caller
+  passing a list could miss one.
+- **`spPatientAppointment_Search`'s date range is INCLUSIVE at both ends, and it gets there asymmetrically**
+  — `>= @FromDate` but `< DATEADD(DAY, 1, @ToDate)`. The second form is the correct one for a column that
+  might carry a time; `PatientAppointment_Date` is a `DATE`, so today both work, and the asymmetry is
+  future-proofing rather than a bug.
+- 🔴 **`spPatientAppointment_Search` RENAMES A COMPOSED VALUE OVER THE TOP OF A REAL COLUMN.** Its last
+  selected expression is
+  `DATEADD(SECOND, DATEDIFF(SECOND, 0, pa.PatientAppointment_StartTime), CAST(pa.PatientAppointment_Date AS DATETIME)) AS [PatientAppointment_Date]`
+  — the date **with the start time folded in**, under the date column's own name, with a comment saying
+  *"Keep legacy column name used by existing controllers/JS (start datetime)"*. So `PatientAppointment_Date`
+  is a `DATE` everywhere in nucentra and a `DATETIME` in this one result set, which is what lets both
+  consuming endpoints render `"01/09/2026 08:00"` from a single field. A model that assumed the column type
+  would be wrong; `AppointmentSearchItem` says so at the property.
+- **Its appointment-type filter matches THREE ways** — the lookup's name, the lookup's id, or the raw
+  `PjAppType_ID` stored on the appointment — all `LTRIM`/`RTRIM`ed. Its own comment explains the third: it
+  keeps the search working for legacy rows that stored a *name* where the schema expects a code. The
+  `PjAppType_Name` column is likewise `COALESCE(t.PjAppType_Name, pa.PjAppType_ID)`, so such a row still
+  displays something.
+- **The four `_Lookup*` procedures read `dbo.PatientAppointment`, not a lookup table**, which is why
+  §4.8.3 calls them filters rather than lookups. Three `INNER JOIN` their parent table, so a booking whose
+  `Branch_ID`, `Patient_ID` or `Staff_ID` no longer resolves contributes nothing — and since none of those
+  is a foreign key, that is a state the schema permits. `_LookupBranches` is the only one with a second
+  predicate, `Branch_Status = 1`: **a booking into a branch that has since been deactivated drops out of
+  the filter while the booking itself remains**, so such an appointment is findable by every filter except
+  its own branch.
+- **`_LookupStatuses` reports what is STORED, not what is VALID.** There is no status lookup table
+  (§3.9), so a database with no `"Not Attended"` appointment offers two entries, and a value written by
+  hand would appear beside the three real ones.
+- **`spPatientAppointment_ListByPatient` returns the two times as `VARCHAR(5)`**, exactly like
+  `spStaffSlots_List` (§5.5) — `CONVERT(VARCHAR(5), …, 108)`, so `"08:00"` reaches C# as a string even
+  though the column is `TIME(0)`. `PatientAppointmentItem` keeps them as strings and the endpoint
+  serializes them verbatim; parsing them into a `TimeSpan` would only mean formatting them back.
+- **`_Insert` validates nothing** — no `RAISERROR` anywhere in the body. It does not check that the patient,
+  the staff member, the branch or the appointment type exists, and none of those is a foreign key, so an
+  appointment can be booked against four ids that resolve to nothing. Every rule that exists is
+  `PatientController`'s and `SaveAppointmentAsync`'s.
+- **`_Update` does not re-check anything either**, and in particular it does not verify that the new times
+  match the slots being assigned — the two are kept in step only because one method computes both (§6.7).
+
 ---
 
 ## 6. The data access layer
@@ -2370,7 +2982,7 @@ spread across several procedures that must land together or not at all:
 | Method | Procedures it runs | Why it must be atomic |
 |---|---|---|
 | `SaveStaffWithDocumentsAsync` | `spStaff_Insert` **or** `spStaff_Update`, then `spStaffDocument_GetById` + `spStaffDocument_Delete` per removal, then `spStaffDocument_Insert` per upload | the mandatory-document rule (§4.4) says an ENDOSCOPIST without a CV is not a valid record. A staff row that committed while its documents did not is exactly the state the rule exists to prevent, and no screen would show it had happened |
-| `SaveAppointmentAsync` | *Prompt 6* | the slot-availability read must stay inside the transaction that consumes the slot, or two administrators book the same hour |
+| `SaveAppointmentAsync` | `spStaffSlots_List`, then `spPatientAppointment_Insert` **or** `spPatientAppointment_Update` + `spStaffSlots_ClearAppointment`, then `spStaffSlots_AssignAppointment` | the slot-availability read must stay inside the transaction that consumes the slot, or two administrators book the same hour. See §6.7 |
 
 Each opens its own `SqlConnection`, calls `OpenAsync`, begins a `SqlTransaction`, passes `transaction:` to
 **every** Dapper call inside it, commits, and rolls back and rethrows on any exception. That is the only
@@ -2451,6 +3063,133 @@ staff row kept its previous values, no document row appeared, **`MAX(AuditTrail_
 `spStaff_Update` audit row rolled back with the update it described — and `audit-*.log` grew by **zero
 bytes**. That last assertion is the one that proves the transaction moved into `SqlData` intact rather than
 merely appearing to.
+
+### 6.7 `SaveAppointmentAsync` — the booking race, and the typed-failure-reason convention
+
+The second of the two units of work, and the more instructive one. `SaveStaffWithDocumentsAsync` is atomic
+because several **writes** must land together; this one is atomic because a **read** and a write must, and
+that is a different and less obvious reason.
+
+#### The procedure sequence
+
+```
+                    ┌─ BEGIN TRANSACTION ──────────────────────────────────────────────┐
+   1  READ          │  spStaffSlots_List  (@Staff_ID, @FromDate = @ToDate = the date)  │
+   2  VALIDATE      │  four slot checks + contiguity, against the rows step 1 returned  │
+   3  WRITE         │  spPatientAppointment_Insert   OR   spPatientAppointment_Update   │
+   4  RELEASE       │  spStaffSlots_ClearAppointment  (@ApptId)      — update path only │
+   5  CLAIM         │  spStaffSlots_AssignAppointment (@ApptId, "17,18")                │
+                    └─ COMMIT ─────────────────────────────────────────────────────────┘
+```
+
+Five procedure calls on one `SqlConnection`, every one passing `transaction:`, committed together or rolled
+back together. **Step 4 runs before step 5 and the order is the point**: an hour kept across an edit would
+otherwise be cleared *after* being re-assigned, and end up free while the appointment believed it held it.
+Step 4 is keyed on the **appointment id**, not on a slot list, because `dbo.PatientAppointment` does not
+record which slots it consumed (§3.9).
+
+#### 🔴 Why the read is inside the transaction — the booking race
+
+**Step 1 is not a convenience lookup that happens to sit nearby. It is the concurrency check.** It is the
+only thing that decides whether the hours being consumed are still free, and that answer is worth something
+only for as long as the transaction that asked holds its locks.
+
+Move it out — *"the controller reads the slots, validates, then calls the save method"* — and this happens:
+
+```
+   Administrator A                          Administrator B
+   read slot 17 → free                      read slot 17 → free
+   validate → OK                            validate → OK
+                    ── both now believe slot 17 is available ──
+   BEGIN; insert appointment 8;             BEGIN; insert appointment 9;
+   assign 17 → 8; COMMIT                    assign 17 → 9; COMMIT
+                    ── appointment 8 silently holds nothing ──
+```
+
+**Nothing in the database catches that.** `dbo.PatientAppointment` has no unique constraint of any kind
+beyond its identity, and `dbo.StaffSlots` is unique on `(Staff_ID, SlotDate, SlotStartTime)` but has
+**nothing unique on `PatientAppointment_ID`** (§3.7, §3.9) — so the second `UPDATE` is a perfectly legal
+overwrite. `spStaffSlots_AssignAppointment` will not object either: it is a blind `UPDATE … INNER JOIN`
+that silently ignores what it cannot match and never asks whether a slot was free (§5.7). There is no
+constraint, no `MERGE … HOLDLOCK`, and no version column anywhere in this path. **The read-inside-the-
+transaction is the entire defence, and it is one line away from not existing.**
+
+The distinction that makes this easy to get wrong is that nucentra has **two** reads of the same procedure,
+doing two different jobs:
+
+| Caller | Job | Where |
+|---|---|---|
+| `/Patient/GetAppointmentSlots` | **paint the slot picker** — what looked free when the page loaded | outside any transaction, and correctly so |
+| `SaveAppointmentAsync` step 1 | **decide whether it is still free** — under lock, at the instant of writing | inside the transaction, necessarily |
+
+They return the same five columns and share `StaffSlotItem`. Only one of them is load-bearing, and it is
+not the one the user sees.
+
+#### 🔴 The typed-failure-reason convention — the most reusable thing here
+
+Moving the validation into the data layer creates a problem: the checks must live where the read lives, but
+the **sentences** must not. A user-facing message is worded for one screen, is what a JavaScript file may
+match on, and changing it is a product decision. A message string in `CRC.Data` would mean a controller
+could no longer alter its own copy without editing the data layer, and a second screen calling the same
+method would be stuck with the first screen's wording.
+
+So:
+
+> **THE DATA LAYER DECIDES WHAT FAILED. THE CONTROLLER DECIDES WHAT THE USER IS TOLD.**
+
+`SaveAppointmentAsync` returns `AppointmentSaveResult` carrying an `AppointmentSaveFailure` enum —
+`Ok`, `SlotNotFound`, `SlotWrongStaff`, `SlotWrongDate`, `SlotTaken`, `SlotsNotConsecutive`, `InsertFailed`
+— and `PatientController.SaveAppointment` maps each value to the exact string it showed before the
+migration, in one `switch`, in the open. That mapping is the only place any of those sentences appears.
+
+**Reason `Ok` means the transaction committed. Every other value means it was rolled back and nothing was
+written** — no appointment row, no slot change, no `dbo.AuditTrails` row. A *genuine* fault still throws,
+as everywhere else in this layer; the enum is for the validation outcomes the flow is designed to produce.
+
+**Copy this shape for the next flow that fails for several distinct reasons.** The alternatives are all
+worse, and each fails in its own way:
+
+| Instead of an enum | Why not |
+|---|---|
+| return `bool` | loses the reason; the controller cannot tell a taken slot from a missing one |
+| throw a different exception per reason | turns expected validation into control flow through `catch`, and makes "nothing was written" indistinguishable from a lock timeout |
+| return the message string | moves the product's voice into `CRC.Data`, and freezes it for every future caller |
+| return a status *code* string (`"SLOT_TAKEN"`) | an enum with no compiler check |
+
+The enum is also where the **unreachable** reasons are documented rather than deleted. `SlotWrongStaff` and
+`SlotWrongDate` cannot fire while step 1's read is narrowed by staff and date (§5.7) — and they could not
+fire before the migration either. Keeping them, with a comment saying why, costs one `switch` arm and
+preserves the answer for the day that narrowing changes.
+
+#### What was NOT moved, and why the boundary sits there
+
+`SaveAppointment` is still 70 lines of controller. Everything that can be decided **from the request
+alone** stayed: the trimming, the seven-field mandatory check, the `yyyy-MM-dd` `TryParseExact`, the
+three-status `HashSet`, the `Distinct()` on the slot ids, every message string, and both `AuditLog` calls.
+Everything that needs **rows read under a lock** moved: the slot read, the four slot checks, the contiguity
+check, the start/end derivation and the five procedure calls.
+
+That is the whole test for where a check belongs, and it is worth stating because the tempting boundary —
+"validation in the controller, database calls in the data layer" — is the one that reintroduces the race.
+
+**The start and end times are derived inside the transaction**, as the earliest requested slot's start and
+the latest one's end, which is why `AppointmentSaveInput` has no properties for them. A caller that computed
+them itself would be computing them from a read taken outside the lock.
+
+#### The audit trails, made honest by opposite means — again
+
+Exactly as in §6.6, and for the same reason:
+
+| Trail | Written by | Made honest by |
+|---|---|---|
+| `dbo.AuditTrails` | `spPatientAppointment_Insert` / `_Update`, **inside** the transaction | the rollback, which takes the audit rows with it |
+| `Logs/audit-*.log` | `AuditLog.AppointmentCreated` / `AppointmentUpdated` in the controller, **outside** | deferral — they are written only after the commit returns |
+
+Verified end to end during Prompt 6, driving the full lifecycle against the running site: a booking of two
+slots, an edit that dropped one hour and took another, four rejections, two status changes, and a delete.
+Every one of the six `dbo.AuditTrails` rows carried **`User_Id = 1`, the SUPERUSER's id — never `0`** — and
+each of the four rejections left `MAX(AuditTrail_Id)` unmoved, no appointment row changed and no slot
+changed. The `@User_ID` actor parameter is passed explicitly on all four writes, as §0.1 requires.
 
 ---
 

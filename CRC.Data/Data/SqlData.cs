@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using CRC.Data.Models;
@@ -1176,6 +1177,491 @@ namespace CRC.Data.Data
                     .Select(name => name!)
                     .ToList()
             };
+        }
+
+        // ----- Patient appointments -----
+        //
+        // Twelve procedures. FOUR declare `@User_ID INT = NULL` — the ACTOR — and each of those four says
+        // so on its own call below: spPatientAppointment_Insert, _Update, _Delete and _UpdateStatus. The
+        // six reads take none and must not be given one; neither slot procedure declares one either.
+        // Checked in the .sql files rather than inferred from the pattern.
+        //
+        // spStaffSlots_AssignAppointment and spStaffSlots_ClearAppointment appear ONLY inside
+        // SaveAppointmentAsync. They have no methods of their own, deliberately — see the Staff slots
+        // banner above and the comment on the transaction itself.
+
+        public async Task<List<PatientAppointmentItem>> GetAppointmentsByPatientAsync(string patientId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // No @User_ID of either kind: a plain read, no audit row. An unknown Patient_ID is not an
+            // error — the WHERE simply matches nothing and the list comes back empty.
+            var results = await connection.QueryAsync<PatientAppointmentItem>(
+                "dbo.spPatientAppointment_ListByPatient",
+                new { Patient_ID = patientId },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<AppointmentSearchItem>> SearchAppointmentsAsync(string? patientName,
+            string? staffName, string? status, DateTime? fromDate, DateTime? toDate, string? pjAppTypeName,
+            string? branchName)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // 🔴 NULL MEANS "DO NOT FILTER" AND A BLANK STRING DOES NOT. Every predicate is
+            // `@X IS NULL OR column = @X`, so sending "" for an unused filter would match only rows whose
+            // column is the empty string — i.e. nothing. Dapper sends a C# null as DBNull, which is what
+            // the procedure's IS NULL test wants, so the conversion the callers already do (blank → null)
+            // is the whole of it. No @User_ID: a read.
+            //
+            // The two dates are DATE in the procedure. Dapper sends a DateTime as DbType.DateTime and SQL
+            // Server narrows it on the way in; both callers pass a midnight .Date, so nothing is lost —
+            // the same note as GetStaffSlotsAsync.
+            var results = await connection.QueryAsync<AppointmentSearchItem>(
+                "dbo.spPatientAppointment_Search",
+                new
+                {
+                    PatientName = patientName,
+                    StaffName = staffName,
+                    Status = status,
+                    FromDate = fromDate,
+                    ToDate = toDate,
+                    PjAppTypeName = pjAppTypeName,
+                    BranchName = branchName
+                },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        // The four filter lookups are one column each, so the row type IS the column type. Every one of
+        // them already excludes blanks in its own WHERE, and the three that join exclude unresolvable ids
+        // by using an INNER JOIN — so nothing here needs filtering a second time. No @User_ID on any of
+        // the four; all are reads.
+        private async Task<List<string>> QueryAppointmentNamesAsync(string procedureName)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var results = await connection.QueryAsync<string>(
+                procedureName,
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public Task<List<string>> GetAppointmentBranchNamesAsync() =>
+            QueryAppointmentNamesAsync("dbo.spPatientAppointment_LookupBranches");
+
+        public Task<List<string>> GetAppointmentPatientNamesAsync() =>
+            QueryAppointmentNamesAsync("dbo.spPatientAppointment_LookupPatientNames");
+
+        public Task<List<string>> GetAppointmentStaffNamesAsync() =>
+            QueryAppointmentNamesAsync("dbo.spPatientAppointment_LookupStaffNames");
+
+        public Task<List<string>> GetAppointmentStatusesAsync() =>
+            QueryAppointmentNamesAsync("dbo.spPatientAppointment_LookupStatuses");
+
+        // 🔴 THE SECOND AND LAST TRANSACTIONAL UNIT OF WORK IN THIS FILE. Read IDatabaseData for WHY the
+        // slot read is inside the transaction and why the validation returns a reason rather than a
+        // message; this comment covers only the mechanism.
+        //
+        // The connection is opened and the transaction begun BY HAND, exactly as in
+        // SaveStaffWithDocumentsAsync: every call below passes `transaction:` and must, because a command
+        // on this connection without it throws.
+        public async Task<AppointmentSaveResult> SaveAppointmentAsync(AppointmentSaveInput input)
+        {
+            var appointmentId = input.PatientAppointment_ID;
+            var isInsert = appointmentId <= 0;
+
+            // Resolved ONCE, before the transaction opens, and reused for whichever audit-actor call runs.
+            // It reads the claim off IHttpContextAccessor, which cannot change mid-request.
+            var actorUserId = _databaseHelper.CurrentUserId;
+
+            var result = new AppointmentSaveResult { IsInsert = isInsert };
+
+            await using var connection = _databaseHelper.CreateConnection();
+            await connection.OpenAsync();
+            await using var transaction = connection.BeginTransaction();
+
+            try
+            {
+                // ── STEP 1: THE READ, AND IT IS THE CONCURRENCY CHECK ────────────────────────────────
+                //
+                // spStaffSlots_List, on THIS connection and inside THIS transaction, narrowed to the
+                // chosen clinician and the single day being booked. Everything below decides whether the
+                // requested hours are free, and that answer is only sound while this transaction holds
+                // its locks — which is why the read cannot be hoisted into the caller. Two administrators
+                // booking the same hour is exactly what this ordering prevents.
+                //
+                // Note what the narrowing already does: because @FromDate = @ToDate = the appointment's
+                // date and @Staff_ID is the chosen one, a slot belonging to another clinician or another
+                // day is simply NOT IN THIS RESULT — so the wrong-staff and wrong-date checks below can
+                // never fire, and the count check catches all three cases. That is measured behaviour,
+                // not a guess; see AppointmentSaveFailure.SlotNotFound.
+                var allSlots = await connection.QueryAsync<StaffSlotItem>(
+                    "dbo.spStaffSlots_List",
+                    new
+                    {
+                        Staff_ID = input.Staff_ID,
+                        FromDate = input.PatientAppointment_Date.Date,
+                        ToDate = input.PatientAppointment_Date.Date
+                    },
+                    transaction: transaction,
+                    commandType: CommandType.StoredProcedure);
+
+                var requestedIds = input.SlotIds;
+                var slots = allSlots
+                    .Where(slot => requestedIds.Contains(slot.StaffSlot_ID))
+                    .ToList();
+
+                // ── STEP 2: THE FOUR CHECKS ──────────────────────────────────────────────────────────
+                //
+                // Each one rolls back and reports a REASON. The controller owns the wording.
+
+                // (a) Every requested slot exists — i.e. the read gave back one row per requested id.
+                if (slots.Count != requestedIds.Count)
+                {
+                    await transaction.RollbackAsync();
+                    result.Reason = AppointmentSaveFailure.SlotNotFound;
+                    return result;
+                }
+
+                // (b) 🔴 EVERY SLOT BELONGS TO THE SELECTED STAFF MEMBER — AND THIS IS THE ONE CHECK WITH
+                //     NO CODE, BECAUSE THE READ ITSELF IS THE CHECK. spStaffSlots_List filters
+                //     `WHERE Staff_ID = @Staff_ID` and does not PROJECT Staff_ID, so there is no per-row
+                //     value here to compare and no need for one: another clinician's slot cannot be in
+                //     `allSlots` at all, and asking for one fails (a) above as a missing id.
+                //
+                //     The pre-migration code did write this check, and it could not fire either — it
+                //     built each SlotInfo with `StaffId = staffId` from the request and then compared
+                //     that field back to the same request value. Reproducing that tautology here would
+                //     look like a bug and read like one. AppointmentSaveFailure.SlotWrongStaff is kept,
+                //     and the controller still maps it to the exact sentence it always did, so the reason
+                //     is available the day spStaffSlots_List projects Staff_ID or drops its filter.
+                //     Measured on the running site: another staff member's slot id is refused, before and
+                //     after this migration, with the SlotNotFound message.
+
+                // (c) Every slot is on the selected date. Also narrowed by the read — @FromDate = @ToDate
+                //     = this date — so it cannot fire today either. Unlike (b) it is written out, because
+                //     spStaffSlots_List DOES project SlotDate, so there is a real per-row value to assert
+                //     and the assertion costs nothing.
+                if (slots.Any(slot => slot.SlotDate.Date != input.PatientAppointment_Date.Date))
+                {
+                    await transaction.RollbackAsync();
+                    result.Reason = AppointmentSaveFailure.SlotWrongDate;
+                    return result;
+                }
+
+                // (d) 🔴 NO SLOT IS ALREADY BOOKED BY A DIFFERENT APPOINTMENT — the check the transaction
+                //     exists for. A slot carrying THIS appointment's own id passes, and that permission
+                //     is what makes an edit work: re-saving over hours the appointment already holds must
+                //     not be refused as a double booking. On an insert appointmentId is 0, which no real
+                //     PatientAppointment_ID can be, so every taken slot fails.
+                if (slots.Any(slot => slot.PatientAppointment_ID.HasValue &&
+                                      slot.PatientAppointment_ID.Value != appointmentId))
+                {
+                    await transaction.RollbackAsync();
+                    result.Reason = AppointmentSaveFailure.SlotTaken;
+                    return result;
+                }
+
+                // The hours must be one unbroken run, which is why only the first start and the last end
+                // are stored on the row. The times arrive from spStaffSlots_List as VARCHAR(5) strings
+                // ("09:00"), so they are parsed here — at the call site that needs them, exactly where the
+                // pre-migration code parsed them, and with the same InvariantCulture.
+                var sorted = slots
+                    .Select(slot => new
+                    {
+                        Start = TimeSpan.Parse(slot.SlotStartTime, CultureInfo.InvariantCulture),
+                        End = TimeSpan.Parse(slot.SlotEndTime, CultureInfo.InvariantCulture)
+                    })
+                    .OrderBy(slot => slot.Start)
+                    .ToList();
+
+                for (var i = 0; i < sorted.Count - 1; i++)
+                {
+                    if (sorted[i + 1].Start != sorted[i].Start + TimeSpan.FromHours(1))
+                    {
+                        await transaction.RollbackAsync();
+                        result.Reason = AppointmentSaveFailure.SlotsNotConsecutive;
+                        return result;
+                    }
+                }
+
+                var startTime = sorted.First().Start;
+                var endTime = sorted.Last().End;
+
+                result.StartTime = startTime;
+                result.EndTime = endTime;
+
+                // The persisted set is SEEDED from the request and from the times just derived, then
+                // overwritten below by whatever spPatientAppointment_Update actually re-read. The seed is
+                // live, not decoration: the procedure fills its OUTPUT parameters inside
+                // `IF @RowsAffected > 0`, so an update against an id that matches nothing leaves all eight
+                // NULL and these values stand. See AppointmentSaveResult.
+                result.PersistedPatientId = input.Patient_ID;
+                result.PersistedStaffId = input.Staff_ID;
+                result.PersistedDate = input.PatientAppointment_Date;
+                result.PersistedStartTime = startTime;
+                result.PersistedEndTime = endTime;
+                result.PersistedTypeId = input.PjAppType_ID;
+                result.PersistedBranchId = input.Branch_ID;
+                result.PersistedStatus = input.PatientAppointment_Status;
+
+                if (isInsert)
+                {
+                    // ── STEP 3a: INSERT ──────────────────────────────────────────────────────────────
+                    //
+                    // 🔴 ANOTHER OUTPUT PARAMETER, AND ANOTHER PROCEDURE THAT LOOKS LIKE IT HAS A
+                    // TRAILING SELECT AND DOES NOT. spPatientAppointment_Insert hands its new identity
+                    // back through `@NewPatientAppointment_ID INT OUTPUT`, exactly as
+                    // spPatientBasic_Insert does with @NewPatient_ID — so QuerySingleAsync<int> would
+                    // throw "Sequence contains no elements" on every successful insert. DynamicParameters
+                    // it is, with the parameter's name and type written out where a reader can check them
+                    // against the .sql.
+                    //
+                    // 🔴 spPatientAppointment_Insert declares @User_ID INT = NULL for its dbo.AuditTrails
+                    // row: the ACTOR, not a target. DatabaseHelper used to append it automatically off
+                    // sys.parameters; Dapper cannot, so it is passed explicitly here. Drop it and the
+                    // appointment is still created — with AuditTrails.User_Id = 0, and nothing fails.
+                    var insertParameters = new DynamicParameters();
+
+                    insertParameters.AddDynamicParams(new
+                    {
+                        Patient_ID = input.Patient_ID,
+                        PatientAppointment_Date = input.PatientAppointment_Date.Date,
+                        Staff_ID = input.Staff_ID,
+                        PatientAppointment_StartTime = startTime,
+                        PatientAppointment_EndTime = endTime,
+                        PjAppType_ID = input.PjAppType_ID,
+                        Branch_ID = input.Branch_ID,
+                        PatientAppointment_Status = input.PatientAppointment_Status,
+                        User_ID = actorUserId
+                    });
+
+                    insertParameters.Add("NewPatientAppointment_ID", dbType: DbType.Int32,
+                        direction: ParameterDirection.Output);
+
+                    await connection.ExecuteAsync(
+                        "dbo.spPatientAppointment_Insert",
+                        insertParameters,
+                        transaction: transaction,
+                        commandType: CommandType.StoredProcedure);
+
+                    appointmentId = insertParameters.Get<int?>("NewPatientAppointment_ID") ?? 0;
+
+                    if (appointmentId <= 0)
+                    {
+                        // The procedure SETs this from SCOPE_IDENTITY() immediately after the INSERT and
+                        // has no path that skips doing so, so this cannot fire. It rolls back rather than
+                        // continuing because the alternative is assigning the slots to appointment 0.
+                        await transaction.RollbackAsync();
+                        result.Reason = AppointmentSaveFailure.InsertFailed;
+                        return result;
+                    }
+                }
+                else
+                {
+                    // ── STEP 3b: UPDATE ──────────────────────────────────────────────────────────────
+                    //
+                    // EIGHT MORE OUTPUT PARAMETERS. spPatientAppointment_Update re-reads the saved row
+                    // into @Out_* so a caller can audit database state rather than the request payload —
+                    // its own comment says so — and all eight declare `= NULL` defaults, which is why
+                    // they are optional and why they stay NULL when the UPDATE matched nothing.
+                    //
+                    // spPatientAppointment_Update declares @User_ID INT = NULL: the ACTOR for its
+                    // dbo.AuditTrails row, passed explicitly because Dapper has no equivalent of
+                    // DatabaseHelper's sys.parameters injection. The procedure audits only when a row
+                    // actually changed.
+                    var updateParameters = new DynamicParameters();
+
+                    updateParameters.AddDynamicParams(new
+                    {
+                        PatientAppointment_ID = appointmentId,
+                        PatientAppointment_Date = input.PatientAppointment_Date.Date,
+                        Staff_ID = input.Staff_ID,
+                        PatientAppointment_StartTime = startTime,
+                        PatientAppointment_EndTime = endTime,
+                        PjAppType_ID = input.PjAppType_ID,
+                        Branch_ID = input.Branch_ID,
+                        PatientAppointment_Status = input.PatientAppointment_Status,
+                        User_ID = actorUserId
+                    });
+
+                    AddAppointmentOutputParameters(updateParameters);
+
+                    await connection.ExecuteAsync(
+                        "dbo.spPatientAppointment_Update",
+                        updateParameters,
+                        transaction: transaction,
+                        commandType: CommandType.StoredProcedure);
+
+                    // Each one overwrites its seed only when the procedure returned something, so a
+                    // no-op update keeps the request-derived values — today's behaviour exactly.
+                    result.PersistedPatientId =
+                        updateParameters.Get<string?>("Out_Patient_ID") ?? result.PersistedPatientId;
+                    result.PersistedStaffId =
+                        updateParameters.Get<string?>("Out_Staff_ID") ?? result.PersistedStaffId;
+                    result.PersistedDate =
+                        updateParameters.Get<DateTime?>("Out_Date") ?? result.PersistedDate;
+                    result.PersistedStartTime =
+                        updateParameters.Get<TimeSpan?>("Out_StartTime") ?? result.PersistedStartTime;
+                    result.PersistedEndTime =
+                        updateParameters.Get<TimeSpan?>("Out_EndTime") ?? result.PersistedEndTime;
+                    result.PersistedTypeId =
+                        updateParameters.Get<string?>("Out_PjAppType_ID") ?? result.PersistedTypeId;
+                    result.PersistedBranchId =
+                        updateParameters.Get<string?>("Out_Branch_ID") ?? result.PersistedBranchId;
+                    result.PersistedStatus =
+                        updateParameters.Get<string?>("Out_Status") ?? result.PersistedStatus;
+
+                    // ── STEP 4: RELEASE THE HOURS THIS APPOINTMENT ALREADY HELD ─────────────────────
+                    //
+                    // spStaffSlots_ClearAppointment, keyed on the APPOINTMENT id rather than on a slot
+                    // list, so it releases every hour the appointment held whether or not the caller knew
+                    // about it. It runs BEFORE the assign below and the order is the point: an hour kept
+                    // across the edit would otherwise be cleared after being re-assigned and end up free
+                    // while the appointment believed it held it.
+                    //
+                    // It declares no @User_ID and writes no dbo.AuditTrails row — verified in the .sql.
+                    // The appointment's own UPDATE audit row is the record that this happened.
+                    //
+                    // Insert path skips it: a brand-new appointment holds nothing to release.
+                    await connection.ExecuteAsync(
+                        "dbo.spStaffSlots_ClearAppointment",
+                        new { ApptId = appointmentId },
+                        transaction: transaction,
+                        commandType: CommandType.StoredProcedure);
+                }
+
+                // ── STEP 5: CLAIM THE HOURS ─────────────────────────────────────────────────────────
+                //
+                // spStaffSlots_AssignAppointment stamps the appointment id onto every named slot. It
+                // takes the ids as ONE COMMA-SEPARATED VARCHAR(MAX) and splits them with STRING_SPLIT +
+                // TRY_CAST, so the joined string is the parameter's real shape rather than a shortcut —
+                // and it THROWs 50001 on a blank one, which the controller's "at least one slot" check
+                // has already made unreachable.
+                //
+                // 🔴 IT SILENTLY IGNORES AN ID THAT MATCHES NO ROW: the UPDATE is an INNER JOIN against
+                // the split list, so a missing slot updates nothing and reports nothing. That is only
+                // safe because check (a) above already proved every requested id was in the
+                // in-transaction read. Declares no @User_ID and writes no audit row.
+                await connection.ExecuteAsync(
+                    "dbo.spStaffSlots_AssignAppointment",
+                    new
+                    {
+                        ApptId = appointmentId,
+                        StaffSlotIds = string.Join(",", requestedIds)
+                    },
+                    transaction: transaction,
+                    commandType: CommandType.StoredProcedure);
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+
+            result.PatientAppointment_ID = appointmentId;
+
+            return result;
+        }
+
+        public async Task DeleteAppointmentAsync(int appointmentId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // spPatientAppointment_Delete declares @User_ID INT = NULL: the ACTOR for its dbo.AuditTrails
+            // row, passed explicitly because Dapper has no equivalent of DatabaseHelper's sys.parameters
+            // injection. The audit row is written only when a row actually went.
+            //
+            // ExecuteAsync and no return value: the procedure emits no result set and reports no row
+            // count, so a delete against an unknown id succeeds silently.
+            //
+            // 🔴 IT FREES THE APPOINTMENT'S SLOTS ITSELF, before the DELETE, because
+            // FK_StaffSlots_PatientAppointment would otherwise refuse it. There is no second call to make
+            // here and none to add: adding one would be a way to release slots outside this procedure.
+            await connection.ExecuteAsync(
+                "dbo.spPatientAppointment_Delete",
+                new { PatientAppointment_ID = appointmentId, User_ID = _databaseHelper.CurrentUserId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task<AppointmentStatusResult> UpdateAppointmentStatusAsync(int appointmentId, string status)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // The third OUTPUT-parameter procedure in this area: spPatientAppointment_UpdateStatus
+            // re-reads the saved row into the same eight @Out_* parameters spPatientAppointment_Update
+            // uses, so a caller audits database state rather than its own request payload.
+            //
+            // spPatientAppointment_UpdateStatus declares @User_ID INT = NULL: the ACTOR for its
+            // dbo.AuditTrails row, passed explicitly because Dapper has no equivalent of DatabaseHelper's
+            // sys.parameters injection.
+            //
+            // 🔴 UNLIKE THE OTHER THREE WRITES IN THIS AREA IT IS NOT SILENT ON A BAD ID — it RAISERRORs
+            // 'Appointment not found.' and RETURNs before it reaches the SELECT, so the OUTPUT parameters
+            // stay NULL and this method never gets to read them: the SqlException reaches the caller
+            // first. That is why the properties below can be non-nullable without a defensive seed, and
+            // why the `?? …` fallbacks that SaveAppointmentAsync needs are absent here.
+            var parameters = new DynamicParameters();
+
+            parameters.AddDynamicParams(new
+            {
+                PatientAppointment_ID = appointmentId,
+                PatientAppointment_Status = status,
+                User_ID = _databaseHelper.CurrentUserId
+            });
+
+            AddAppointmentOutputParameters(parameters);
+
+            await connection.ExecuteAsync(
+                "dbo.spPatientAppointment_UpdateStatus",
+                parameters,
+                commandType: CommandType.StoredProcedure);
+
+            return new AppointmentStatusResult
+            {
+                Patient_ID = parameters.Get<string?>("Out_Patient_ID") ?? string.Empty,
+                Staff_ID = parameters.Get<string?>("Out_Staff_ID") ?? string.Empty,
+                PatientAppointment_Date = parameters.Get<DateTime?>("Out_Date") ?? default,
+                StartTime = parameters.Get<TimeSpan?>("Out_StartTime") ?? default,
+                EndTime = parameters.Get<TimeSpan?>("Out_EndTime") ?? default,
+                PjAppType_ID = parameters.Get<string?>("Out_PjAppType_ID") ?? string.Empty,
+                Branch_ID = parameters.Get<string?>("Out_Branch_ID") ?? string.Empty,
+                PatientAppointment_Status = parameters.Get<string?>("Out_Status") ?? string.Empty
+            };
+        }
+
+        // spPatientAppointment_Update and spPatientAppointment_UpdateStatus declare THE SAME eight @Out_*
+        // parameters, in the same types and sizes, for the same reason — so they are declared once, here,
+        // and cannot drift between the two call sites. Same arrangement as InsertStaffAsync above.
+        //
+        // The types are the procedures': VARCHAR(100) for the four ids and the status, DATE for the date,
+        // TIME(0) for the two times. AnsiString rather than String on the five text ones because they are
+        // VARCHAR, not NVARCHAR — DbType.String would send NVARCHAR for SQL Server to convert back.
+        private static void AddAppointmentOutputParameters(DynamicParameters parameters)
+        {
+            parameters.Add("Out_Patient_ID", dbType: DbType.AnsiString, size: 100,
+                direction: ParameterDirection.Output);
+            parameters.Add("Out_Staff_ID", dbType: DbType.AnsiString, size: 100,
+                direction: ParameterDirection.Output);
+            parameters.Add("Out_Date", dbType: DbType.Date,
+                direction: ParameterDirection.Output);
+            parameters.Add("Out_StartTime", dbType: DbType.Time,
+                direction: ParameterDirection.Output);
+            parameters.Add("Out_EndTime", dbType: DbType.Time,
+                direction: ParameterDirection.Output);
+            parameters.Add("Out_PjAppType_ID", dbType: DbType.AnsiString, size: 100,
+                direction: ParameterDirection.Output);
+            parameters.Add("Out_Branch_ID", dbType: DbType.AnsiString, size: 100,
+                direction: ParameterDirection.Output);
+            parameters.Add("Out_Status", dbType: DbType.AnsiString, size: 100,
+                direction: ParameterDirection.Output);
         }
     }
 }

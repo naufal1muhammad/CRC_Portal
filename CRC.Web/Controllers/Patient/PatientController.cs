@@ -4,8 +4,10 @@ using CRC.Web.Infrastructure;
 using CRC.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+// Microsoft.Data.SqlClient survives for SqlException alone — SaveAppointment and DeleteAppointment still
+// catch it separately from Exception, to log the database failure distinctly. `using System.Data;` is gone
+// with the last DataTable, along with DatabaseHelper itself (Prompt 6).
 using Microsoft.Data.SqlClient;
-using System.Data;
 using System.Globalization;
 
 namespace CRC.Web.Controllers.Patient
@@ -13,29 +15,20 @@ namespace CRC.Web.Controllers.Patient
     [Authorize(Policy = "AdminOrSuper")]
     public class PatientController : Controller
     {
-        // 🔴 THIS CONTROLLER HOLDS BOTH DATA SURFACES ON PURPOSE, AND ONLY UNTIL PROMPT 6.
-        //
         // PatientController is two screens wearing one class name: the PATIENT half (the Active and
         // Discharged lists, and the Basic Details + Discharge tabs of /Patient/Edit) and the APPOINTMENT
-        // half (the Appointment tab). Prompt 5 migrated the patient half to the Dapper layer; the
-        // appointment half — GetAppointmentLookups, GetAppointmentStaffList, GetAppointmentSlots,
-        // GetAppointments, SaveAppointment, DeleteAppointment — is Prompt 6's work and still builds
-        // SqlParameter[] arrays against DatabaseHelper, including the hand-rolled SqlTransaction in
-        // SaveAppointment that becomes SaveAppointmentAsync, the second of the data layer's two
-        // transactional units of work (CoreFlow.md §6.6).
-        //
-        // So `_data` is the destination and `_db` is what is left of the journey. PROMPT 6 REMOVES `_db`,
-        // along with `using System.Data;` and `using Microsoft.Data.SqlClient;`, once nothing below needs
-        // them. Do not add a new call to `_db` in the patient half to keep the two sides looking alike.
+        // half (the Appointment tab). Prompt 5 migrated the first, Prompt 6 the second, and BOTH NOW GO
+        // THROUGH IDatabaseData — there is no DatabaseHelper here any more, no SqlParameter and no
+        // DataTable. The hand-rolled SqlTransaction that used to live in SaveAppointment is now
+        // SqlData.SaveAppointmentAsync, the second of the data layer's two transactional units of work
+        // (CoreFlow.md §6.6).
         private readonly IDatabaseData _data;
-        private readonly DatabaseHelper _db;
         private readonly IDocumentStorage _documentStorage;
         private readonly ILogger<PatientController> _logger;
 
-        public PatientController(IDatabaseData data, DatabaseHelper db, IDocumentStorage documentStorage, ILogger<PatientController> logger)
+        public PatientController(IDatabaseData data, IDocumentStorage documentStorage, ILogger<PatientController> logger)
         {
             _data = data;
-            _db = db;
             _documentStorage = documentStorage;
             _logger = logger;
         }
@@ -744,16 +737,6 @@ namespace CRC.Web.Controllers.Patient
         //APPOINTMENTS
         //------------------------------------------------------
 
-        private class SlotInfo
-        {
-            public int StaffSlotId { get; set; }
-            public string StaffId { get; set; } = string.Empty;
-            public DateTime SlotDate { get; set; }
-            public TimeSpan SlotStartTime { get; set; }
-            public TimeSpan SlotEndTime { get; set; }
-            public int? PatientAppointmentId { get; set; }
-        }
-
         public class SaveAppointmentRequest
         {
             public int? AppointmentId { get; set; }  // insert or update
@@ -783,28 +766,40 @@ namespace CRC.Web.Controllers.Patient
         {
             try
             {
-                var dtTypes = await _db.ExecuteDataTableAsync("spLU_PJ_AppType_List", Array.Empty<SqlParameter>());
-                var dtBranches = await _db.ExecuteDataTableAsync("spBranch_ListActive", Array.Empty<SqlParameter>());
+                // Both lookups already have methods — GetJourneyAppointmentTypesAsync from Prompt 1 and
+                // GetActiveBranchesAsync from Prompt 1's Branch work — so nothing new is wrapped here.
+                // The type list keeps the procedure's ID ordering (clinical sequence, not alphabetical),
+                // which is why it is not re-sorted; /Appointment/GetLookups DOES sort its copy by name,
+                // and the two endpoints have always differed in that.
+                var appointmentTypes = await _data.GetJourneyAppointmentTypesAsync();
+                var activeBranches = await _data.GetActiveBranchesAsync();
 
-                var types = dtTypes.Rows.Cast<DataRow>()
-                    .Select(r => new
+                var types = appointmentTypes
+                    .Select(t => new
                     {
-                        id = r["PjAppType_ID"]?.ToString() ?? "",
-                        name = r["PjAppType_Name"]?.ToString() ?? ""
+                        id = t.Id,
+                        name = t.Name
                     })
                     .Where(x => !string.IsNullOrWhiteSpace(x.id))
                     .ToList();
 
-                var branches = dtBranches.Rows.Cast<DataRow>()
-                    .Select(r => new
+                var branches = activeBranches
+                    .Select(b => new
                     {
-                        branchId = r["Branch_ID"]?.ToString() ?? "",
-                        branchName = r["Branch_Name"]?.ToString() ?? "",
-                        branchState = r["Branch_State"]?.ToString() ?? ""
+                        branchId = b.Branch_ID,
+                        branchName = b.Branch_Name,
+                        branchState = b.Branch_State
                     })
                     .Where(x => !string.IsNullOrWhiteSpace(x.branchId))
                     .ToList();
 
+                // 🔴 THE STATUS LIST IS HARD-CODED HERE AND IS NOT A DATABASE READ.
+                // PatientAppointment_Status is a VARCHAR(100) with no check constraint and no lookup
+                // table, so these three strings are the whole definition of a valid status — the same
+                // three the HashSet in SaveAppointment validates against. Note that
+                // /Appointment/GetLookups builds ITS status filter from
+                // spPatientAppointment_LookupStatuses instead, because a filter wants the values that
+                // are actually stored and a form wants the values that are allowed.
                 var statuses = new[]
                 {
                     "Scheduled",
@@ -832,13 +827,15 @@ namespace CRC.Web.Controllers.Patient
         {
             try
             {
-                var dt = await _db.ExecuteDataTableAsync("spStaff_List", Array.Empty<SqlParameter>());
+                // spStaff_List already has a method (Prompt 3). It returns seven columns and this
+                // dropdown projects two of them — the id and the name — exactly as it always has.
+                var staff = await _data.GetAllStaffAsync();
 
-                var list = dt.Rows.Cast<DataRow>()
-                    .Select(r => new
+                var list = staff
+                    .Select(s => new
                     {
-                        staffId = r["Staff_ID"]?.ToString(),
-                        staffName = r["Staff_Name"]?.ToString()
+                        staffId = s.Staff_ID,
+                        staffName = s.Staff_Name
                     })
                     .ToList();
 
@@ -864,23 +861,31 @@ namespace CRC.Web.Controllers.Patient
 
             try
             {
-                var parameters = new[]
-                {
-                    new SqlParameter("@Staff_ID", staffId),
-                    new SqlParameter("@FromDate", SqlDbType.Date) { Value = slotDate.Date },
-                    new SqlParameter("@ToDate",   SqlDbType.Date) { Value = slotDate.Date }
-                };
+                // spStaffSlots_List already has a method (Prompt 4), and this is its second caller. THIS
+                // ONE IS THE DISPLAY READ — it paints the slot picker — and it is deliberately NOT the
+                // availability check. The check is the same procedure run again inside
+                // SaveAppointmentAsync's transaction, because what this read says was free may not still
+                // be free by the time the user presses Save. See CoreFlow.md §6.6.
+                var slots = await _data.GetStaffSlotsAsync(staffId, slotDate.Date, slotDate.Date);
 
-                var dt = await _db.ExecuteDataTableAsync("spStaffSlots_List", parameters);
-
-                var list = dt.Rows.Cast<DataRow>()
-                    .Select(r => new
+                var list = slots
+                    .Select(s => new
                     {
-                        staffSlotId = r["StaffSlot_ID"] != DBNull.Value ? Convert.ToInt32(r["StaffSlot_ID"]) : 0,
+                        staffSlotId = s.StaffSlot_ID,
+
+                        // 🔴 THE REQUEST'S DATE, NOT THE ROW'S. The procedure is bounded by
+                        // @FromDate = @ToDate = slotDate, so every row is on that day and the two are
+                        // always equal — but this is what the endpoint has always serialized, and
+                        // formatting s.SlotDate instead would be a change with no visible effect today
+                        // and an invisible one the day that bound moves.
                         slotDate = slotDate.ToString("yyyy-MM-dd"),
-                        slotStartTime = r["SlotStartTime"]?.ToString() ?? "",
-                        slotEndTime = r["SlotEndTime"]?.ToString() ?? "",
-                        patientAppointmentId = r["PatientAppointment_ID"] == DBNull.Value ? (int?)null : Convert.ToInt32(r["PatientAppointment_ID"])
+
+                        // Already "09:00" strings from CONVERT(…, 108); serialized verbatim.
+                        slotStartTime = s.SlotStartTime,
+                        slotEndTime = s.SlotEndTime,
+
+                        // Null is what "this hour is open" means, and the slot picker reads it that way.
+                        patientAppointmentId = s.PatientAppointment_ID
                     })
                     .Where(x => x.staffSlotId > 0)
                     .ToList();
@@ -904,42 +909,45 @@ namespace CRC.Web.Controllers.Patient
 
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spPatientAppointment_ListByPatient",
-                    new[] { new SqlParameter("@Patient_ID", patientId) });
+                var appointments = await _data.GetAppointmentsByPatientAsync(patientId);
 
-                var list = dt.Rows.Cast<DataRow>()
-                    .Select(r =>
+                var list = appointments
+                    .Select(a =>
                     {
-                        var dateVal = r["PatientAppointment_Date"] == DBNull.Value
-                            ? (DateTime?)null
-                            : Convert.ToDateTime(r["PatientAppointment_Date"]).Date;
-
-                        var fromStr = r["PatientAppointment_StartTime"]?.ToString() ?? "";
-                        var toStr = r["PatientAppointment_EndTime"]?.ToString() ?? "";
+                        var dateVal = a.PatientAppointment_Date?.Date;
 
                         return new
                         {
-                            appointmentId = r["PatientAppointment_ID"] != DBNull.Value
-                                ? Convert.ToInt32(r["PatientAppointment_ID"])
-                                : 0,
+                            appointmentId = a.PatientAppointment_ID,
 
+                            // 🔴 THE SAME DATE, TWICE, IN TWO FORMATS, AND BOTH ARE LOAD-BEARING.
+                            // `appointmentDate` is dd/MM/yyyy for the table cell and
+                            // `appointmentDateRaw` is yyyy-MM-dd for the <input type="date"> the edit
+                            // dialog opens with. The first is culture-formatted — ToString with no
+                            // CultureInfo, so the separator is the server's — and the second is not.
+                            // "" when the column is null, never null, because both are assigned straight
+                            // into the page.
                             appointmentDate = dateVal.HasValue ? dateVal.Value.ToString("dd/MM/yyyy") : "",
                             appointmentDateRaw = dateVal.HasValue ? dateVal.Value.ToString("yyyy-MM-dd") : "",
 
-                            from = fromStr,
-                            to = toStr,
+                            // Already "08:00" strings from CONVERT(…, 108); serialized verbatim.
+                            from = a.PatientAppointment_StartTime,
+                            to = a.PatientAppointment_EndTime,
 
-                            typeId = r["PjAppType_ID"]?.ToString() ?? "",
-                            typeName = r["PjAppType_Name"]?.ToString() ?? "",
+                            typeId = a.PjAppType_ID,
 
-                            branchId = r["Branch_ID"]?.ToString() ?? "",
-                            branchName = r["Branch_Name"]?.ToString() ?? "",
+                            // The three joined names are LEFT JOINs onto tables nothing constrains the
+                            // ids to, so each is genuinely nullable and each is coerced to "" — a null
+                            // renders as the word "null" in the table.
+                            typeName = a.PjAppType_Name ?? "",
 
-                            status = r["PatientAppointment_Status"]?.ToString() ?? "",
+                            branchId = a.Branch_ID,
+                            branchName = a.Branch_Name ?? "",
 
-                            staffId = r["Staff_ID"]?.ToString() ?? "",
-                            staffName = r["Staff_Name"]?.ToString() ?? ""
+                            status = a.PatientAppointment_Status,
+
+                            staffId = a.Staff_ID,
+                            staffName = a.Staff_Name ?? ""
                         };
                     })
                     .Where(x => x.appointmentId > 0)
@@ -1001,223 +1009,80 @@ namespace CRC.Web.Controllers.Patient
 
             try
             {
-                using var conn = _db.CreateConnection();
-                await conn.OpenAsync();
+                // 🔴 THE TRANSACTION LIVES IN SqlData — one named unit of work owning the connection, the
+                // SqlTransaction and the whole procedure sequence: spStaffSlots_List (the availability
+                // read), then spPatientAppointment_Insert or _Update, then spStaffSlots_ClearAppointment,
+                // then spStaffSlots_AssignAppointment. This controller no longer opens a connection or
+                // names a procedure (CoreFlow.md §6.6).
+                //
+                // THE SLOT READ AND THE FOUR SLOT CHECKS WENT WITH IT, and that is not tidying — it is
+                // the only correct place for them. The read decides whether the requested hours are still
+                // free, and that answer is worth something only while the transaction that asked holds
+                // its locks. Reading the slots here and then calling a save method would let two
+                // administrators both see an hour as free and both take it.
+                //
+                // WHAT STAYED HERE IS EVERY SENTENCE THE USER READS. The data layer returns a typed
+                // Reason saying WHAT failed; the switch below turns each one into the exact string this
+                // endpoint has always shown. See AppointmentSaveFailure — that split is the convention,
+                // and it is written up there in full.
+                var result = await _data.SaveAppointmentAsync(new AppointmentSaveInput
+                {
+                    PatientAppointment_ID = appointmentId,
+                    Patient_ID = patientId,
+                    PatientAppointment_Date = apptDate,
+                    Staff_ID = staffId,
+                    SlotIds = slotIds,
+                    PjAppType_ID = pjAppTypeId,
+                    Branch_ID = branchId,
+                    PatientAppointment_Status = status
+                });
 
-                using var tx = conn.BeginTransaction();
-
-                var slots = new List<SlotInfo>();
-
-                // Load staff slots through existing StaffSlots sproc and then keep selected IDs
-                using (var cmdSlots = await _db.CreateStoredProcedureCommandAsync(
-                    conn,
-                    tx,
-                    "spStaffSlots_List",
-                    new[]
+                if (result.Reason != AppointmentSaveFailure.Ok)
+                {
+                    // Every one of these means the transaction ROLLED BACK and nothing was written.
+                    // The strings are reproduced character for character from the pre-Dapper code.
+                    var message = result.Reason switch
                     {
-                        new SqlParameter("@Staff_ID", staffId),
-                        new SqlParameter("@FromDate", SqlDbType.Date) { Value = apptDate.Date },
-                        new SqlParameter("@ToDate", SqlDbType.Date) { Value = apptDate.Date }
-                    }))
-                {
-
-                    using var reader = await cmdSlots.ExecuteReaderAsync();
-                    while (await reader.ReadAsync())
-                    {
-                        var staffSlotId = reader.GetInt32(0);
-                        if (!slotIds.Contains(staffSlotId))
-                        {
-                            continue;
-                        }
-
-                        slots.Add(new SlotInfo
-                        {
-                            StaffSlotId = staffSlotId,
-                            StaffId = staffId,
-                            SlotDate = reader.GetDateTime(1),
-                            SlotStartTime = TimeSpan.Parse(reader.GetString(2), CultureInfo.InvariantCulture),
-                            SlotEndTime = TimeSpan.Parse(reader.GetString(3), CultureInfo.InvariantCulture),
-                            PatientAppointmentId = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4)
-                        });
-                    }
-                }
-
-                if (slots.Count != slotIds.Count)
-                {
-                    tx.Rollback();
-                    return Ok(new { success = false, message = "One or more selected slots are invalid. Please reload the slots and try again." });
-                }
-
-                // Validate: all slots belong to selected staff + date
-                if (slots.Any(s => !string.Equals(s.StaffId, staffId, StringComparison.OrdinalIgnoreCase)))
-                {
-                    tx.Rollback();
-                    return Ok(new { success = false, message = "Selected slots do not match the selected staff." });
-                }
-
-                if (slots.Any(s => s.SlotDate.Date != apptDate.Date))
-                {
-                    tx.Rollback();
-                    return Ok(new { success = false, message = "Selected slots do not match the selected appointment date." });
-                }
-
-                // Validate availability (allow booked-by-this-appointment during edit)
-                if (slots.Any(s => s.PatientAppointmentId.HasValue && s.PatientAppointmentId.Value != appointmentId))
-                {
-                    tx.Rollback();
-                    return Ok(new { success = false, message = "One or more selected slots are no longer available. Please reload the slots and try again." });
-                }
-
-                // Validate consecutive 1-hour slots
-                var sorted = slots.OrderBy(s => s.SlotStartTime).ToList();
-                for (int i = 0; i < sorted.Count - 1; i++)
-                {
-                    var expected = sorted[i].SlotStartTime + TimeSpan.FromHours(1);
-                    if (sorted[i + 1].SlotStartTime != expected)
-                    {
-                        tx.Rollback();
-                        return Ok(new { success = false, message = "Please select consecutive slots (e.g. 08:00-09:00 then 09:00-10:00)." });
-                    }
-                }
-
-                var startTime = sorted.First().SlotStartTime;
-                var endTime = sorted.Last().SlotEndTime;
-
-                int finalAppointmentId = appointmentId;
-                bool isInsert = appointmentId <= 0;
-
-                string persistedPatientId = patientId;
-                string persistedStaffId = staffId;
-                DateTime persistedDate = apptDate;
-                TimeSpan persistedStart = startTime;
-                TimeSpan persistedEnd = endTime;
-                string persistedTypeId = pjAppTypeId;
-                string persistedBranchId = branchId;
-                string persistedStatus = status;
-
-                if (isInsert)
-                {
-                    // INSERT
-                    using var cmd = await _db.CreateStoredProcedureCommandAsync(
-                        conn,
-                        tx,
-                        "spPatientAppointment_Insert",
-                        new[]
-                        {
-                            new SqlParameter("@Patient_ID", patientId),
-                            new SqlParameter("@PatientAppointment_Date", SqlDbType.Date) { Value = apptDate.Date },
-                            new SqlParameter("@Staff_ID", staffId),
-                            new SqlParameter("@PatientAppointment_StartTime", SqlDbType.Time) { Value = startTime },
-                            new SqlParameter("@PatientAppointment_EndTime", SqlDbType.Time) { Value = endTime },
-                            new SqlParameter("@PjAppType_ID", pjAppTypeId),
-                            new SqlParameter("@Branch_ID", branchId),
-                            new SqlParameter("@PatientAppointment_Status", status)
-                        });
-
-                    var outId = new SqlParameter("@NewPatientAppointment_ID", SqlDbType.Int)
-                    {
-                        Direction = ParameterDirection.Output
+                        AppointmentSaveFailure.SlotNotFound =>
+                            "One or more selected slots are invalid. Please reload the slots and try again.",
+                        AppointmentSaveFailure.SlotWrongStaff =>
+                            "Selected slots do not match the selected staff.",
+                        AppointmentSaveFailure.SlotWrongDate =>
+                            "Selected slots do not match the selected appointment date.",
+                        AppointmentSaveFailure.SlotTaken =>
+                            "One or more selected slots are no longer available. Please reload the slots and try again.",
+                        AppointmentSaveFailure.SlotsNotConsecutive =>
+                            "Please select consecutive slots (e.g. 08:00-09:00 then 09:00-10:00).",
+                        _ => "Failed to create appointment."
                     };
-                    cmd.Parameters.Add(outId);
 
-                    await cmd.ExecuteNonQueryAsync();
+                    return Ok(new { success = false, message });
+                }
 
-                    finalAppointmentId = outId.Value == DBNull.Value ? 0 : Convert.ToInt32(outId.Value);
-
-                    if (finalAppointmentId <= 0)
-                    {
-                        tx.Rollback();
-                        return Ok(new { success = false, message = "Failed to create appointment." });
-                    }
+                // 🔴 THE AUDIT LINES ARE WRITTEN ONLY AFTER THE COMMIT HAS RETURNED, never inside the
+                // flow that might roll back — the same deferral SaveStaffWithDocuments uses, and for the
+                // same reason: audit-*.log is kept for 365 days and a line describing a write that a
+                // rollback then erased is an actively misleading record. The dbo.AuditTrails rows are the
+                // other way round — the procedures write those inside the transaction, so a rollback
+                // takes them with it. Both trails end up honest, by opposite means.
+                if (result.IsInsert)
+                {
+                    // The insert audits the REQUEST values (the row is new, so there is nothing else it
+                    // could describe) plus the two times the data layer derived from the slots.
+                    AuditLog.AppointmentCreated(HttpContext, result.PatientAppointment_ID, patientId, staffId,
+                        apptDate, result.StartTime, result.EndTime, pjAppTypeId, branchId, status);
                 }
                 else
                 {
-                    // UPDATE appointment
-                    using var cmd = await _db.CreateStoredProcedureCommandAsync(
-                        conn,
-                        tx,
-                        "spPatientAppointment_Update",
-                        new[]
-                        {
-                            new SqlParameter("@PatientAppointment_ID", appointmentId),
-                            new SqlParameter("@PatientAppointment_Date", SqlDbType.Date) { Value = apptDate.Date },
-                            new SqlParameter("@Staff_ID", staffId),
-                            new SqlParameter("@PatientAppointment_StartTime", SqlDbType.Time) { Value = startTime },
-                            new SqlParameter("@PatientAppointment_EndTime", SqlDbType.Time) { Value = endTime },
-                            new SqlParameter("@PjAppType_ID", pjAppTypeId),
-                            new SqlParameter("@Branch_ID", branchId),
-                            new SqlParameter("@PatientAppointment_Status", status)
-                        });
-
-                    var outPatientId = new SqlParameter("@Out_Patient_ID", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
-                    var outStaffId = new SqlParameter("@Out_Staff_ID", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
-                    var outDate = new SqlParameter("@Out_Date", SqlDbType.Date) { Direction = ParameterDirection.Output };
-                    var outStartTime = new SqlParameter("@Out_StartTime", SqlDbType.Time) { Direction = ParameterDirection.Output };
-                    var outEndTime = new SqlParameter("@Out_EndTime", SqlDbType.Time) { Direction = ParameterDirection.Output };
-                    var outTypeId = new SqlParameter("@Out_PjAppType_ID", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
-                    var outBranchId = new SqlParameter("@Out_Branch_ID", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
-                    var outStatus = new SqlParameter("@Out_Status", SqlDbType.VarChar, 100) { Direction = ParameterDirection.Output };
-                    cmd.Parameters.Add(outPatientId);
-                    cmd.Parameters.Add(outStaffId);
-                    cmd.Parameters.Add(outDate);
-                    cmd.Parameters.Add(outStartTime);
-                    cmd.Parameters.Add(outEndTime);
-                    cmd.Parameters.Add(outTypeId);
-                    cmd.Parameters.Add(outBranchId);
-                    cmd.Parameters.Add(outStatus);
-
-                    await cmd.ExecuteNonQueryAsync();
-
-                    if (outPatientId.Value is string pid) persistedPatientId = pid;
-                    if (outStaffId.Value is string sid) persistedStaffId = sid;
-                    if (outDate.Value is DateTime d) persistedDate = d;
-                    if (outStartTime.Value is TimeSpan st) persistedStart = st;
-                    if (outEndTime.Value is TimeSpan et) persistedEnd = et;
-                    if (outTypeId.Value is string tid) persistedTypeId = tid;
-                    if (outBranchId.Value is string bid) persistedBranchId = bid;
-                    if (outStatus.Value is string ps) persistedStatus = ps;
-
-                    // Release previous slots (if any)
-                    using (var cmdClear = await _db.CreateStoredProcedureCommandAsync(
-                        conn,
-                        tx,
-                        "spStaffSlots_ClearAppointment",
-                        new[]
-                        {
-                            new SqlParameter("@ApptId", SqlDbType.Int) { Value = appointmentId }
-                        }))
-                    {
-                        await cmdClear.ExecuteNonQueryAsync();
-                    }
+                    // The update audits the values spPatientAppointment_Update RE-READ FROM THE ROW —
+                    // database state, not request payload, which is what its own comment asks for.
+                    AuditLog.AppointmentUpdated(HttpContext, result.PatientAppointment_ID,
+                        result.PersistedPatientId, result.PersistedStaffId, result.PersistedDate,
+                        result.PersistedStartTime, result.PersistedEndTime, result.PersistedTypeId,
+                        result.PersistedBranchId, result.PersistedStatus);
                 }
 
-                // Assign selected slots to the appointment
-                using (var cmdAssign = await _db.CreateStoredProcedureCommandAsync(
-                    conn,
-                    tx,
-                    "spStaffSlots_AssignAppointment",
-                    new[]
-                    {
-                        new SqlParameter("@ApptId", SqlDbType.Int) { Value = finalAppointmentId },
-                        new SqlParameter("@StaffSlotIds", SqlDbType.VarChar, -1) { Value = string.Join(",", slotIds) }
-                    }))
-                {
-                    await cmdAssign.ExecuteNonQueryAsync();
-                }
-                tx.Commit();
-
-                if (isInsert)
-                {
-                    AuditLog.AppointmentCreated(HttpContext, finalAppointmentId, patientId, staffId,
-                        apptDate, startTime, endTime, pjAppTypeId, branchId, status);
-                }
-                else
-                {
-                    AuditLog.AppointmentUpdated(HttpContext, finalAppointmentId, persistedPatientId, persistedStaffId,
-                        persistedDate, persistedStart, persistedEnd, persistedTypeId, persistedBranchId, persistedStatus);
-                }
-
-                return Ok(new { success = true, appointmentId = finalAppointmentId });
+                return Ok(new { success = true, appointmentId = result.PatientAppointment_ID });
             }
             catch (SqlException ex)
             {
@@ -1240,12 +1105,16 @@ namespace CRC.Web.Controllers.Patient
 
             try
             {
-                var parameters = new[]
-                {
-                    new SqlParameter("@PatientAppointment_ID", model.AppointmentId)
-                };
-
-                await _db.ExecuteNonQueryAsync("spPatientAppointment_Delete", parameters);
+                // 🔴 THIS ALSO FREES THE APPOINTMENT'S SLOTS, and there is no second call to make.
+                // spPatientAppointment_Delete NULLs StaffSlots.PatientAppointment_ID for every hour the
+                // appointment held before it deletes the row — it has to, because
+                // FK_StaffSlots_PatientAppointment would otherwise refuse the delete. So "delete the
+                // appointment" and "return its hours to the schedule" are one procedure, not two.
+                //
+                // It is silent when the id matches nothing: no error, no audit row, no row count, so a
+                // delete of an appointment that was never there answers { success = true } exactly as one
+                // that was.
+                await _data.DeleteAppointmentAsync(model.AppointmentId);
 
                 AuditLog.AppointmentDeleted(HttpContext, model.AppointmentId);
 
