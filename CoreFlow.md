@@ -1064,6 +1064,229 @@ variant above would silently stop counting toward a clinician's hours.
 consumed; only a delete or a re-save releases them. There is no cancellation concept in nucentra — the way
 to free an hour is to delete the appointment.
 
+### 3.10 `dbo.PatientJourney`
+
+**The core table of the product, and one row is an EVENT, not a state.** It records that a clinical step
+of one of the four `LU_PJ_APP_TYPE` kinds happened to this patient, on this date, under this clinician —
+and nothing else. Read §7 before changing anything here.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `PatientJourney_ID` | **`INT IDENTITY(1,1)`** | NOT NULL | PK, **unnamed** (`PK__PatientJ__F2372D7D…`, server-generated — the DDL writes `PRIMARY KEY` inline). One of the few numeric keys in nucentra (§0), a real identity like `PatientAppointment_ID` and unlike the three composed string keys |
+| `Patient_ID` | `VARCHAR(100)` | NOT NULL | a `PatientBasic.Patient_ID`, **by convention only — no foreign key** |
+| `PjAppType_Name` | `VARCHAR(100)` | NOT NULL | 🔴 the **denormalized NAME**, not the `LU_PJ_APP_TYPE` code, written as a literal by the create procedure. See below |
+| `PatientJourney_Date` | `DATETIME` | NOT NULL | the **business** date the clinician chose — when the step happened clinically, not when the row was written |
+| `Staff_ID` | `VARCHAR(100)` | NOT NULL | a `Staff.Staff_ID`, by convention only. 🔴 **NOT a `dbo.Users` id and not an audit actor** |
+| `Created_At` | `DATETIME2(0)` | NOT NULL | `DEFAULT SYSUTCDATETIME()`. UTC, stamped by the database |
+| `Updated_At` | `DATETIME2(0)` | **NULL** | NULL until the first `…_UpdateWithJourney` call |
+| `CreatedBy_Staff_ID` | `VARCHAR(100)` | **NULL** | set to the same `Staff_ID` by every create |
+| `UpdatedBy_Staff_ID` | `VARCHAR(100)` | **NULL** | set by every update |
+
+```
+PK__PatientJ__F2372D7D…            PRIMARY KEY (PatientJourney_ID)      -- unnamed
+DF_PatientJourney_CreatedAt        DEFAULT SYSUTCDATETIME() ON Created_At
+IX_PatientJourney_Patient_ID       (Patient_ID)                         -- non-unique
+```
+
+**A primary key, a default and one non-unique index. No foreign keys OUT — and three IN.** Nothing
+constrains `Patient_ID` to `dbo.PatientBasic` or `Staff_ID` to `dbo.Staff`, but all three detail tables
+point *at* this one with real, enforced foreign keys. **That direction is what makes deleting a patient
+fail** (§3.13, §7).
+
+🔴 **`PjAppType_Name` IS A STRING LITERAL INSIDE EACH CREATE PROCEDURE, AND ONE OF THE THREE DOES NOT
+MATCH THE LOOKUP.**
+
+| Written by | Literal | `LU_PJ_APP_TYPE` holds |
+|---|---|---|
+| `spPatientAssessment_CreateWithJourney` | `'PATIENT ASSESSMENT'` | `01 PATIENT ASSESSMENT` ✅ |
+| `spPatientColonoscopy_CreateWithJourney` | `'COLONOSCOPY'` | `02 COLONOSCOPY` ✅ |
+| `spPatientFollowUp_CreateWithJourney` | `'PATIENT FOLLOW UP'` | `03 FOLLOW UP` 🔴 **mismatch** |
+| *(nothing)* | — | `04 SURVEILLANCE` — no journey row is ever created for it |
+
+Nothing joins the column to the lookup, so **nothing detects the mismatch and nothing ever will**. The
+string the procedure writes is the one the portal switches on: `GetJourneyTemplate` tests
+`"PATIENT FOLLOW UP"`, and `spStaff_GetPerformance` counts `UPPER(PjAppType_Name) = 'COLONOSCOPY'` (§5.5).
+`LU_PJ_APP_TYPE.PjAppType_ID` is used by `PatientAppointment.PjAppType_ID` — a *different column on a
+different table* — so the two vocabularies never meet. Do not "fix" either side in isolation.
+
+**The type is also the only thing that says which detail table to look in.** There is no discriminator
+column, no pointer to the detail row and no `LEFT JOIN` anywhere that resolves it: `GetPatientAssessment`,
+`GetPatientColonoscopy` and `GetPatientFollowUp` are three endpoints, each hard-wired to one procedure that
+`INNER JOIN`s one table, and the caller picks by reading `PjAppType_Name` off the timeline first.
+
+### 3.11 `dbo.PatientJourneyAudit`
+
+🔴 **NUCENTRA'S SECOND DATABASE AUDIT TRAIL, AND IT IS NOT `dbo.AuditTrails`.**
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `PatientJourneyAudit_ID` | **`INT IDENTITY(1,1)`** | NOT NULL | PK |
+| `PatientJourney_ID` | `INT` | NOT NULL | a `PatientJourney.PatientJourney_ID`, **by convention only — no foreign key**, which is why the rows survive the journey |
+| `Audit_Action` | `VARCHAR(20)` | NOT NULL | no check constraint, no lookup. Two values are written: `CREATED`, `UPDATED` |
+| `Audit_At` | `DATETIME2(0)` | NOT NULL | `DEFAULT SYSUTCDATETIME()`. UTC |
+| `Staff_ID` | `VARCHAR(100)` | NOT NULL | 🔴 a **`Staff.Staff_ID`** — the clinician, not a `dbo.Users` id |
+| `Audit_Note` | `VARCHAR(500)` | **NULL** | the free text the clinician typed on save |
+
+```
+PK_PatientJourneyAudit                    PRIMARY KEY (PatientJourneyAudit_ID)
+DF_PatientJourneyAudit_AuditAt            DEFAULT SYSUTCDATETIME() ON Audit_At
+IX_PatientJourneyAudit_JourneyId_AuditAt  (PatientJourney_ID, Audit_At)   -- non-unique
+```
+
+**Verified against the live database that there is no `User_Id` column of any kind on this table** — the
+six columns above are the whole of it. The two trails answer different questions and neither substitutes
+for the other:
+
+| | `dbo.AuditTrails` | `dbo.PatientJourneyAudit` |
+|---|---|---|
+| Written by | 19 stored procedures, from `@User_ID` | the six `…WithJourney` procedures, from `@Staff_ID` |
+| Keyed on | a **login** (`dbo.Users.User_ID`) | a **clinician** (`dbo.Staff.Staff_ID`) |
+| Shape | one `CONCAT`ed summary string | five typed columns |
+| Shown to a user | **never** — SUPERUSER-only `/AuditTrails` page | **yes** — it *is* the patient's timeline history |
+| Retention | forever, in the table | forever, in the table |
+
+🔴 **NOT ONE OF THE TWELVE JOURNEY PROCEDURES WRITES A `dbo.AuditTrails` ROW.** Measured on the running
+site: creating and updating an assessment, a colonoscopy and a follow-up produced **six**
+`PatientJourneyAudit` rows and **zero** `AuditTrails` rows —
+`SELECT COUNT(*) FROM dbo.AuditTrails WHERE AuditTrail_Category IN ('PatientJourney','PatientAssessment','PatientColonoscopy','PatientFollowUp')`
+returns `0` on a database where the whole flow has just been driven end to end. **Recording a colonoscopy
+leaves no trace in nucentra's security trail.** That is a real gap; it is stated here rather than filled,
+because filling it means editing a `.sql`.
+
+**A row is written on exactly one occasion: a successful `…WithJourney` call, inside that procedure's own
+transaction.** There is no `DELETE` action and no way to produce one — see the orphaning in §7.
+
+### 3.12 `dbo.PatientAssessment`
+
+The first journey type's detail: what the patient's risk factors, symptoms and history were at the time
+the iFOBT came back positive. **Forty-six columns, forty-five of them clinical.**
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `PatientAssessment_ID` | **`INT IDENTITY(1,1)`** | NOT NULL | PK (`PK_PatientAssessment`) |
+| `PatientJourney_ID` | `INT` | 🔴 **NULL** | **`FK_PatientAssessment_PatientJourney` — a real, enforced foreign key.** Nullable, uniquely among the three detail tables |
+| `Patient_ID` | `VARCHAR(100)` | NOT NULL | denormalized off the journey row; **no foreign key** |
+| `iFOBTPositive_Date` | `DATETIME` | NOT NULL | |
+| `Risks_*` | 4 × `BIT`, 1 × `VARCHAR(100)` | NOT NULL | smoking, alcohol, IBD, diet — plus `Risks_SedentaryLifestyle`, the one that is free text |
+| `Symptoms_*` | 9 × `BIT` | NOT NULL | weight loss, appetite loss, lethargy, abdominal pain, constipation, diarrhoea, rectal bleeding with/without mucous, tenesmus |
+| `MedicalHistory_*` | 5 × `BIT` | NOT NULL | diabetes, hypertension, dyslipidemia, bleeding, asthma |
+| `AllergyHistory_*` | 2 × `BIT` + 2 × `VARCHAR(100)` | flags NOT NULL, details **NULL** | medication, food |
+| `MedicationHistory_*` | 4 × `BIT` + 4 × `VARCHAR(100)` | flags NOT NULL, details **NULL** | anticoagulant, narcotics, insulin, anti-hypertensives |
+| `PreviousScope_Date` | `DATETIME` | **NULL** | the only optional date |
+| `FamilyHistory_FirstDegree` / `_SecondDegree` | `BIT` | NOT NULL | |
+| `PhysicalExamination_Details` | `VARCHAR(500)` | NOT NULL | both write procedures `ISNULL(…, '')` it, so a null stores a blank |
+| `Investigation_*` | 5 × `BIT` | NOT NULL | FBC, BUSE, RBS, LFT, coagulation |
+| `Management_*` | 4 × `BIT` | NOT NULL | bowel prep, procedure, consent, advise |
+
+**Two constraints: the primary key and the foreign key.** No unique index on `PatientJourney_ID`, so
+**nothing at the schema level stops two assessments hanging off one journey** — what prevents it is that
+the only insert path is the create procedure, which always makes a fresh journey row first.
+
+🔴 **`PatientJourney_ID` IS NULLABLE HERE AND `NOT NULL` ON THE OTHER TWO DETAIL TABLES.** An assessment
+row with a NULL journey is a state the schema permits, unreachable through the portal, and invisible to
+every read — all three detail reads `INNER JOIN dbo.PatientJourney`, so such a row simply never comes back.
+
+**Nothing keeps a flag and its details column in step.** `AllergyHistory_Medication = 0` with
+`AllergyHistory_MedicationDetails = 'PENICILLIN'` saves, and so does the reverse. That is the form's rule,
+enforced in `.js` and nowhere else.
+
+### 3.13 `dbo.PatientColonoscopy`
+
+The second journey type's detail: how the scope went, segment by segment. **Thirty-two columns.**
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `PatientColonoscopy_ID` | **`INT IDENTITY(1,1)`** | NOT NULL | PK (`PK_PatientColonoscopy`) |
+| `PatientJourney_ID` | `INT` | NOT NULL | **`FK_PatientColonoscopy_PatientJourney`** — enforced |
+| `Patient_ID` | `VARCHAR(100)` | NOT NULL | denormalized; no foreign key |
+| `ColonoscopyStatus` | `BIT` | NOT NULL | completed or not |
+| `ColonoscopyStatus_Details` | `VARCHAR(500)` | **NULL** | free text, not JSON |
+| `BowelPreparation` | `INT` | NOT NULL | 🔴 a bare integer with **no lookup table, no check constraint and no meaning recorded anywhere in the database** — whatever the form's dropdown posted |
+| `Findings_{Segment}` | 9 × `BIT` | NOT NULL | anus, rectum, sigmoid colon, descending colon, splenic flexure, transverse colon, hepatic flexure, ascending colon, caecum |
+| `Findings_{Segment}Details` | 9 × **`NVARCHAR(MAX)`** | **NULL** | 🔴 each holds a **JSON document**, not prose |
+| `HPE_Status` | `BIT` | NOT NULL | was a specimen sent for histopathology |
+| `HPE_Details` | `VARCHAR(500)` | **NULL** | |
+| `Complications` | `VARCHAR(100)` | NOT NULL | free text; `spStaff_GetPerformance` groups its complications report on this exact string |
+| `Complications_Details` | `VARCHAR(500)` | **NULL** | |
+| `DischargePlan` | `VARCHAR(100)` | NOT NULL | free text — **not** `PatientBasic.DischargeType_ID` and not connected to it |
+| `Medication_Details` | **`NVARCHAR(MAX)`** | **NULL** | a JSON **array** of medications given during the procedure |
+
+🔴 **`Findings_X = 1` MEANS THE SEGMENT WAS NORMAL, SO THE ROW WITH SOMETHING IN ITS DETAILS COLUMN IS THE
+`0` ONE.** That is the opposite of what the name suggests and it is decided in
+`wwwroot/js/staffPatient/templates/patientColonoscopy.js`, which posts `Findings_Anus: anus.isNormal`.
+Neither the data layer nor the procedure touches the polarity.
+
+🔴 **THE NINE DETAILS COLUMNS ARE THE ONLY JSON-IN-A-COLUMN IN NUCENTRA, AND ONE KEY IS READ SERVER-SIDE.**
+`spStaff_GetPerformance`'s anomalies grid `CROSS APPLY (VALUES …)`s all nine into a single column, keeps the
+rows where `ISJSON() = 1`, and pulls `JSON_VALUE(…, '$.TypeOfAnomaly')` out of each, counting
+`DISTINCT Patient_ID` (§5.5). **Nothing validates the JSON on the way in** — an unparseable value inserts
+happily and silently stops appearing in that report.
+
+### 3.14 `dbo.PatientFollowUp`
+
+The third journey type's detail, and by far the smallest: **six columns, three of them clinical.**
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `PatientFollowUp_ID` | **`INT IDENTITY(1,1)`** | NOT NULL | PK (`PK_PatientFollowUp`) |
+| `PatientJourney_ID` | `INT` | NOT NULL | **`FK_PatientFollowUp_PatientJourney`** — enforced |
+| `Patient_ID` | `VARCHAR(100)` | NOT NULL | denormalized; no foreign key |
+| `HPE_Results` | `VARCHAR(100)` | NOT NULL | the histopathology result for the specimen the COLONOSCOPY journey sent |
+| `DischargePlan` | `VARCHAR(100)` | NOT NULL | free text; again **not** `PatientBasic.DischargeType_ID` |
+| `DischargeSummary_Status` | `BIT` | NOT NULL | has the discharge summary been issued |
+
+🔴 **`HPE_Results` HERE IS THE ANSWER TO `PatientColonoscopy.HPE_Status` THERE, AND NOTHING IN THE SCHEMA
+LINKS THEM.** Two journey rows, two detail tables, one clinical thread — joined by the words a clinician
+typed and by the patient id, and by nothing else. There is no column on either row pointing at the other.
+
+🔴 **`DischargeSummary_Status = 1` DOES NOT DISCHARGE THE PATIENT.** Discharging is
+`PatientBasic.DischargeType_ID` plus a date and remarks, written by `spPatientBasic_Update` from the
+Discharge tab of `/Patient/Edit` — a different screen, a different policy (`AdminOrSuper`, not `StaffOnly`)
+and a different table (§3.8). Nothing reads this bit except the follow-up form itself.
+
+### 3.15 `dbo.PatientDocument`
+
+One uploaded file belonging to one patient — identification, a referral letter, an iFOBT result, a consent
+form. The bytes are in the private Azure Blob container; this row is the catalogue entry. The staff-side
+twin is `dbo.StaffDocument` (§3.5), and **the two disagree about the type of one column**.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `PatientDocument_ID` | **`INT IDENTITY(1,1)`** | NOT NULL | PK, **unnamed** (`PK__PatientD__EFD3B01E…`) |
+| `Patient_ID` | `VARCHAR(100)` | NOT NULL | a `PatientBasic.Patient_ID`, **by convention only** |
+| `PatientDocumentType_ID` | `VARCHAR(100)` | **NULL** | a `LU_PATDOCUMENTTYPE.PatientDocumentType_ID`, by convention only. **The only nullable id on the table** |
+| `FileName` | `VARCHAR(255)` | NOT NULL | the user's file name after `DocumentValidation.SafeFileName` — bounded to 255 because *this column is 255* |
+| `BlobName` | `VARCHAR(500)` | NOT NULL | **the key inside the private container**, `patients/{Patient_ID}/{guid}{ext}`. Not a URL and not a filesystem path |
+| `ContentType` | `VARCHAR(100)` | NOT NULL | |
+| `UploadedOn` | 🔴 **`VARCHAR(100)`** | NOT NULL | **a formatted string, not a date.** See below |
+
+**`PK__PatientD__EFD3B01E…` is the only constraint on the table** — verified against the live database with
+`sys.objects` and `sys.indexes`. No foreign keys in either direction, no unique index, no check constraint,
+no default. In particular nothing stops an arbitrary `PatientDocumentType_ID`, which is exactly why
+`spPatientDocument_LookupDocuments` exists (§5.8).
+
+🔴 **`UploadedOn` IS A `VARCHAR`, WHERE `StaffDocument.UploadedOn` IS A `DATETIME`.** `spPatientDocument_Insert`
+writes
+
+```sql
+CONVERT(VARCHAR(100), GETUTCDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Singapore Standard Time', 120)
+```
+
+which produces **`"2026-08-09 08:23:21 +08:00"`** — Malaysian local time, with an explicit offset, as text.
+Three consequences, and all three are live:
+
+- **It is not UTC.** Do not `SpecifyKind(…, Utc)` it. §3.5 makes the same point about the staff table's
+  column for the same reason; here the value at least carries its offset in the string.
+- **`spPatientDocument_List`'s `ORDER BY UploadedOn DESC` is a STRING sort.** It is chronological only
+  because the format is fixed-width and big-endian, and it would stop being so the day anything wrote a
+  differently-shaped string. The `PatientDocument_ID DESC` tiebreak is part of the contract, not decoration:
+  two documents uploaded in one request share a timestamp to the second.
+- **`CRC.Data/Models/PatientDocumentItem.UploadedOn` is a `string?`, and `StaffDocumentItem.UploadedOn` is a
+  `DateTime?`.** Two models, two types, one idea — because the two tables really do differ.
+
+**Nothing enforces one document per type**, and the discharge check (§5.6) asks only whether at least one
+row of each required type exists.
+
 ---
 
 ## 4. Pages, endpoints, policies
@@ -2117,6 +2340,272 @@ Three things worth knowing:
   database audit row and **zero** new lines in `audit-*.log`. That asymmetry predates this work and is left
   exactly as found; adding a line would be a new audit event, not a migration.
 
+### 4.9 Staff Patient (the STAFF workspace)
+
+`CRC.Web/Controllers/StaffPatient/StaffPatientController.cs` — **the page a clinician actually works in**,
+and the only screen in nucentra where clinical data is written. View `Views/StaffPatient/Details.cshtml`
+plus three partials under `Views/StaffPatient/Templates/`; scripts `wwwroot/js/staffPatient/details.js`,
+`journey.js`, `documents.js` and three under `templates/`. Antiforgery is global, so every POST needs
+`X-CSRF-TOKEN` (§0).
+
+> #### 🔴 THE POLICY SPLIT — READ THIS BEFORE TOUCHING AN ATTRIBUTE
+>
+> **This is the only controller in nucentra that mixes policies per action, it has NO class-level
+> `[Authorize]` to fall back on, and the split is deliberate:**
+>
+> | Policy | Types | Actions | Why |
+> |---|---|---|---|
+> | `AdminOrSuperOrStaff` | 1, 2, 3 | **eleven** — every read, plus the whole document feature | an administrator may **look at** a patient journey |
+> | `StaffOnly` | **3 only** | **four** — `Details` and the three `Save*` | only a clinician may **record** one, and this genuinely excludes the SUPERUSER |
+>
+> **`StaffOnly` is the one asymmetry in the whole product** (§2.3): every other policy that admits ADMIN
+> also admits SUPERUSER, and here a SUPERUSER cannot open the page or save a result. Note where the line
+> falls — **`Details`, the page itself, is `StaffOnly`, while every endpoint the page calls is not.** An
+> ADMIN reaching those endpoints directly gets the data; they just have no page to render it in.
+>
+> The global `AuthorizeFilter` (§2.2) is what keeps a forgotten attribute failing closed. Do not "tidy"
+> these onto the class — doing so would either lock an administrator out of the journey reads or let a
+> SUPERUSER write a clinical record.
+>
+> 🔴 **§2.3 is incomplete about this controller.** It lists `StaffOnly` as *"the clinical writes in
+> `StaffPatientController`"* — which misses `Details`, the page itself, and it lists
+> `AdminOrSuperOrStaff` as *"most reads"* when it is in fact **every** read plus all five document
+> actions. The eleven-and-four split below is what the attributes actually say, counted action by
+> action and checked against the pre-migration file (11 and 4, unchanged). §2 belongs to Prompt 2 and is
+> not rewritten here; **flagged for Prompt 10's consistency pass**, alongside §4.4's correction about
+> `StaffController`.
+
+| # | Verb | Route | Policy | Returns |
+|---|---|---|---|---|
+| 1 | GET | `/StaffPatient/Details/{id}` | **`StaffOnly`** | the page, with `ViewBag.PatientId` |
+| 2 | GET | `/StaffPatient/GetJourneyTemplate?type=` | `AdminOrSuperOrStaff` | a **partial view**, not JSON |
+| 3 | GET | `/StaffPatient/GetBasic?patientId=` | `AdminOrSuperOrStaff` | `{ success, patient }` |
+| 4 | GET | `/StaffPatient/GetTimeline?patientId=` | `AdminOrSuperOrStaff` | `{ success, data[] }` |
+| 5 | GET | `/StaffPatient/GetPatientAssessment?patientJourneyId=` | `AdminOrSuperOrStaff` | `{ success, journey, assessment }` |
+| 6 | POST | `/StaffPatient/SavePatientAssessment` | **`StaffOnly`** | `{ success, patientJourneyId }` |
+| 7 | GET | `/StaffPatient/GetPatientColonoscopy?patientJourneyId=` | `AdminOrSuperOrStaff` | `{ success, journey, assessment }` |
+| 8 | POST | `/StaffPatient/SavePatientColonoscopy` | **`StaffOnly`** | `{ success, patientJourneyId }` |
+| 9 | GET | `/StaffPatient/GetPatientFollowUp?patientJourneyId=` | `AdminOrSuperOrStaff` | `{ success, journey, assessment }` |
+| 10 | POST | `/StaffPatient/SavePatientFollowUp` | **`StaffOnly`** | `{ success, patientJourneyId }` |
+| 11 | GET | `/StaffPatient/GetPatientDocumentTypes` | `AdminOrSuperOrStaff` | `{ success, data[] }` |
+| 12 | GET | `/StaffPatient/GetPatientDocuments?patientId=` | `AdminOrSuperOrStaff` | `{ success, data[] }` |
+| 13 | POST | `/StaffPatient/UploadPatientDocuments` | `AdminOrSuperOrStaff` + `[RequestSizeLimit(120_000_000)]` + `[RequestFormLimits(…)]` | `{ success }` |
+| 14 | GET | `/StaffPatient/GetPatientDocumentUrl?id=` | `AdminOrSuperOrStaff` | `{ success, url, fileName }` |
+| 15 | POST | `/StaffPatient/DeletePatientDocument` | `AdminOrSuperOrStaff` | `{ success }` |
+
+**There is no ownership check anywhere in this controller.** No equivalent of `CanAccessStaff` (§4.4,
+§4.5): any STAFF user may open any patient, read any journey and record a result against it. The
+`StaffId` claim is read only to *stamp* the row, never to *filter* one — nucentra has no per-clinician or
+per-branch scoping of patient data at all (§2.7).
+
+#### The JSON, which is the contract `wwwroot/js/staffPatient/` reads
+
+```jsonc
+// GET /StaffPatient/GetBasic?patientId=PAT-000001              → 200
+{ "success": true, "patient": {
+    "patientId": "PAT-000001", "name": "…", "email": "…", "phone": "…", "nric": "900215101235",
+    "age": "36",                          // 🔴 A STRING here. /Patient/GetBasic returns a NUMBER
+    "birthDate": "1990-02-15",            // yyyy-MM-dd; "" when the column is null
+    "raceName": "MALAY", "sourceName": "GP / PRIVATE CLINIC", "gender": "MALE",
+    "religionName": "ISLAM", "maritalStatusName": "MARRIED",
+    "resState": "JOHOR", "resCity": "AYER BALOI", "resPostcode": "82100",
+    "addLine1": "…", "addLine2": "…",
+    "emergencyName": "…", "emergencyRelationship": "SPOUSE", "emergencyNumber": "…",
+    "occupationName": "HEALTHCARE / EDUCATION",
+    "iFobtStatus": true, "iFobtCompletionDate": "2026-03-14", "iFobtResults": true,
+    "dischargeTypeName": "", "dischargeDate": "", "dischargeRemarks": "" } }
+{ "success": false, "message": "Invalid patient." }          // blank patientId — 200, not 400
+{ "success": false, "message": "Patient not found." }        // unknown id — 200, not 404
+{ "success": false, "message": "Error loading patient details." }
+
+// GET /StaffPatient/GetTimeline?patientId=PAT-000001          → 200
+{ "success": true, "data": [
+    { "patientJourneyId": 5, "journeyType": "PATIENT ASSESSMENT",
+      "journeyDate": "2026-04-01T09:00:00",                   // the BUSINESS date — no offset
+      "createdAt": "2026-08-09T00:20:37+00:00",               // UTC, offset-bearing
+      "createdByStaffName": "P7 DOCTOR ALPHA",
+      "updatedAt": null, "updatedByStaffName": "",            // never updated → null AND ""
+      "auditEvents": [
+        { "action": "CREATED", "at": "2026-08-09T00:20:37+00:00",
+          "staffId": "END-00001", "staffName": "P7 DOCTOR ALPHA",
+          "note": "P7 baseline assessment created" }] }] }
+{ "success": false, "message": "Invalid patient." }          // blank patientId
+{ "success": true,  "data": [] }                             // unknown patientId — NOT an error
+{ "success": false, "message": "Error loading timeline." }
+
+// GET /StaffPatient/GetPatientAssessment?patientJourneyId=5   → 200
+{ "success": true,
+  "journey": { "patientJourneyId": 5, "journeyType": "PATIENT ASSESSMENT",
+               "journeyDateInput": "2026-04-01T09:00" },     // yyyy-MM-ddTHH:mm, for datetime-local
+  "assessment": { "PatientJourney_ID": 5, "Patient_ID": "PAT-000001",
+                  "Patient_Name": "…", "PjAppType_Name": "PATIENT ASSESSMENT",
+                  "PatientJourney_Date": "2026-04-01T09:00:00", "Staff_ID": "END-00001",
+                  "PatientAssessment_ID": 1, "iFOBTPositive_Date": "2026-03-14T00:00:00",
+                  "Risks_Smoking": true, /* …45 more, RAW COLUMN NAMES… */ } }
+{ "success": false, "message": "Invalid journey." }          // patientJourneyId <= 0
+{ "success": false, "message": "Journey not found." }        // unknown journey id
+{ "success": true, "journey": { … }, "assessment": null }    // journey of ANOTHER TYPE — see below
+{ "success": false, "message": "Error loading assessment." }
+
+// POST /StaffPatient/SavePatientAssessment   (PatientJourneyId = 0 ⇒ create)
+{ "success": true,  "patientJourneyId": 8 }                  // create AND update return the same shape
+{ "success": false, "message": "Your account is not linked to a Staff_ID." }
+{ "success": false, "message": "Error saving assessment.", "correlationId": "…" }
+// 400 { "success": false, "message": "Invalid request." }    // no body, or a blank PatientId
+
+// POST /StaffPatient/SavePatientColonoscopy → …"Error saving colonoscopy."
+// POST /StaffPatient/SavePatientFollowUp    → …"Error saving follow up."
+//   — byte-identical shapes; only the error string differs.
+
+// GET /StaffPatient/GetPatientDocumentTypes                   → 200
+{ "success": true, "data": [{ "documentTypeId": "01", "documentTypeName": "IDENTIFICATION CARD" }] }
+{ "success": false, "message": "Error loading patient document types." }
+
+// GET /StaffPatient/GetPatientDocuments?patientId=PAT-000001  → 200
+{ "success": true, "data": [
+  { "documentId": 5, "patientId": "PAT-000001", "patientName": "P7 BASELINE PATIENT",
+    "docTypeId": "02", "docTypeName": "REFERRAL LETTER (IN)", "fileName": "referral.pdf",
+    "uploadedOn": "2026-08-09 08:23:21 +08:00" }] }           // a STRING from the column, unparsed
+{ "success": true,  "data": [] }                              // blank patientId — success, empty
+{ "success": false, "message": "Error loading patient documents." }
+
+// POST /StaffPatient/UploadPatientDocuments   (multipart)
+{ "success": true }                                           // NO message
+{ "success": false, "message": "No files uploaded." }
+{ "success": false, "message": "One of the selected files could not be read." }
+{ "success": false, "message": "\"x.exe\" is not an allowed file type. Only PDF, PNG, JPEG and DOCX are accepted." }
+{ "success": false, "message": "Error uploading patient documents.", "correlationId": "…" }
+// 400 { "success": false, "message": "Patient ID is required." }
+
+// GET /StaffPatient/GetPatientDocumentUrl?id=5                → 200
+{ "success": true, "url": "https://…/patients/PAT-000001/7cdd….pdf?sv=…&se=…&sr=b&sp=r&sig=…",
+  "fileName": "referral.pdf" }                                // a 5-minute read SAS, minted per click
+{ "success": false, "message": "Invalid document ID." }       // id <= 0
+{ "success": false, "message": "Document not found." }        // unknown id, OR a row with a blank BlobName
+{ "success": false, "message": "Error opening document.", "correlationId": "…" }
+
+// POST /StaffPatient/DeletePatientDocument  { documentId }
+{ "success": true }                                           // NO message — and the SAME answer for an
+                                                              // id that matched nothing
+{ "success": false, "message": "Invalid document ID." }       // documentId <= 0 or no body — 200, not 400
+{ "success": false, "message": "Error deleting patient document.", "correlationId": "…" }
+```
+
+Seven behaviours that look like bugs, are not, and must be preserved. Every one was measured against the
+running site before and after the Dapper migration, and all **24** captured payloads — the seven endpoints
+under a SUPERUSER session and again under a STAFF session, plus ten edge cases — came back byte-identical.
+
+- 🔴 **THE THREE DETAIL PAYLOADS ARE KEYED ON THE PROCEDURE'S RAW COLUMN NAMES, AND THAT IS THE CONTRACT.**
+  `"PatientJourney_ID"`, `"iFOBTPositive_Date"`, `"Risks_Smoking"`, `"Findings_Anus"`, `"HPE_Results"` —
+  PascalCase with underscores, not camelCase like every other endpoint in the portal. The reason is
+  mechanical: the endpoint serializes a **dictionary**, and ASP.NET Core's `JsonSerializerDefaults.Web`
+  camelCases *property* names while leaving *dictionary keys* alone. `patientAssessment.js`,
+  `patientColonoscopy.js` and `patientFollowUp.js` read exactly those keys. **A POCO here would ship
+  `"patientJourney_ID"` and `"risks_Smoking"`, break all three clinical forms, and return `200` doing it** —
+  which is why `IDatabaseData` returns `IReadOnlyDictionary<string, object?>` for these three and says so at
+  length (§7.8).
+- 🔴 **THE JSON PROPERTY IS CALLED `assessment` ON ALL THREE ENDPOINTS**, colonoscopy and follow-up
+  included. It is what the three template scripts read. It is not a copy-paste slip to tidy.
+- **A journey of the wrong type is `{ success: true, …, "assessment": null }`, not an error.** All three
+  detail procedures `INNER JOIN` their detail table, so asking `GetPatientAssessment` for a COLONOSCOPY
+  journey returns the journey header and a null body. That is a real state the page renders as an empty
+  form; it is also how a caller can tell "no detail row" from "no journey" (which is
+  `success: false, "Journey not found."`).
+- **`age` is a STRING here and a NUMBER on `/Patient/GetBasic`.** Same column, same procedure
+  (`spPatientBasic_GetById`), two endpoints, two shapes — this page prints it into a read-only field, the
+  admin form binds it to an input. Both are live and neither moves.
+- **Blank versus unknown ids are answered inconsistently across this controller, and each is right for its
+  screen.** `GetBasic` and `GetTimeline` both answer a *blank* id with
+  `{ success: false, "Invalid patient." }`; then `GetBasic` answers an *unknown* id with
+  `{ success: false, "Patient not found." }` while `GetTimeline` answers it with
+  `{ success: true, data: [] }` — because a patient genuinely may have no journeys yet, and the timeline
+  cannot tell that from a bad id. `GetPatientDocuments` answers a blank id with `success: true` and an
+  empty array, because the page calls it before a patient is chosen.
+- **`GetBasic` and the three detail reads swallow their exception with a BARE `catch` and no logging.**
+  Unlike the Save actions, which log to `app-*.log` with a correlation id, these five return their message
+  and nothing reaches any log — a failure there is invisible outside the database. Left exactly as found;
+  Prompt 9 owns the logging sweep. Compare `BranchController.DeleteBranch` (§4.1), which has the same gap.
+- **`DeletePatientDocument` answers `{ success: true }` for an id that matched nothing**, because
+  `spPatientDocument_Delete` returns NULL in its OUTPUT parameter and the controller treats that as
+  "nothing in storage to remove". No `AuditLog` line is written on that path either — the
+  `AuditLog.PatientDocumentDeleted` call is inside the `if (blobName is not blank)` branch. Same
+  silent-success shape as `spBranch_Delete`, `spPatient_DeleteCascade` and `spPatientAppointment_Delete`.
+
+#### 🔴 The three `Save*` actions — one shape, three types, and the `StaffId` claim
+
+All three are the same nine lines with a different payload:
+
+1. **`model == null` or a blank `PatientId` → `400 { success: false, "Invalid request." }`.** This is the
+   only 400 in the controller's write path.
+2. **`GetStaffId()` — `User.FindFirst("StaffId")?.Value`.** Blank →
+   `200 { success: false, "Your account is not linked to a Staff_ID." }`. That claim is added by
+   `AccountController.Login` **only when `User_Type = 3` and the id is non-blank** (§2.1), so this branch
+   is how a STAFF account with a missing `Staff_ID` fails — and it is the reason these three actions are
+   `StaffOnly` rather than merely authenticated: an ADMIN has no such claim and would hit this message on
+   every save.
+3. **`PatientJourneyId <= 0` decides create versus update**, exactly as `SaveBasic` uses a blank
+   `PatientId` (§4.7) and `SaveAppointment` uses `appointmentId <= 0` (§4.8.2). Nothing verifies that a
+   non-zero id exists — the procedure's `RAISERROR 'Journey not found.'` does.
+4. **One data-layer call, and the procedure owns the transaction** (§7). No `SqlTransaction` is opened in
+   C# and none should be.
+5. **`catch (SqlException)` then `catch (Exception)`, both logging and both returning
+   `ErrorResponse.ForUser`** with the same string. The two clauses are separate so the log line names the
+   kind; the user sees one sentence either way. Every message the procedures raise — *"Patient not found."*,
+   *"Staff not found."*, *"Journey not found."*, *"Assessment row not found for this journey."* — reaches
+   only `Logs/app-*.log`.
+
+🔴 **`Staff_ID` IS NOT `@User_ID`.** The claim above is a `dbo.Staff.Staff_ID` and it lands in
+`PatientJourney.Staff_ID` and `PatientJourneyAudit.Staff_ID`. It is an ordinary business argument, it
+appears in the `IDatabaseData` signatures, and it must never be filled from `DatabaseHelper.CurrentUserId`,
+which is a `dbo.Users.User_ID`. **None of the twelve journey procedures declares `@User_ID` at all** (§5.8).
+
+#### The document lifecycle, and where the actor DOES come from
+
+The two document *writes* are the only calls in this controller that touch `dbo.AuditTrails`, and both go
+through the §0.1 actor mechanism:
+
+| Step | Procedure | `@User_ID` | Audit |
+|---|---|---|---|
+| upload | `spPatientDocument_Insert` | **ACTOR**, from the claim | `dbo.AuditTrails` INSERT + `AuditLog.PatientDocumentUploaded` |
+| download | `spPatientDocument_GetById` | 🔴 **none — the procedure does not declare it** | `AuditLog.PatientDocumentDownloaded` only |
+| delete | `spPatientDocument_Delete` | **ACTOR**, from the claim | `dbo.AuditTrails` DELETE + `AuditLog.PatientDocumentDeleted` |
+
+**The upload path validates the whole batch before writing a single blob**, in a pass of its own, because a
+file rejected halfway through would leave the earlier files already in the container. After that it loops:
+upload the blob, then insert the row, per file. 🔴 **There is no transaction and no compensation** — a
+failure on file three leaves files one and two committed, rows and blobs both. That is unlike
+`SaveStaffWithDocuments` (§6.6), and the difference is real: the staff side needs atomicity because the
+mandatory-document rule makes a staff row without its documents invalid, and no equivalent rule exists for
+a patient at upload time (the discharge check runs much later, §5.6).
+
+🔴 **`AuditLog.PatientDocumentUploaded` always records `DocumentId=0`**, because `spPatientDocument_Insert`
+computes `SCOPE_IDENTITY()` only to name it in the `AuditTrails` summary and then discards it. The blob key
+is what ties the Serilog line to the row. Identical to `spStaffDocument_Insert` (§5.4).
+
+🔴 **THE TWO AUDIT SUMMARIES DISAGREE ABOUT THE DOCUMENT'S TYPE NAME, AND THE INSERT IS THE ONE THAT IS
+WRONG.** Measured on the running site, uploading and then deleting one document under type `05`:
+
+```
+INSERT  …; DocType=CONSENT FORM (05); FileName=consent.pdf; …
+DELETE  …; DocType=HISTORY AND EXAMINATION FORM (05); FileName=consent.pdf; …
+```
+
+`spPatientDocument_Insert` writes `@PatientDocumentType_Name` **as the client posted it**; the table stores
+only the id, and `spPatientDocument_Delete` re-joins `LU_PATDOCUMENTTYPE` for the real name. So the insert
+audit line records whatever label the browser sent — here a stale one from the page — and the delete line
+records the truth. The reads (`spPatientDocument_List`, `_GetById`) both re-join too, which is why the
+listing showed `HISTORY AND EXAMINATION FORM` all along. **Nothing validates the posted name against the
+posted id**, on either side.
+
+#### `GetPatientDocumentUrl` — the SAS, unchanged by this migration
+
+The container is private, so a **five-minute read SAS minted per click by this authenticated action** is
+the only way the browser ever reaches the bytes. It is handed back once, never persisted and never rendered
+into the page's HTML. `AuditLog.PatientDocumentDownloaded` is written **before** the URL leaves the server,
+because the download itself happens against storage where the application can no longer observe it. The
+Dapper migration swapped one data call inside this action and touched nothing else; `DOCUMENTSTORAGE.md`
+remains authoritative and is unedited.
+
 ---
 
 ## 5. Stored procedures
@@ -2886,6 +3375,215 @@ taken slot fails.
 - **`_Update` does not re-check anything either**, and in particular it does not verify that the new times
   match the slots being assigned — the two are kept in step only because one method computes both (§6.7).
 
+### 5.8 The patient journey and patient documents — `Stored Procedures/{PatientJourney,PatientAssessment,PatientColonoscopy,PatientFollowUp,PatientDocument}/` (17)
+
+🔴 **THE `@User_ID` PICTURE HERE IS NOT UNIFORM, AND A GREP ACTIVELY MISLEADS.** Every parameter list was
+read individually rather than pattern-matched from the other areas. The answer:
+
+```
+TWELVE journey procedures   — NOT ONE declares @User_ID, of either kind.
+                              NOT ONE writes a dbo.AuditTrails row.
+                              The six writes take @Staff_ID instead — a DIFFERENT identity (below).
+
+TWO document writes         — spPatientDocument_Insert and spPatientDocument_Delete both declare
+                              `@User_ID INT = NULL`: THE ACTOR. SqlData supplies it from the claim.
+
+THREE document reads        — spPatientDocument_List, _GetById and _LookupDocuments declare none.
+                              🔴 _GetById's HEADER COMMENT contains the words "no @User_ID and no audit
+                              row", so `grep "@User_ID"` MATCHES THE FILE. Its parameter list is
+                              `@PatientDocument_ID INT` and nothing else.
+```
+
+🔴 **`@Staff_ID` IS NOT AN AUDIT ACTOR.** The six `…WithJourney` procedures take a `dbo.Staff.Staff_ID` —
+the clinician the journey belongs to — as an ordinary business argument, from the controller's `StaffId`
+claim. It lands in `PatientJourney.Staff_ID`, `PatientJourney.CreatedBy_Staff_ID` /
+`UpdatedBy_Staff_ID`, and `PatientJourneyAudit.Staff_ID`. **Filling it from `DatabaseHelper.CurrentUserId`
+would put a `dbo.Users` id into a `dbo.Staff` column**, and five of the six procedures would then
+`RAISERROR 'Staff not found.'` — which is the good outcome; `spPatientColonoscopy_CreateWithJourney` would
+too, since it validates the staff member even though it does not validate the patient. It appears in every
+`IDatabaseData` signature, exactly as a business value should.
+
+| Procedure | Parameters | Returns | `IDatabaseData` method | `@User_ID` |
+|---|---|---|---|---|
+| `spPatientJourney_GetById` | `@PatientJourney_ID INT` | `SELECT TOP 1` — 10 columns, `INNER JOIN PatientBasic` for the name; **empty set** for an unknown id **or a deleted patient** | `GetJourneyByIdAsync` → `PatientJourneyDetail?` | no |
+| `spPatientJourney_TimelineByPatient` | `@Patient_ID VARCHAR(100)` | 11 columns; ordered **`PatientJourney_Date ASC, PatientJourney_ID ASC`**. Two `OUTER APPLY`s — see below | `GetJourneyTimelineAsync` → `List<PatientJourneyTimelineItem>` | no |
+| `spPatientJourney_AuditsByPatient` | `@Patient_ID VARCHAR(100)` | 7 columns; ordered `PatientJourney_ID ASC, Audit_At ASC, PatientJourneyAudit_ID ASC` | `GetJourneyAuditsAsync` → `List<PatientJourneyAuditItem>` | no |
+| `spPatientAssessment_GetByJourneyId` | `@PatientJourney_ID INT` | `SELECT TOP 1` — **51 columns**, `INNER JOIN` both `PatientAssessment` and `PatientBasic`; empty set when the journey has no assessment | `GetAssessmentByJourneyIdAsync` → `IReadOnlyDictionary<string, object?>?` | no |
+| `spPatientAssessment_CreateWithJourney` | 50 — `@Patient_ID`, `@PatientJourney_Date`, `@Staff_ID`, `@Audit_Note`, + 46 clinical | `SELECT @PatientJourney_ID AS PatientJourney_ID` — **one row** | `CreateAssessmentWithJourneyAsync` → `int` | no |
+| `spPatientAssessment_UpdateWithJourney` | the same 49, with `@PatientJourney_ID` in place of `@Patient_ID` | `SELECT 1 AS Success` — **read by nothing** | `UpdateAssessmentWithJourneyAsync` | no |
+| `spPatientColonoscopy_GetByJourneyId` | `@PatientJourney_ID INT` | `SELECT TOP 1` — **37 columns** | `GetColonoscopyByJourneyIdAsync` → `IReadOnlyDictionary<string, object?>?` | no |
+| `spPatientColonoscopy_CreateWithJourney` | 35 | `SELECT @PatientJourney_ID AS PatientJourney_ID` | `CreateColonoscopyWithJourneyAsync` → `int` | no |
+| `spPatientColonoscopy_UpdateWithJourney` | the same 34, keyed on `@PatientJourney_ID` | 🔴 **nothing — no trailing `SELECT` at all** | `UpdateColonoscopyWithJourneyAsync` | no |
+| `spPatientFollowUp_GetByJourneyId` | `@PatientJourney_ID INT` | `SELECT TOP 1` — 10 columns | `GetFollowUpByJourneyIdAsync` → `IReadOnlyDictionary<string, object?>?` | no |
+| `spPatientFollowUp_CreateWithJourney` | 7 | `SELECT @PatientJourney_ID AS PatientJourney_ID` | `CreateFollowUpWithJourneyAsync` → `int` | no |
+| `spPatientFollowUp_UpdateWithJourney` | the same 6, keyed on `@PatientJourney_ID` | `SELECT 1 AS Success` — read by nothing | `UpdateFollowUpWithJourneyAsync` | no |
+| `spPatientDocument_List` | `@Patient_ID VARCHAR(100)` — **required** | 9 columns incl. `BlobName`, ordered `UploadedOn DESC, PatientDocument_ID DESC` | `GetPatientDocumentsAsync` → `List<PatientDocumentItem>` | no |
+| `spPatientDocument_GetById` | `@PatientDocument_ID INT` | `SELECT TOP 1` — the **same 9 columns**; empty set for an unknown id | `GetPatientDocumentByIdAsync` → `PatientDocumentItem?` | **no — see the box above** |
+| `spPatientDocument_Insert` | `@Patient_ID`, `@Patient_Name`, `@PatientDocumentType_ID`, `@PatientDocumentType_Name`, `@FileName`, `@BlobName`, `@ContentType`, `@User_ID` | nothing — **not even the new identity** | `AddPatientDocumentAsync` | **`INT = NULL` — ACTOR** |
+| `spPatientDocument_Delete` | `@PatientDocument_ID`, `@User_ID`, **`@DeletedBlobName VARCHAR(500) = NULL OUTPUT`** | nothing; the answer is the OUTPUT parameter | `DeletePatientDocumentAsync` → `string?` | **`INT = NULL` — ACTOR** |
+| `spPatientDocument_LookupDocuments` | — | `PatientDocumentType_ID, PatientDocumentType_Name` — the **union** of types in use and types in the lookup | `GetPatientDocumentTypeFiltersAsync` → `List<LookupItem>` | no |
+
+`spPatientDocument_PatientNames` and `spDocuments_Search` live in the same folder and belong to Prompt 8.
+
+#### 🔴 THE SIX `…WithJourney` PROCEDURES — WHAT EACH WRITES, IN WHAT ORDER, AND WHERE ATOMICITY COMES FROM
+
+**Each is a SINGLE procedure that writes THREE tables, and each holds its own transaction.** Read as
+`BEGIN`, not inferred from the name — all six open the same way:
+
+```sql
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+BEGIN TRY
+    BEGIN TRAN;
+        …
+    COMMIT;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK;
+    THROW;
+END CATCH
+```
+
+**The create path, in order — and the order is forced by a real foreign key:**
+
+```
+1  INSERT dbo.PatientJourney       (Patient_ID, PjAppType_Name = a LITERAL, PatientJourney_Date,
+                                    Staff_ID, CreatedBy_Staff_ID)
+   @PatientJourney_ID = CAST(SCOPE_IDENTITY() AS INT)
+2  INSERT dbo.{PatientAssessment | PatientColonoscopy | PatientFollowUp}   (PatientJourney_ID, Patient_ID, …)
+3  INSERT dbo.PatientJourneyAudit  (PatientJourney_ID, 'CREATED', Staff_ID, Audit_Note)
+   COMMIT
+4  SELECT @PatientJourney_ID AS PatientJourney_ID
+```
+
+Step 1 **must** come first: `FK_PatientAssessment_PatientJourney` and its two siblings are enforced, so the
+detail row cannot exist before the journey row — and the journey's id is only known from `SCOPE_IDENTITY()`
+afterwards. Step 2 also copies `Patient_ID` onto the detail row, denormalized off step 1's argument.
+
+**The update path, in order:**
+
+```
+1  IF NOT EXISTS (dbo.PatientJourney) → RAISERROR 'Journey not found.'
+2  staff lookup                       → RAISERROR 'Staff not found.'  (all six do this)
+3  UPDATE dbo.PatientJourney          SET PatientJourney_Date, Updated_At = SYSUTCDATETIME(),
+                                          UpdatedBy_Staff_ID
+4  UPDATE dbo.{detail table}          SET every clinical column
+   IF @@ROWCOUNT = 0                  → RAISERROR '{Assessment|Colonoscopy|Follow up} row not found for this journey.'
+5  INSERT dbo.PatientJourneyAudit     (PatientJourney_ID, 'UPDATED', Staff_ID, Audit_Note)
+   COMMIT
+```
+
+🔴 **STEP 3 IS AN `UPDATE`, NOT AN `INSERT`, AND THAT IS THE WHOLE REASON THE CREATE AND THE UPDATE ARE TWO
+PROCEDURES.** An update that inserted a journey row would show the same assessment twice on the timeline,
+in the right order, with the right dates and no error anywhere. Asserted during Prompt 7's smoke test: the
+journey-row count for the patient was `1` before and `1` after the assessment update, `2 → 2` for the
+colonoscopy, `3 → 3` for the follow-up, and each detail table held exactly one row per journey throughout.
+
+**ATOMICITY COMES FROM THE PROCEDURE, NOT FROM C#.** `SqlData` gives each of the six exactly one ordinary
+Dapper call — no `SqlConnection` opened by hand, no `SqlTransaction`, no `transaction:` argument. Nucentra
+still has exactly **two** transactional units of work in the data layer, `SaveStaffWithDocumentsAsync` and
+`SaveAppointmentAsync` (§6.6), and this area adds none. Wrapping one of these in a `SqlTransaction` would
+nest a transaction inside a procedure that already has one, and — worse — would advertise in
+`IDatabaseData` an atomicity guarantee the data layer is not the source of.
+
+**Four asymmetries between the six, all real and none obviously intended:**
+
+| | assessment | colonoscopy | follow-up |
+|---|---|---|---|
+| create validates the **patient** exists | ✅ `RAISERROR 'Patient not found.'` | 🔴 **no — only refuses a BLANK id** | ✅ |
+| create validates the **staff member** | ✅ | ✅ | ✅ |
+| update's trailing `SELECT` | `SELECT 1 AS Success` | 🔴 **none** | `SELECT 1 AS Success` |
+| `PjAppType_Name` literal matches `LU_PJ_APP_TYPE` | ✅ | ✅ | 🔴 **no** (§3.10) |
+
+Since `Patient_ID` is not a foreign key anywhere, **a colonoscopy can be recorded against a patient that
+does not exist**. Nothing in the data layer or the controller compensates; the check belongs in the
+procedure and adding it would be a `.sql` change.
+
+🔴 **THE THREE CREATES END WITH A REAL `SELECT`, NOT AN OUTPUT PARAMETER, AND THAT IS THE OPPOSITE OF THE
+OTHER TWO COMPOSED-ID INSERTS IN NUCENTRA.** `spPatientBasic_Insert` (§5.6) and
+`spPatientAppointment_Insert` (§5.7) both answer through `OUTPUT` parameters with no trailing `SELECT`, and
+both set a trap for anyone reaching for `QuerySingleAsync`. Here the trap runs the other way: these three
+*are* `QuerySingleAsync<int>`. **Read the `.sql`; the family resemblance is worthless in both directions.**
+That also means this area adds **nothing** to nucentra's six OUTPUT-parameter procedures except
+`spPatientDocument_Delete`, which was already one of them in spirit — bringing the count to **seven**:
+
+| Procedure | Prompt | OUTPUT parameters | How `SqlData` reads it |
+|---|---|---|---|
+| `spUsers_RegisterFailedLogin` | 2 | 3 | a trailing `SELECT` appended additively → `QuerySingleOrDefaultAsync` |
+| `spStaffDocument_Delete` | 3 | 1 | `DynamicParameters` |
+| `spPatientBasic_Insert` | 5 | 1 | `DynamicParameters` |
+| `spPatientAppointment_Insert` | 6 | 1 | `DynamicParameters` |
+| `spPatientAppointment_Update` | 6 | 8 | `DynamicParameters` |
+| `spPatientAppointment_UpdateStatus` | 6 | 8 | `DynamicParameters` |
+| **`spPatientDocument_Delete`** | **7** | **1** | `DynamicParameters`, `DbType.AnsiString`, size 500 |
+
+#### 🔴 `spPatientJourney_TimelineByPatient` — the five audit columns are not on the journey row
+
+The procedure is one `SELECT` over `dbo.PatientJourney` with **two `OUTER APPLY`s** into
+`dbo.PatientJourneyAudit`, each `LEFT JOIN`ing `dbo.Staff` for a name:
+
+```sql
+OUTER APPLY (SELECT TOP 1 …  WHERE a.Audit_Action = 'CREATED'             ORDER BY a.Audit_At ASC ) ca
+OUTER APPLY (SELECT TOP 1 …  WHERE a.Audit_Action IN ('UPDATED','EDITED') ORDER BY a.Audit_At DESC) ua
+```
+
+— the **earliest** creation event and the **latest** change event. Four things follow:
+
+- **`OUTER APPLY`, not `CROSS APPLY`**, so a journey with no audit rows still appears on the timeline with
+  all five columns NULL. That is why `PatientJourneyTimelineItem` types every one of them nullable.
+- **The aliases are `CreatedAt` / `CreatedByStaffId` / `CreatedByStaffName` and the `Updated*` trio, not
+  `Audit_At` / `Staff_ID` / `Staff_Name`.** Dapper maps by name, so a model naming the audit table's
+  columns would stay null on every row with nothing in a log.
+- 🔴 **`'EDITED'` IS ACCEPTED BY THE READ AND WRITTEN BY NOTHING.** All six `…WithJourney` procedures write
+  `'CREATED'` or `'UPDATED'` and nothing else; measured across a whole database after the full flow,
+  `SELECT Audit_Action, COUNT(*) FROM dbo.PatientJourneyAudit GROUP BY Audit_Action` returns exactly two
+  rows, `CREATED` and `UPDATED`. It is a vocabulary the read tolerates. Do not read its presence as
+  evidence of a third action.
+- **`Created_At` / `Updated_At` on `dbo.PatientJourney` itself are a SECOND, redundant record of the same
+  two facts** — and the timeline read ignores them entirely, preferring the audit table. The row's own
+  columns keep only the first and the latest; the audit table keeps every event. They can disagree only if
+  somebody writes one without the other, which no procedure does.
+
+#### The other findings, from reading all seventeen
+
+- **All three detail reads `INNER JOIN` their detail table AND `dbo.PatientBasic`**, so an empty result
+  means *either* "this journey has no detail row of that type" *or* "this journey's patient has been
+  deleted". The endpoint cannot tell those apart and reports `assessment: null` for both. Given §7's
+  orphaning bug, the second case is reachable.
+- **`spPatientJourney_GetById` `INNER JOIN`s `dbo.PatientBasic` too**, so a journey orphaned by a partial
+  cascade returns **nothing** — and `/StaffPatient/GetPatientAssessment` answers *"Journey not found."*
+  about a row that plainly exists. That is the user-visible face of §7's orphaning.
+- **`spPatientDocument_List` and `spPatientDocument_GetById` are the same nine-column `SELECT` with
+  different `WHERE` clauses**, which is why they correctly share `PatientDocumentItem` — the same call §5.4
+  makes for the staff pair, and the opposite of §5.3's `spUsers_GetById` versus `spUsers_ValidateLogin`.
+  **Reuse the shape, never the name.**
+- **Both document reads `COALESCE` the type name back to the raw id** —
+  `COALESCE(NULLIF(LTRIM(RTRIM(t.PatientDocumentType_Name)), ''), pd.PatientDocumentType_ID)` — and join on
+  `UPPER(LTRIM(RTRIM(ISNULL(…, ''))))` on both sides, exactly like the staff document reads (§5.4). Both
+  joins are therefore non-sargable. The coalesce can still yield NULL, because
+  `PatientDocument.PatientDocumentType_ID` is itself nullable.
+- 🔴 **`spPatientDocument_List`'s `@Patient_ID` is REQUIRED and `spStaffDocument_List`'s is OPTIONAL.** The
+  staff one defaults to `NULL` and returns every document in the system when omitted (§5.4); this one has
+  no such mode, so Prompt 8's Documents page must use `spDocuments_Search` rather than calling this with a
+  blank id.
+- **`spPatientDocument_Insert` writes `UploadedOn` as a CONVERTed string** because the column is a
+  `VARCHAR(100)` (§3.15), and it audits with the **client-posted** `@PatientDocumentType_Name` while
+  `spPatientDocument_Delete` audits with the name it **re-joined** from `LU_PATDOCUMENTTYPE`. Measured: one
+  document's INSERT line says `DocType=CONSENT FORM (05)` and its DELETE line says
+  `DocType=HISTORY AND EXAMINATION FORM (05)`. The delete is the truthful one.
+- **`spPatientDocument_Delete` captures the row's details into local variables BEFORE the `DELETE`**, for
+  the same reason `spStaff_Delete`, `spStaffSlots_Delete` and `spPatientAppointment_Delete` do: the audit
+  summary names a row that no longer exists by the time the `INSERT` runs. Its `@DeletedBlobName` is set to
+  the key only `WHEN @RowsAffected > 0`, so NULL genuinely means "nothing was deleted".
+- **`spPatientDocument_LookupDocuments` unions the types IN USE with the types in the lookup**, and
+  `COALESCE`s a missing name back to the id — because `PatientDocument.PatientDocumentType_ID` has no
+  foreign key (§3.15), so a document uploaded under a type later removed from `LU_PATDOCUMENTTYPE` must
+  still be **findable**. An upload form must **not** offer that type, which is why
+  `/StaffPatient/GetPatientDocumentTypes` uses `spLU_PatientDocumentType_List` instead. Two procedures, two
+  correct answers, one lookup table — exactly `spStaffDocument_LookupDocuments`'s arrangement (§5.4).
+  **It has no caller until Prompt 8**; it is wrapped here because Prompt 7 owns the `spPatientDocument_*`
+  family.
+
 ---
 
 ## 6. The data access layer
@@ -3195,7 +3893,367 @@ changed. The `@User_ID` actor parameter is passed explicitly on all four writes,
 
 ## 7. The patient journey — the core feature
 
-> *Written in Prompt 7 — not yet filled in.*
+> ### 🔴 IF YOU HAVE COME FROM HEART, READ THIS PARAGRAPH BEFORE ANYTHING ELSE
+>
+> **nucentra has no state machine. There is no `StageFlag`, no `LU_STAGEFLAG`, no `StageLog`, no
+> `SortOrder`, no transition table, and no column anywhere that says which stage a patient is at.**
+>
+> HEART's `CoreFlow.md` §2 is titled *"The lifecycle = the `StageFlag` state machine"* and describes five
+> stage rows over three steps, forward gating enforced in three places, backward un-toggling that moves
+> exactly one step, and a `StageLog` timeline that is rewritten on every move. **None of that exists here,
+> in any form.** Do not go looking for the tables; do not "restore" them; do not assume an endpoint is
+> gated by a stage it does not have.
+>
+> What nucentra has instead is **an append-only log of clinical events**. A `dbo.PatientJourney` row means
+> *"this happened"*, not *"the patient is here"*. §7.7 states in full what that costs.
+
+### 7.1 The domain, in a paragraph
+
+A colorectal-cancer screening journey is what happens to a person **after their iFOBT comes back
+positive**. The immunochemical faecal occult blood test is the programme's front door: a `PatientBasic` row
+records the result (§3.8), and `Patient_iFOBTResults = 1` is the clinical trigger for everything below.
+From the schema's point of view the journey is then **a sequence of dated clinical events, each owned by one
+clinician and each of one of four kinds**. First a **patient assessment** — the clinician sits with the
+patient and records risk factors, symptoms, medical, allergy and medication history, family history, a
+physical examination, which investigations were ordered and how the patient was prepared. Then a
+**colonoscopy** — bowel preparation quality, and then, segment by segment from anus to caecum, whether each
+was normal and what was found if it was not, plus any complications and whether a specimen went for
+histopathology. Then a **follow up** — the histopathology result comes back, a discharge plan is written,
+and a discharge summary may be issued. **Surveillance** is the fourth kind: the outcome *"come back and be
+scoped again in N years"*, which is a scheduling decision rather than a clinical record. The patient
+finally leaves the programme by being **discharged** — `PatientBasic.DischargeType_ID` set to NORMAL,
+BENIGN POLYPS, PRECANCEROUS POLYPS or CANCER — which is written on a **different screen, by a different
+kind of user, on a different table**, and is not part of the journey at all.
+
+### 7.2 The flow, end to end
+
+```
+                       ┌──────────────────────────────────────────────────┐
+   REGISTRATION        │  dbo.PatientBasic                                │   /Patient/Edit
+   (ADMIN / SUPERUSER) │  demographics + address + emergency contact      │   AdminOrSuper
+                       │  Patient_iFOBTStatus / _CompletionDate           │
+                       │  🔴 Patient_iFOBTResults = 1  ── POSITIVE ──┐    │
+                       └─────────────────────────────────────────────┼────┘
+                                                                     │
+                            ▼ nothing enforces this arrow.  A journey can be recorded for a patient
+                              whose iFOBT is NULL, 0, or never entered.  It is clinical practice.
+                                                                     │
+   BOOKING             ┌─────────────────────────────────────────────┴────┐
+   (ADMIN / SUPERUSER) │  dbo.PatientAppointment   PjAppType_ID = 01…04   │   /Patient/Edit
+                       │  consumes dbo.StaffSlots hours                   │   Appointment tab
+                       └─────────────────────────────────────────────┬────┘
+                            ▲ ALSO not enforced, in EITHER direction. An appointment does not create a
+                              journey row and a journey row does not need an appointment. The two tables
+                              share only a patient and a clinician — there is no key between them.
+                                                                     │
+   ═══ THE JOURNEY ═════════════════════════════════════════════════════════════════════════════════
+   (STAFF only)        ┌─────────────────────────────────────────────┴────┐  /StaffPatient/Details/{id}
+                       │  dbo.PatientJourney      one row per EVENT       │  StaffOnly
+                       │  Patient_ID · PjAppType_Name · Date · Staff_ID   │
+                       └──┬──────────────┬──────────────┬─────────────┬───┘
+                          │              │              │             │
+        ┌─────────────────▼──┐  ┌────────▼─────────┐  ┌─▼──────────┐  │
+        │ 01 PATIENT         │  │ 02 COLONOSCOPY   │  │ 03 FOLLOW  │  │  04 SURVEILLANCE
+        │    ASSESSMENT      │  │                  │  │    UP      │  │
+        ├────────────────────┤  ├──────────────────┤  ├────────────┤  ├──────────────────┐
+        │ dbo.Patient        │  │ dbo.Patient      │  │ dbo.       │  │ 🔴 NO DETAIL     │
+        │     Assessment     │  │     Colonoscopy  │  │ PatientFo… │  │    TABLE.        │
+        │ 46 cols  FK ✓      │  │ 32 cols  FK ✓    │  │ 6 cols FK✓ │  │    NO PROCEDURE. │
+        │ risks · symptoms   │  │ bowel prep       │  │ HPE_Results│  │    NO TEMPLATE.  │
+        │ history · exam     │  │ 9 segments,      │  │ Discharge  │  │    NO WAY TO     │
+        │ investigations     │  │   anus → caecum  │  │   Plan     │  │    CREATE ONE.   │
+        │ management         │  │ complications    │  │ Summary    │  │                  │
+        └────────────────────┘  │ HPE_Status  ─────┼──┼──▶ answered │  └──────────────────┘
+                                └──────────────────┘  │  here, by  │
+                                                      │  free text │
+                                                      └────────────┘
+                          │              │              │
+                          └──────────────┴──────────────┘
+                                         │  every create AND every update also writes …
+                                         ▼
+                       ┌──────────────────────────────────────────────────┐
+                       │  dbo.PatientJourneyAudit   CREATED / UPDATED     │  ← rendered in the timeline
+                       │  keyed on Staff_ID, with the clinician's note    │     as the journey's history
+                       └──────────────────────────────────────────────────┘
+   ═════════════════════════════════════════════════════════════════════════════════════════════════
+                                         │
+                            ▼ again not enforced. Nothing requires a follow-up before a discharge.
+                                         │
+   DISCHARGE           ┌─────────────────▼────────────────────────────────┐  /Patient/Edit
+   (ADMIN / SUPERUSER) │  dbo.PatientBasic.DischargeType_ID  ← LU_DISCH…  │  Discharge tab
+                       │  + Patient_DischargeDate + _DischargeRemarks     │  AdminOrSuper
+                       │  🔴 NULL here IS the definition of "active"      │
+                       │  gated ONLY by spPatient_Discharge_Check         │
+                       │       MissingDocuments — a DOCUMENT check,       │
+                       │       not a journey check                        │
+                       └──────────────────────────────────────────────────┘
+```
+
+**Read the three dotted arrows.** iFOBT-positive → journey, appointment → journey, and journey → discharge
+are all **conventions of clinical practice**. Not one of them is a foreign key, a check constraint, a
+procedure guard or a controller validation. The only gate anywhere on the way out is
+`spPatient_Discharge_CheckMissingDocuments` (§5.6), and it asks about **uploaded documents**, never about
+journeys.
+
+**Note also who does what.** The journey is the one part of the product a SUPERUSER cannot write
+(`StaffOnly`, §4.9), and registration, booking and discharge are the parts a STAFF user cannot write
+(`AdminOrSuper`). The two halves of a patient's record are owned by two different kinds of user, and the
+handover between them is not modelled at all.
+
+### 7.3 The four types, and which has a detail table
+
+`LU_PJ_APP_TYPE` (`CRC.Data/Database/Migrations/LU_PJ_APP_TYPE.csv`, four rows):
+
+| Code | Name | Detail table | Written by | What it records |
+|---|---|---|---|---|
+| `01` | **PATIENT ASSESSMENT** | `dbo.PatientAssessment` (§3.12) | `spPatientAssessment_CreateWithJourney` | risks, symptoms, medical / allergy / medication / family history, physical examination, investigations, management — as at the iFOBT-positive date |
+| `02` | **COLONOSCOPY** | `dbo.PatientColonoscopy` (§3.13) | `spPatientColonoscopy_CreateWithJourney` | bowel preparation, nine per-segment findings with JSON details, complications, whether a specimen went for HPE, discharge plan, medications given |
+| `03` | **FOLLOW UP** | `dbo.PatientFollowUp` (§3.14) | `spPatientFollowUp_CreateWithJourney` | the HPE result, the discharge plan, whether a discharge summary was issued |
+| `04` | **SURVEILLANCE** | 🔴 **NONE** | 🔴 **nothing** | — |
+
+🔴 **SURVEILLANCE HAS NO DETAIL TABLE, AND THIS WAS CHECKED RATHER THAN ASSUMED.** There is no
+`dbo.PatientSurveillance` in `CRC.Database/dbo/Tables/`, no `spPatientSurveillance_*` under
+`Stored Procedures/`, no `_PatientSurveillance.cshtml` under `Views/StaffPatient/Templates/`, no
+`patientSurveillance.js`, and **`GetJourneyTemplate` recognises exactly three strings** —
+`"PATIENT ASSESSMENT"`, `"COLONOSCOPY"`, `"PATIENT FOLLOW UP"` — answering `400 "Unsupported journey type."`
+to anything else. **There is no way to create a SURVEILLANCE `PatientJourney` row through the portal at
+all.** The code exists in the lookup for one reason: it is a valid
+`PatientAppointment.PjAppType_ID`, so a surveillance *visit can be booked* — it just cannot be *recorded*.
+That is the honest state of the feature, not an oversight to fill in on the way past.
+
+🔴 **AND THE JOURNEY ROW DOES NOT STORE THE CODE.** `PatientJourney.PjAppType_Name` is a **string literal
+written by the create procedure** (§3.10) — and the follow-up's literal, `'PATIENT FOLLOW UP'`, is **not the
+lookup's value**, which is `FOLLOW UP`. Nothing joins the column to the table, so nothing has ever noticed.
+`PatientAppointment.PjAppType_ID` holds the *code* and is a different column on a different table. Two
+vocabularies for one idea, never compared.
+
+### 7.4 The exact write path
+
+Every clinical write in nucentra is one of six procedures, and each one writes **three tables in one call**.
+The full statement order, the foreign key that forces it, and the four asymmetries between the six are in
+**§5.8**; this is the shape:
+
+```
+CREATE                                          UPDATE
+──────────────────────────────────────────      ────────────────────────────────────────────────
+BEGIN TRAN                                      BEGIN TRAN
+  validate patient (2 of 3) + staff (3 of 3)      IF NOT EXISTS journey → RAISERROR
+  1  INSERT dbo.PatientJourney                    validate staff       → RAISERROR
+     @PatientJourney_ID = SCOPE_IDENTITY()        1  UPDATE dbo.PatientJourney   (date, Updated_At,
+  2  INSERT dbo.{detail table}                                                    UpdatedBy_Staff_ID)
+  3  INSERT dbo.PatientJourneyAudit 'CREATED'     2  UPDATE dbo.{detail table}
+COMMIT                                               IF @@ROWCOUNT = 0 → RAISERROR
+SELECT @PatientJourney_ID                         3  INSERT dbo.PatientJourneyAudit 'UPDATED'
+                                                COMMIT
+```
+
+**🔴 ATOMICITY LIVES INSIDE THE PROCEDURE, NOT IN C#.** All six open `SET XACT_ABORT ON; BEGIN TRY BEGIN
+TRAN`, commit at the end, and `ROLLBACK` + `THROW` from their `CATCH`. So **each gets exactly one ordinary
+Dapper method and no C# transaction**: no `SqlConnection` opened by hand, no `BeginTransaction()`, no
+`transaction:` argument. Nucentra still has exactly **two** transactional units of work in the data layer —
+`SaveStaffWithDocumentsAsync` and `SaveAppointmentAsync` (§6.6) — and this area adds none. Wrapping one of
+these in a `SqlTransaction` would nest a transaction inside one that already exists, and would claim in
+`IDatabaseData` an atomicity guarantee the data layer does not provide.
+
+**Step 1 must come first, and a real foreign key is why.** `FK_PatientAssessment_PatientJourney`,
+`FK_PatientColonoscopy_PatientJourney` and `FK_PatientFollowUp_PatientJourney` are enforced, so the detail
+row cannot exist before the journey row — and the journey's identity is only known from `SCOPE_IDENTITY()`
+after it is inserted. **These three are the only enforced foreign keys in this whole feature area**;
+`Patient_ID` and `Staff_ID` are unconstrained everywhere, as they are throughout nucentra.
+
+🔴 **THE UPDATE PATH `UPDATE`s THE JOURNEY ROW. IT DOES NOT INSERT ONE — AND THAT IS THE FAILURE THIS SPLIT
+EXISTS TO PREVENT.** An update that inserted a journey row would show the same assessment twice on the
+timeline, in the right order, with plausible dates and no error anywhere. Asserted end to end during
+Prompt 7's smoke test: the journey-row count for the patient went `1 → 1` across an assessment update,
+`2 → 2` across a colonoscopy update and `3 → 3` across a follow-up update, and each detail table held
+exactly one row per journey throughout.
+
+**What is NOT written.** 🔴 **Not one of the twelve journey procedures writes a `dbo.AuditTrails` row, and
+not one declares `@User_ID` of either kind.** Measured on a database where the entire flow had just been
+driven: six `PatientJourneyAudit` rows, **zero** `AuditTrails` rows. Recording a colonoscopy leaves no trace
+in nucentra's security trail. What the six writes take instead is `@Staff_ID` — the **clinician**, an
+ordinary business argument from the controller's `StaffId` claim, never `DatabaseHelper.CurrentUserId`
+(§0.1, §5.8).
+
+### 7.5 How the timeline is assembled and ordered
+
+`spPatientJourney_TimelineByPatient` is one `SELECT` over `dbo.PatientJourney` with two `OUTER APPLY`s into
+`dbo.PatientJourneyAudit` — the **earliest** `'CREATED'` event and the **latest** `'UPDATED'`/`'EDITED'` one
+— each `LEFT JOIN`ing `dbo.Staff` for a name. `StaffPatientController.GetTimeline` then makes a **second**
+call, `spPatientJourney_AuditsByPatient`, for the *full* history, groups it by `PatientJourney_ID` in C#,
+and hangs each journey's events off it as `auditEvents`. Two reads, one payload.
+
+**The order is `PatientJourney_Date ASC, PatientJourney_ID ASC`, and it is the only sequencing this feature
+has.** There is no stage to sort on, so *the business date the clinician typed* is what puts a patient's
+history in clinical order. Three things follow:
+
+- **The caller must not re-sort**, and does not. Compare `/AdminDashboard/GetTodayAppointments`, which
+  deliberately reverses its procedure's order (§4.8.4) — there is no equivalent here.
+- **The identity tiebreak decides two events recorded for the same instant**, so the row written first
+  shows first.
+- 🔴 **EDITING A JOURNEY'S DATE MOVES IT IN THE TIMELINE.** The update path re-writes
+  `PatientJourney_Date`, so a follow-up back-dated before its colonoscopy reorders the patient's history,
+  silently and immediately. Nothing warns, and nothing compares the dates of a patient's journeys to each
+  other.
+
+**Timestamps.** `PatientJourney_Date` is a business `DATETIME` and is serialized as-is, with no offset.
+`Audit_At`, `CreatedAt` and `UpdatedAt` are `DATETIME2(0)` defaulted to `SYSUTCDATETIME()` — genuinely UTC,
+but SQL Server hands them back as `DateTimeKind.Unspecified`, so `GetTimeline` `SpecifyKind(…, Utc)`s each
+one and serializes it as a `DateTimeOffset` (`"2026-08-09T00:20:37+00:00"`). Skip that and the `+00:00` the
+JSON prints would be a lie. It is the same treatment §4.3's `dbo.Users` timestamps get, and the **opposite**
+of `PatientDocument.UploadedOn`, which is Malaysian local time and must not be relabelled (§3.15).
+
+**The audit read is wrapped in its own `try/catch` that swallows everything**, with the comment *"If the SP
+isn't deployed yet, timeline still works."* So a failure of `spPatientJourney_AuditsByPatient` degrades the
+timeline to empty `auditEvents` rather than failing the page — and it is silent, because that `catch` logs
+nothing.
+
+### 7.6 What `dbo.PatientJourneyAudit` records, and when
+
+**One row per successful `…WithJourney` call, inside that procedure's own transaction. That is the whole
+rule.** `'CREATED'` from the three creates, `'UPDATED'` from the three updates, carrying the
+`PatientJourney_ID`, `SYSUTCDATETIME()`, the clinician's `Staff_ID` and the free-text `Audit_Note` they
+typed on save.
+
+Driving the full flow — create and update each of the three types for one patient — produced exactly this,
+and nothing else:
+
+```
+PatientJourneyAudit_ID | Journey | Type               | Action  | Staff_ID   | Note
+        5              |    8    | PATIENT ASSESSMENT | CREATED | END-00001  | P7 baseline assessment created
+        6              |    8    | PATIENT ASSESSMENT | UPDATED | END-00001  | P7 assessment EDITED
+        7              |    9    | COLONOSCOPY        | CREATED | END-00001  | P7 baseline colonoscopy created
+        8              |    9    | COLONOSCOPY        | UPDATED | END-00001  | P7 colonoscopy EDITED
+        9              |   10    | PATIENT FOLLOW UP  | CREATED | END-00001  | P7 follow up created
+       10              |   10    | PATIENT FOLLOW UP  | UPDATED | END-00001  | P7 follow up EDITED
+```
+
+**So what is the table actually for?** It is the **clinical provenance of the record**, shown to the user:
+who wrote this assessment, who changed it, when, and what they said about the change. It is the only place
+the `Audit_Note` exists, and it is rendered in the timeline. Four things it is *not*:
+
+- 🔴 **It is not `dbo.AuditTrails` and it does not name a login.** Its actor column is a
+  `dbo.Staff.Staff_ID`; verified against the live database, **there is no `User_Id` column on this table at
+  all**. Two accounts sharing one `Staff_ID` are indistinguishable here — which `spUsers_Register`'s
+  one-login-per-staff-member rule (§3.3) makes unlikely rather than impossible.
+- **It is not a diff.** It records *that* a journey was updated, never *what changed*. The previous values
+  are gone; `dbo.PatientJourney` keeps only `Updated_At` and `UpdatedBy_Staff_ID`, i.e. the latest.
+- **It records no deletions**, because nothing deletes a journey except `spPatient_DeleteCascade` — and see
+  §7.7.
+- **It has no foreign key to `dbo.PatientJourney`.** That is what lets its rows outlive the journey they
+  describe, which is exactly what happens below.
+
+### 7.7 🔴 A HONEST STATEMENT OF WHAT IS *NOT* ENFORCED
+
+This is the most important sub-section in §7. Everything above describes what the code does; this is what a
+reader will assume and be wrong about.
+
+#### There is no state machine, and journey rows are events rather than states
+
+- **No column says which stage a patient is at.** Not on `PatientBasic`, not on `PatientJourney`, not
+  anywhere. "Where is this patient up to?" is answered — if at all — by looking at the *set* of journey
+  rows they have and reasoning about it. Nothing in the product does that reasoning.
+- **No gate stops a follow-up being recorded before an assessment**, or a colonoscopy with no assessment,
+  or three assessments and nothing else, or an assessment dated after the follow-up. Every one of those
+  saves cleanly. There is no ordering check in the `.js`, the controller, the data layer or the procedure.
+- **No transition table, because there are no transitions.** Compare HEART's §2.3, which enumerates every
+  legal move with its guard, its `StageFlag` change, its `StageLog` effect and its audit event. The nucentra
+  equivalent would have one row: *"a clinician saved a form; a row was appended"*.
+- **Nothing is derived from the journey.** No dashboard tile, no list filter and no report reads
+  `PjAppType_Name` to decide a patient's status. `/Patient/Active` versus `/Patient/Discharged` partitions
+  on `DischargeType_ID IS NULL` (§3.8) and never looks at journeys at all.
+- **A journey cannot be deleted, corrected away, or superseded.** There is no delete endpoint, no procedure
+  and no soft-delete column. A journey recorded against the wrong patient stays there until somebody opens
+  SSMS.
+- **`SURVEILLANCE` is unreachable** (§7.3): a fourth type exists in the lookup and cannot be recorded.
+
+**Ordering is a matter of clinical practice, not a constraint.** That is a legitimate design for an
+append-only clinical log — but it means *the schema will not stop a mistake*, and any feature that needs to
+know "has this patient had their colonoscopy yet?" has to compute it, from `PjAppType_Name` strings, itself.
+
+#### Two integrity gaps that are live today
+
+🔴 **1 — DELETING A PATIENT WITH A JOURNEY HALF-SUCCEEDS, AND REPORTS FAILURE.** `spPatient_DeleteCascade`
+(§5.6) deletes in this order: appointments, **`dbo.PatientJourney`**, documents, follow-ups, colonoscopies,
+assessments, then the patient. But the three detail tables hold **enforced foreign keys pointing at
+`dbo.PatientJourney`** (§7.4), so statement 2 is refused:
+
+```
+The DELETE statement conflicted with the REFERENCE constraint "FK_PatientAssessment_PatientJourney".
+The conflict occurred in database "CRC_DB", table "dbo.PatientAssessment", column 'PatientJourney_ID'.
+The statement has been terminated.
+```
+
+**"The statement has been terminated" — not the batch.** The procedure has no transaction and no
+`TRY/CATCH`, and a foreign-key violation aborts the *statement* only, so **execution continues**. Measured
+directly, deleting two patients who each had three journeys:
+
+| Table | After |
+|---|---|
+| `dbo.PatientBasic` | **deleted** ✅ |
+| `dbo.PatientDocument`, `PatientFollowUp`, `PatientColonoscopy`, `PatientAssessment` | **deleted** ✅ |
+| `dbo.PatientJourney` | 🔴 **six rows survive, pointing at patients that no longer exist** |
+| `dbo.PatientJourneyAudit` | 🔴 **nine rows survive** (no FK to anything) |
+| `dbo.AuditTrails` | a `DELETE`/`PatientBasic` row **was** written, saying the patient was deleted |
+| the HTTP response | `{ "success": false, "message": "Error deleting patient.", "correlationId": "…" }` |
+
+So the endpoint says it failed, the audit trail says it succeeded, the patient is gone from every list, and
+their clinical history is stranded. **§5.6 predicted the opposite failure** — *"leaves the appointments,
+journey and documents gone and the patient row still there"* — because it reasoned from the statement order
+without the foreign keys. The measured behaviour is the reverse and worse.
+
+The orphans are invisible through the portal, because every journey read `INNER JOIN`s `dbo.PatientBasic`:
+`spPatientJourney_GetById` returns nothing for them, so `/StaffPatient/GetPatientAssessment` answers
+*"Journey not found."* about a row that plainly exists. **There is no procedure that cleans them up**;
+removing them is a hand-written `DELETE`. Deleting the detail rows first, then the journeys, then the
+patient would work — which is what a fix would have to do, and it is a `.sql` change no prompt in this plan
+is permitted to make.
+
+🔴 **2 — A COLONOSCOPY CAN BE RECORDED AGAINST A PATIENT WHO DOES NOT EXIST.**
+`spPatientAssessment_CreateWithJourney` and `spPatientFollowUp_CreateWithJourney` both look
+`dbo.PatientBasic` up and `RAISERROR 'Patient not found.'`;
+`spPatientColonoscopy_CreateWithJourney` only refuses a **blank** `@Patient_ID`. Since `Patient_ID` is not a
+foreign key anywhere in this area, the row goes in and the journey is immediately invisible (the reads
+`INNER JOIN` the patient). Same shape as gap 1, arrived at from the other end.
+
+#### What IS enforced
+
+For balance, because it is a short list and every item is load-bearing:
+
+- **The three detail foreign keys.** A detail row cannot exist without its journey row. This is the only
+  referential integrity in the feature — and, per gap 1, it is also what breaks the cascade.
+- **`@Staff_ID` must resolve to a `dbo.Staff` row.** All six writes check it and `RAISERROR` if not, which
+  is the one thing standing between the `StaffId` claim and a junk value.
+- **`@Patient_ID` must resolve** — on two creates of the three.
+- **The journey must exist, and must already have a detail row of the right type, before an update.** Two
+  separate `RAISERROR`s, so re-saving a colonoscopy as an assessment fails rather than inserting.
+- **The policy split** (§4.9): only a `UserType = 3` account can write here, and only an account with a
+  non-blank `StaffId` claim can get past the controller's own check.
+
+### 7.8 The data layer's one departure from the house rules, and why
+
+`IDatabaseData` rule 5 says *return `List<T>`, `T?` or a scalar — never `DataTable`, never `object`, never
+`dynamic`*. The three detail reads return **`IReadOnlyDictionary<string, object?>?`** instead, and the
+reason is a contract rather than a convenience:
+
+> **The endpoint serializes the detail row AS THE PROCEDURE NAMES ITS COLUMNS.** The browser receives
+> `{"PatientJourney_ID":5,"iFOBTPositive_Date":"…","Risks_Smoking":true,…}`, and
+> `patientAssessment.js`, `patientColonoscopy.js` and `patientFollowUp.js` read exactly those keys —
+> `d.iFOBTPositive_Date`, `model.HPE_Results`, `Findings_Anus`.
+>
+> ASP.NET Core serializes with `JsonSerializerDefaults.Web`, which **camelCases property names and leaves
+> dictionary keys untouched**. A POCO would therefore ship `"patientJourney_ID"` and `"risks_Smoking"`,
+> break all three clinical forms, and **return `200` while doing it**.
+
+`SqlData.QueryJourneyDetailRowAsync` reads the field names off the reader rather than accepting a `dynamic`
+row — so no `dynamic` enters the layer, key order is the procedure's `SELECT` order, and `DBNull` becomes
+`null` exactly as the `DataTable` code it replaced produced. It is the **second** helper in `SqlData` that
+reads a result set without a model, after `QueryLookupAsync`'s ordinal mapping (§3.1), and both exist for
+the same reason: one place doing something unusual deliberately beats three call sites doing it by accident.
+
+A model per detail type would also be ~50 properties of pure transcription that no C# code ever reads by
+name — the endpoint passes the whole object straight through. **If a future change needs one of these
+fields server-side, add a purpose-named model for that read and leave the pass-through alone.**
 
 ---
 

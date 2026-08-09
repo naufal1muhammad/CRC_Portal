@@ -1663,5 +1663,485 @@ namespace CRC.Data.Data
             parameters.Add("Out_Status", dbType: DbType.AnsiString, size: 100,
                 direction: ParameterDirection.Output);
         }
+
+        // ----- Patient journey (Staff > Patient) -----
+        //
+        // Twelve procedures, and 🔴 NOT ONE OF THEM DECLARES @User_ID — not the three journey reads, not
+        // the three detail reads, not the six writes. Checked in every .sql file rather than inferred from
+        // the other feature areas, and it means none of them writes a dbo.AuditTrails row either. The six
+        // writes take @Staff_ID instead, which is A DIFFERENT IDENTITY: the clinician the journey belongs
+        // to, an ordinary business argument from the controller's "StaffId" claim, landing in
+        // dbo.PatientJourney.Staff_ID and dbo.PatientJourneyAudit.Staff_ID. It must never be filled from
+        // DatabaseHelper.CurrentUserId, which is a dbo.Users id. See IDatabaseData and CoreFlow.md §7.
+        //
+        // 🔴 THE SIX WRITES EACH HOLD THEIR OWN TRANSACTION — `SET XACT_ABORT ON; BEGIN TRY BEGIN TRAN`,
+        // COMMIT, and ROLLBACK + THROW from the CATCH — around all three tables they touch. So each is one
+        // ordinary Dapper call and NOT a unit of work here; there is no connection or transaction managed
+        // by hand anywhere in this banner.
+
+        public async Task<PatientJourneyDetail?> GetJourneyByIdAsync(int patientJourneyId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // SELECT TOP 1 on the identity, INNER JOIN dbo.PatientBasic — at most one row, and none at all
+            // when the id is unknown OR when the journey's patient has been deleted. No @User_ID: a read.
+            return await connection.QuerySingleOrDefaultAsync<PatientJourneyDetail>(
+                "dbo.spPatientJourney_GetById",
+                new { PatientJourney_ID = patientJourneyId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task<List<PatientJourneyTimelineItem>> GetJourneyTimelineAsync(string patientId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // The two OUTER APPLYs over dbo.PatientJourneyAudit alias their columns to CreatedAt /
+            // CreatedByStaffId / CreatedByStaffName and UpdatedAt / UpdatedByStaffId / UpdatedByStaffName,
+            // so PatientJourneyTimelineItem's property names match those ALIASES rather than the audit
+            // table's column names. Dapper maps by name; a property called Audit_At would stay null on
+            // every row and nothing would say so.
+            //
+            // No @User_ID: a read. An unknown patient id returns an empty set, not an error.
+            var results = await connection.QueryAsync<PatientJourneyTimelineItem>(
+                "dbo.spPatientJourney_TimelineByPatient",
+                new { Patient_ID = patientId },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<PatientJourneyAuditItem>> GetJourneyAuditsAsync(string patientId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // No @User_ID: a read — and note that the thing it reads is nucentra's OTHER audit trail,
+            // dbo.PatientJourneyAudit, which is keyed on a Staff_ID and is nothing to do with the
+            // dbo.AuditTrails rows the @User_ID actor names.
+            var results = await connection.QueryAsync<PatientJourneyAuditItem>(
+                "dbo.spPatientJourney_AuditsByPatient",
+                new { Patient_ID = patientId },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        // 🔴 THE SECOND PLACE IN THIS FILE THAT READS A RESULT SET WITHOUT A MODEL, and — like
+        // QueryLookupAsync above — it is one helper doing it in the open rather than three call sites doing
+        // it by accident.
+        //
+        // The three detail endpoints serialize their row AS THE PROCEDURE NAMES ITS COLUMNS. The browser
+        // gets {"PatientJourney_ID":5,"iFOBTPositive_Date":"…","Risks_Smoking":true,…} and the three
+        // template scripts read exactly those keys. ASP.NET Core serializes with JsonSerializerDefaults.Web,
+        // which camelCases PROPERTY names and leaves DICTIONARY KEYS untouched — so a POCO would ship
+        // "patientJourney_ID" and "risks_Smoking", break all three clinical forms, and return 200 while
+        // doing it. A dictionary keyed on the column name is therefore the shape, not a shortcut.
+        //
+        // It reads the field NAMES off the reader rather than accepting a `dynamic` row, for two reasons:
+        // this layer does not deal in dynamic (IDatabaseData rule 5), and doing it explicitly is what makes
+        // the two properties the JSON depends on visible —
+        //
+        //   • KEY ORDER IS THE PROCEDURE'S SELECT ORDER, preserved because Dictionary<,> enumerates in
+        //     insertion order and nothing here removes a key. That reproduces the DataTable column order
+        //     this replaced.
+        //   • DBNull BECOMES null, which is what DataRow-plus-`== DBNull.Value ? null : …` produced, and
+        //     what the templates test for.
+        //
+        // Null means NO DETAIL ROW, which is a real state rather than an error: all three procedures INNER
+        // JOIN their detail table, so a COLONOSCOPY journey asked for as an assessment returns nothing
+        // while the journey row itself still exists. The endpoint answers {success:true, assessment:null}.
+        private async Task<IReadOnlyDictionary<string, object?>?> QueryJourneyDetailRowAsync(
+            string procedureName, int patientJourneyId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+            using var reader = await connection.ExecuteReaderAsync(
+                procedureName,
+                new { PatientJourney_ID = patientJourneyId },
+                commandType: CommandType.StoredProcedure);
+
+            if (!reader.Read())
+            {
+                return null;
+            }
+
+            var row = new Dictionary<string, object?>(reader.FieldCount, StringComparer.Ordinal);
+
+            for (var i = 0; i < reader.FieldCount; i++)
+            {
+                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+            }
+
+            return row;
+        }
+
+        public Task<IReadOnlyDictionary<string, object?>?> GetAssessmentByJourneyIdAsync(int patientJourneyId) =>
+            QueryJourneyDetailRowAsync("dbo.spPatientAssessment_GetByJourneyId", patientJourneyId);
+
+        public Task<IReadOnlyDictionary<string, object?>?> GetColonoscopyByJourneyIdAsync(int patientJourneyId) =>
+            QueryJourneyDetailRowAsync("dbo.spPatientColonoscopy_GetByJourneyId", patientJourneyId);
+
+        public Task<IReadOnlyDictionary<string, object?>?> GetFollowUpByJourneyIdAsync(int patientJourneyId) =>
+            QueryJourneyDetailRowAsync("dbo.spPatientFollowUp_GetByJourneyId", patientJourneyId);
+
+        // The create and the update declare THE SAME clinical parameters and differ in exactly one: the
+        // create takes @Patient_ID, the update takes @PatientJourney_ID. Sending both would fail with
+        // "has no parameter named …" on whichever the procedure does not declare, so the shared block is
+        // built once here and each caller adds its own key.
+        //
+        // DynamicParameters rather than an anonymous object because that is what lets the two paths share
+        // the block; there is no OUTPUT parameter anywhere in this feature area. Property names are the
+        // procedure's parameter names verbatim, INCLUDING iFOBTPositive_Date's lower-case first letter.
+        private static DynamicParameters BuildAssessmentParameters(PatientAssessmentSaveInput input)
+        {
+            var parameters = new DynamicParameters();
+
+            parameters.AddDynamicParams(new
+            {
+                input.PatientJourney_Date,
+                input.Staff_ID,
+                input.Audit_Note,
+
+                input.iFOBTPositive_Date,
+                input.Risks_Smoking,
+                input.Risks_AlcoholConsumption,
+                input.Risks_InflammatoryBowelDisease,
+                input.Risks_Diet,
+                input.Risks_SedentaryLifestyle,
+
+                input.Symptoms_WeightLoss,
+                input.Symptoms_AppetiteLoss,
+                input.Symptoms_Lethargic,
+                input.Symptoms_AbdominalPain,
+                input.Symptoms_Constipation,
+                input.Symptoms_Diarrhea,
+                input.Symptoms_RectalBleedingMucous,
+                input.Symptoms_RectalBleedingNoMucous,
+                input.Symptoms_Tenesmus,
+
+                input.MedicalHistory_Diabetes,
+                input.MedicalHistory_Hypertension,
+                input.MedicalHistory_Dyslipidemia,
+                input.MedicalHistory_Bleeding,
+                input.MedicalHistory_Asthma,
+
+                input.AllergyHistory_Medication,
+                input.AllergyHistory_MedicationDetails,
+                input.AllergyHistory_Food,
+                input.AllergyHistory_FoodDetails,
+
+                input.MedicationHistory_Anticoagulant,
+                input.MedicationHistory_AnticoagulantDetails,
+                input.MedicationHistory_Narcotics,
+                input.MedicationHistory_NarcoticsDetails,
+                input.MedicationHistory_Insulin,
+                input.MedicationHistory_InsulinDetails,
+                input.MedicationHistory_AntiHypertensives,
+                input.MedicationHistory_AntiHypertensivesDetails,
+
+                input.PreviousScope_Date,
+
+                input.FamilyHistory_FirstDegree,
+                input.FamilyHistory_SecondDegree,
+
+                input.PhysicalExamination_Details,
+
+                input.Investigation_FBC,
+                input.Investigation_BUSE,
+                input.Investigation_RBS,
+                input.Investigation_LFT,
+                input.Investigation_Coag,
+
+                input.Management_BowelPrep,
+                input.Management_Procedure,
+                input.Management_Consent,
+                input.Management_Advise
+            });
+
+            return parameters;
+        }
+
+        public async Task<int> CreateAssessmentWithJourneyAsync(PatientAssessmentSaveInput input)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var parameters = BuildAssessmentParameters(input);
+            parameters.Add("Patient_ID", input.Patient_ID);
+
+            // 🔴 THE PROCEDURE OWNS THE TRANSACTION, NOT THIS METHOD. spPatientAssessment_CreateWithJourney
+            // wraps dbo.PatientJourney + dbo.PatientAssessment + dbo.PatientJourneyAudit in its own
+            // BEGIN TRAN … COMMIT with ROLLBACK and THROW in its CATCH, so all three land together or none
+            // does. Opening a SqlTransaction around it here would nest a transaction inside one that
+            // already exists and would advertise, in IDatabaseData, an atomicity guarantee this layer is
+            // not the source of.
+            //
+            // QuerySingleAsync, not Execute: it ends with `SELECT @PatientJourney_ID AS PatientJourney_ID`
+            // — a real result set, unlike spPatientBasic_Insert and spPatientAppointment_Insert, which both
+            // answer through an OUTPUT parameter. The family resemblance is the trap; this one is a SELECT.
+            //
+            // No @User_ID of either kind: the procedure declares none and writes no dbo.AuditTrails row.
+            // @Staff_ID is the CLINICIAN, a business argument, and the procedure RAISERRORs 'Staff not
+            // found.' if it does not resolve — which is exactly what would happen if somebody filled it
+            // from DatabaseHelper.CurrentUserId.
+            return await connection.QuerySingleAsync<int>(
+                "dbo.spPatientAssessment_CreateWithJourney",
+                parameters,
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task UpdateAssessmentWithJourneyAsync(PatientAssessmentSaveInput input)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var parameters = BuildAssessmentParameters(input);
+            parameters.Add("PatientJourney_ID", input.PatientJourney_ID);
+
+            // 🔴 UPDATES THE EXISTING JOURNEY ROW; IT DOES NOT INSERT ONE. That is the whole reason the
+            // create and the update are separate procedures, and an update that inserted would duplicate
+            // the patient's timeline without erroring. Same own-transaction arrangement as the create.
+            //
+            // ExecuteAsync: it ends with `SELECT 1 AS Success`, which nothing has ever read. Its
+            // colonoscopy sibling ends with nothing at all — so neither can be turned into a
+            // QuerySingleAsync without opening the .sql first.
+            await connection.ExecuteAsync(
+                "dbo.spPatientAssessment_UpdateWithJourney",
+                parameters,
+                commandType: CommandType.StoredProcedure);
+        }
+
+        // Same create/update parameter split as BuildAssessmentParameters, for the same reason.
+        private static DynamicParameters BuildColonoscopyParameters(PatientColonoscopySaveInput input)
+        {
+            var parameters = new DynamicParameters();
+
+            parameters.AddDynamicParams(new
+            {
+                input.PatientJourney_Date,
+                input.Staff_ID,
+                input.Audit_Note,
+
+                input.ColonoscopyStatus,
+                input.ColonoscopyStatus_Details,
+                input.BowelPreparation,
+
+                input.Findings_Anus,
+                input.Findings_AnusDetails,
+                input.Findings_Rectum,
+                input.Findings_RectumDetails,
+                input.Findings_SigmoidColon,
+                input.Findings_SigmoidColonDetails,
+                input.Findings_DescendingColon,
+                input.Findings_DescendingColonDetails,
+                input.Findings_SplenicFlexure,
+                input.Findings_SplenicFlexureDetails,
+                input.Findings_TransverseColon,
+                input.Findings_TransverseColonDetails,
+                input.Findings_HepaticFlexure,
+                input.Findings_HepaticFlexureDetails,
+                input.Findings_AscendingColon,
+                input.Findings_AscendingColonDetails,
+                input.Findings_Caecum,
+                input.Findings_CaecumDetails,
+
+                input.HPE_Status,
+                input.HPE_Details,
+
+                input.Complications,
+                input.Complications_Details,
+
+                input.DischargePlan,
+
+                input.Medication_Details
+            });
+
+            return parameters;
+        }
+
+        public async Task<int> CreateColonoscopyWithJourneyAsync(PatientColonoscopySaveInput input)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var parameters = BuildColonoscopyParameters(input);
+            parameters.Add("Patient_ID", input.Patient_ID);
+
+            // Own transaction inside the procedure, trailing SELECT of the new PatientJourney_ID, no
+            // @User_ID — as the assessment create above. The one difference is that this procedure only
+            // refuses a BLANK @Patient_ID and never looks the patient up, so a colonoscopy can be recorded
+            // against a patient id that resolves to nothing. Nothing here compensates for that; the check
+            // belongs in the procedure and adding it would be a .sql change.
+            return await connection.QuerySingleAsync<int>(
+                "dbo.spPatientColonoscopy_CreateWithJourney",
+                parameters,
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task UpdateColonoscopyWithJourneyAsync(PatientColonoscopySaveInput input)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var parameters = BuildColonoscopyParameters(input);
+            parameters.Add("PatientJourney_ID", input.PatientJourney_ID);
+
+            // Updates the journey row and the detail row and writes an 'UPDATED' audit row; no second
+            // journey row. The only one of the six writes with NO trailing SELECT of any kind.
+            await connection.ExecuteAsync(
+                "dbo.spPatientColonoscopy_UpdateWithJourney",
+                parameters,
+                commandType: CommandType.StoredProcedure);
+        }
+
+        // Three clinical parameters against the assessment's forty-five, and the same create/update split.
+        private static DynamicParameters BuildFollowUpParameters(PatientFollowUpSaveInput input)
+        {
+            var parameters = new DynamicParameters();
+
+            parameters.AddDynamicParams(new
+            {
+                input.PatientJourney_Date,
+                input.Staff_ID,
+                input.Audit_Note,
+
+                input.HPE_Results,
+                input.DischargePlan,
+                input.DischargeSummary_Status
+            });
+
+            return parameters;
+        }
+
+        public async Task<int> CreateFollowUpWithJourneyAsync(PatientFollowUpSaveInput input)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var parameters = BuildFollowUpParameters(input);
+            parameters.Add("Patient_ID", input.Patient_ID);
+
+            // 🔴 This is the procedure that writes PjAppType_Name = 'PATIENT FOLLOW UP' while
+            // LU_PJ_APP_TYPE holds "FOLLOW UP". The literal is inside the .sql and nothing joins the two,
+            // so nothing detects it — see PatientFollowUpSaveInput and CoreFlow.md §7.
+            //
+            // Own transaction, trailing SELECT of the new PatientJourney_ID, no @User_ID. It DOES validate
+            // the patient, unlike the colonoscopy create.
+            return await connection.QuerySingleAsync<int>(
+                "dbo.spPatientFollowUp_CreateWithJourney",
+                parameters,
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task UpdateFollowUpWithJourneyAsync(PatientFollowUpSaveInput input)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var parameters = BuildFollowUpParameters(input);
+            parameters.Add("PatientJourney_ID", input.PatientJourney_ID);
+
+            await connection.ExecuteAsync(
+                "dbo.spPatientFollowUp_UpdateWithJourney",
+                parameters,
+                commandType: CommandType.StoredProcedure);
+        }
+
+        // ----- Patient documents -----
+        //
+        // Five procedures, and 🔴 THE @User_ID PICTURE IS NOT UNIFORM. Two of the five declare
+        // `@User_ID INT = NULL` — the ACTOR — and each says so on its own call: spPatientDocument_Insert and
+        // spPatientDocument_Delete. The other three declare none and must not be given one.
+        //
+        // 🔴 spPatientDocument_GetById IS THE TRAP. Its header comment contains the words "no @User_ID and
+        // no audit row", so a grep for "@User_ID" matches the FILE — and its parameter list is
+        // `@PatientDocument_ID INT` and nothing else. Read the parameter list, not the grep.
+
+        public async Task<List<PatientDocumentItem>> GetPatientDocumentsAsync(string patientId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // No @User_ID: a read, no audit row. @Patient_ID is REQUIRED here — unlike spStaffDocument_List,
+            // whose @Staff_ID defaults to NULL and returns every document in the system when omitted.
+            var results = await connection.QueryAsync<PatientDocumentItem>(
+                "dbo.spPatientDocument_List",
+                new { Patient_ID = patientId },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<PatientDocumentItem?> GetPatientDocumentByIdAsync(int patientDocumentId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // 🔴 NO @User_ID PARAMETER EXISTS ON THIS PROCEDURE. Its comment mentions the name; its
+            // signature does not declare it. Sending one would throw "has no parameter named '@User_ID'".
+            //
+            // SELECT TOP 1 on the identity: at most one row, none when the id is unknown.
+            return await connection.QuerySingleOrDefaultAsync<PatientDocumentItem>(
+                "dbo.spPatientDocument_GetById",
+                new { PatientDocument_ID = patientDocumentId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task AddPatientDocumentAsync(PatientDocumentInput document)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // spPatientDocument_Insert declares @User_ID INT = NULL for its dbo.AuditTrails row: the ACTOR,
+            // not a target. DatabaseHelper used to append it automatically off sys.parameters — the
+            // controller never mentioned it — and Dapper cannot, so it is passed explicitly here. Drop it
+            // and the document is still recorded, with AuditTrails.User_Id = 0 and nothing failing.
+            //
+            // ExecuteAsync and no return value: the procedure emits no result set and does NOT hand back
+            // the new identity, which is why the caller's audit line records DocumentId=0 and names the
+            // blob key instead.
+            await connection.ExecuteAsync(
+                "dbo.spPatientDocument_Insert",
+                new
+                {
+                    document.Patient_ID,
+                    document.Patient_Name,
+                    document.PatientDocumentType_ID,
+                    document.PatientDocumentType_Name,
+                    document.FileName,
+                    document.BlobName,
+                    document.ContentType,
+                    User_ID = _databaseHelper.CurrentUserId
+                },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task<string?> DeletePatientDocumentAsync(int patientDocumentId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // The patient twin of DeleteStaffDocumentAsync, and the second call in this file that needs
+            // DynamicParameters for the same reason: spPatientDocument_Delete answers through
+            // `@DeletedBlobName VARCHAR(500) = NULL OUTPUT`, and an OUTPUT parameter is the one thing
+            // Dapper cannot reach through an anonymous object. The name and the type are written out where
+            // a reader can check them against the .sql.
+            //
+            // AnsiString, not String: the parameter is VARCHAR(500), and DbType.String would send NVARCHAR
+            // for SQL Server to convert back.
+            //
+            // @User_ID INT = NULL is the ACTOR for the dbo.AuditTrails row, passed explicitly as everywhere
+            // else. The procedure audits only when a row was actually deleted.
+            var parameters = new DynamicParameters();
+            parameters.Add("PatientDocument_ID", patientDocumentId);
+            parameters.Add("User_ID", _databaseHelper.CurrentUserId);
+            parameters.Add("DeletedBlobName", dbType: DbType.AnsiString, size: 500,
+                direction: ParameterDirection.Output);
+
+            await connection.ExecuteAsync(
+                "dbo.spPatientDocument_Delete",
+                parameters,
+                commandType: CommandType.StoredProcedure);
+
+            // NULL means no row was deleted, so there is nothing in storage to remove.
+            return parameters.Get<string?>("DeletedBlobName");
+        }
+
+        // The patient twin of GetStaffDocumentTypeFiltersAsync, and it reads the same two columns in the
+        // same order — code first, display name second — so QueryLookupAsync's ordinal mapping applies
+        // unchanged. It is NOT one of the fourteen spLU_* procedures, but it is the same shape, and the
+        // helper's contract is the shape rather than the folder.
+        //
+        // No @User_ID: a read. No caller until Prompt 8's Documents search page.
+        public Task<List<LookupItem>> GetPatientDocumentTypeFiltersAsync() =>
+            QueryLookupAsync("dbo.spPatientDocument_LookupDocuments");
     }
 }

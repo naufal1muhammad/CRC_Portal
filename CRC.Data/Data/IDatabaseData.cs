@@ -880,5 +880,291 @@ namespace CRC.Data.Data
         // and /AdminDashboard/UpdateAppointmentStatus, which discards it and writes no AuditLog line at
         // all. See AppointmentStatusResult for why that is one method and not two.
         Task<AppointmentStatusResult> UpdateAppointmentStatusAsync(int appointmentId, string status);
+
+        // ----- Patient journey (Staff > Patient) -----
+        //
+        // 🔴 THIS IS NUCENTRA'S CORE FEATURE. Read CoreFlow.md §7 before changing anything here; this
+        // banner is the short version of it.
+        //
+        // A dbo.PatientJourney ROW IS AN EVENT, NOT A STATE. One row = "a clinical step of this kind
+        // happened to this patient, on this date, under this clinician". Its PjAppType_Name says which of
+        // the four LU_PJ_APP_TYPE kinds it was, and three of those four hang a detail table off the row:
+        //
+        //     01 PATIENT ASSESSMENT  → dbo.PatientAssessment   risks, symptoms, history, investigations
+        //     02 COLONOSCOPY         → dbo.PatientColonoscopy  bowel prep and nine per-segment findings
+        //     03 FOLLOW UP           → dbo.PatientFollowUp     the HPE result and the discharge plan
+        //     04 SURVEILLANCE        → NOTHING. Checked, not assumed: there is no dbo.PatientSurveillance
+        //                              table, no procedure and no template. It is a scheduling outcome.
+        //
+        // 🔴 THERE IS NO STATE MACHINE. No column says which stage a patient is at, nothing stops a
+        // follow-up being recorded before an assessment, and there is no transition table — an agent
+        // arriving from HEART will look for one and there is none. Ordering is clinical practice, not a
+        // constraint. §7 says this at length because it is the single most important thing about this area.
+        //
+        // ── 🔴 WHY THE SIX WRITES ARE NAMED …WithJourney, AND WHY NONE IS A UNIT OF WORK HERE ───────────
+        //
+        // Each one writes THREE tables in one call — dbo.PatientJourney, then its detail table, then a
+        // dbo.PatientJourneyAudit row — and EACH OWNS ITS OWN TRANSACTION: every one of the six opens with
+        // `SET XACT_ABORT ON; BEGIN TRY BEGIN TRAN`, commits at the end, and rolls back and THROWs from its
+        // CATCH. Verified by reading all six .sql files, not inferred.
+        //
+        // So each gets exactly ONE ordinary Dapper method and NO C# transaction. Wrapping one in a
+        // SqlTransaction would nest a transaction inside a procedure that already has one and would claim,
+        // in the interface, an atomicity guarantee this layer is not the source of. The two transactional
+        // units of work in this file remain SaveStaffWithDocumentsAsync and SaveAppointmentAsync, and there
+        // is no third.
+        //
+        // ── 🔴 @User_ID: NOT ONE OF THE TWELVE PROCEDURES IN THIS BANNER DECLARES IT ────────────────────
+        //
+        // Read every parameter list; do not pattern-match from the other feature areas. None of the three
+        // journey reads, none of the three detail reads and none of the six writes declares @User_ID of
+        // either kind, and NONE OF THEM WRITES A dbo.AuditTrails ROW. Recording a colonoscopy leaves no
+        // trace in nucentra's security trail at all — it writes dbo.PatientJourneyAudit instead
+        // (PatientJourneyAuditItem explains the difference between the two trails).
+        //
+        // What the six writes DO take is @Staff_ID, and IT IS A DIFFERENT IDENTITY. It is the clinician the
+        // journey belongs to — an ordinary business argument the controller takes from the caller's
+        // "StaffId" claim — and it lands in dbo.PatientJourney.Staff_ID and dbo.PatientJourneyAudit.Staff_ID.
+        // IT MUST NEVER BE FILLED FROM DatabaseHelper.CurrentUserId, which is a dbo.Users identity. So
+        // Staff_ID appears on the input models and in these signatures, exactly as a business value should.
+        //
+        // ── The lookup is not duplicated here ───────────────────────────────────────────────────────────
+        //
+        // The patient-document type dropdown is GetPatientDocumentTypesAsync, created by Prompt 1 for
+        // spLU_PatientDocumentType_List. One method per procedure, whoever calls it.
+
+        // One journey row plus its patient's name, for the header of an assessment / colonoscopy /
+        // follow-up form. Calls spPatientJourney_GetById; SELECT TOP 1 on the identity, so at most one row
+        // and null when the id matches nothing.
+        //
+        // It INNER JOINs dbo.PatientBasic, so a journey whose patient has been deleted comes back as null
+        // rather than as a row with no name. All three GetPatient* endpoints call this FIRST and answer
+        // "Journey not found." on null, before they look for a detail row.
+        Task<PatientJourneyDetail?> GetJourneyByIdAsync(int patientJourneyId);
+
+        // Every journey a patient has, with who created and who last updated each — the patient's whole
+        // clinical timeline in one read. Calls spPatientJourney_TimelineByPatient.
+        //
+        // ORDERED BY PatientJourney_Date ASC, then PatientJourney_ID ASC, and that ordering is the only
+        // sequencing this feature has (there is no stage column to sort on). The caller must not re-sort.
+        //
+        // The five audit columns come from TWO OUTER APPLYs over dbo.PatientJourneyAudit — the earliest
+        // 'CREATED' event and the latest 'UPDATED'/'EDITED' one — which is why every one of them is
+        // nullable and why a journey with no audit rows still appears. See PatientJourneyTimelineItem.
+        //
+        // An unknown or blank patient id is NOT an error: the WHERE matches nothing and the list is empty.
+        Task<List<PatientJourneyTimelineItem>> GetJourneyTimelineAsync(string patientId);
+
+        // Every dbo.PatientJourneyAudit event for every journey a patient has, oldest first within each
+        // journey. Calls spPatientJourney_AuditsByPatient.
+        //
+        // This is the FULL history the timeline read above summarises to two rows per journey: one row per
+        // …WithJourney call ever made against this patient, 'CREATED' or 'UPDATED', with the clinician and
+        // the free-text note they typed. The caller groups it by PatientJourney_ID.
+        //
+        // 🔴 IT IS NOT dbo.AuditTrails. Two separate database audit trails exist in nucentra and this is
+        // the clinical one — keyed on a STAFF member and rendered in the UI, where dbo.AuditTrails is keyed
+        // on a USER account and is not. PatientJourneyAuditItem sets the two side by side.
+        Task<List<PatientJourneyAuditItem>> GetJourneyAuditsAsync(string patientId);
+
+        // ── The three detail reads ──────────────────────────────────────────────────────────────────────
+        //
+        // 🔴 THESE THREE RETURN A COLUMN-KEYED DICTIONARY AND NOT A POCO, AND THAT IS DELIBERATE — it is
+        // the one place in this file that departs from rule 5, so the reason is written out in full.
+        //
+        // The endpoint serializes the detail row AS THE PROCEDURE NAMES ITS COLUMNS: the browser receives
+        // {"PatientJourney_ID":5,"iFOBTPositive_Date":"…","Risks_Smoking":true,…}, and the three template
+        // scripts under wwwroot/js/staffPatient/templates/ read exactly those keys — `d.iFOBTPositive_Date`,
+        // `model.HPE_Results`, `Findings_Anus`. ASP.NET Core serializes with JsonSerializerDefaults.Web,
+        // which camelCases PROPERTY names but leaves DICTIONARY KEYS alone. So a POCO would ship
+        // "patientJourney_ID" and "risks_Smoking" and break all three forms, silently, with a 200 response.
+        //
+        // A model per detail type would also have to be ~50 properties of pure transcription that nothing
+        // in C# ever reads by name — the endpoint passes the whole object straight through.
+        //
+        // The values are the raw CLR types the reader gives (int, bool, string, DateTime), with DBNull
+        // mapped to null, and THE KEY ORDER IS THE PROCEDURE'S SELECT ORDER. Null is returned for "no
+        // detail row", which is a real state: all three procedures INNER JOIN their detail table, so asking
+        // for a COLONOSCOPY journey's assessment returns nothing while the journey itself still exists.
+
+        // The dbo.PatientAssessment row for one journey, keyed by column name. Calls
+        // spPatientAssessment_GetByJourneyId — 51 columns, six from the journey and its patient and 45 from
+        // the assessment. Null when this journey has no assessment row.
+        Task<IReadOnlyDictionary<string, object?>?> GetAssessmentByJourneyIdAsync(int patientJourneyId);
+
+        // The dbo.PatientColonoscopy row for one journey, keyed by column name. Calls
+        // spPatientColonoscopy_GetByJourneyId. Null when this journey has no colonoscopy row.
+        Task<IReadOnlyDictionary<string, object?>?> GetColonoscopyByJourneyIdAsync(int patientJourneyId);
+
+        // The dbo.PatientFollowUp row for one journey, keyed by column name. Calls
+        // spPatientFollowUp_GetByJourneyId. Null when this journey has no follow-up row.
+        Task<IReadOnlyDictionary<string, object?>?> GetFollowUpByJourneyIdAsync(int patientJourneyId);
+
+        // ── The six writes ──────────────────────────────────────────────────────────────────────────────
+
+        // Records a NEW patient assessment: writes dbo.PatientJourney (type 'PATIENT ASSESSMENT'), then
+        // dbo.PatientAssessment against the identity that insert produced, then a 'CREATED'
+        // dbo.PatientJourneyAudit row — in that order, inside the procedure's own transaction. Calls
+        // spPatientAssessment_CreateWithJourney and RETURNS THE NEW PatientJourney_ID.
+        //
+        // The order is forced: PatientAssessment.PatientJourney_ID is a real foreign key, so the journey
+        // row has to exist first, and its id is only known from SCOPE_IDENTITY() afterwards.
+        //
+        // It answers with a trailing `SELECT @PatientJourney_ID AS PatientJourney_ID` — a genuine result
+        // set, NOT the OUTPUT parameter spPatientBasic_Insert and spPatientAppointment_Insert use. Read the
+        // .sql rather than the family resemblance; this one really is a QuerySingleAsync.
+        //
+        // It RAISERRORs (→ SqlException) on an unknown @Patient_ID and on an unknown @Staff_ID, and
+        // rolls back. Nothing is written on either path.
+        Task<int> CreateAssessmentWithJourneyAsync(PatientAssessmentSaveInput input);
+
+        // Re-saves an existing assessment: UPDATEs dbo.PatientJourney (the date, Updated_At and
+        // UpdatedBy_Staff_ID), then UPDATEs dbo.PatientAssessment, then writes an 'UPDATED'
+        // dbo.PatientJourneyAudit row. Calls spPatientAssessment_UpdateWithJourney.
+        //
+        // 🔴 IT CREATES NO SECOND JOURNEY ROW. The whole point of the create/update split is that a
+        // re-save must not duplicate the patient's timeline — an update that inserted a journey row would
+        // show the same assessment twice, in the right order, with no error anywhere. That is asserted in
+        // this prompt's smoke test.
+        //
+        // RAISERRORs 'Journey not found.' on an unknown journey, 'Staff not found.' on an unknown
+        // clinician, and 'Assessment row not found for this journey.' when the journey exists but carries
+        // no assessment — each a SqlException here, each rolling back.
+        Task UpdateAssessmentWithJourneyAsync(PatientAssessmentSaveInput input);
+
+        // Records a NEW colonoscopy: dbo.PatientJourney (type 'COLONOSCOPY'), then dbo.PatientColonoscopy,
+        // then a 'CREATED' audit row, in the procedure's own transaction. Calls
+        // spPatientColonoscopy_CreateWithJourney and returns the new PatientJourney_ID from its trailing
+        // SELECT.
+        //
+        // 🔴 IT IS THE ONE CREATE OF THE THREE THAT DOES NOT CHECK THE PATIENT EXISTS. The assessment and
+        // follow-up creates both look dbo.PatientBasic up and RAISERROR 'Patient not found.'; this one only
+        // refuses a BLANK @Patient_ID. Since Patient_ID is not a foreign key anywhere, a colonoscopy can be
+        // recorded against a patient that does not exist. It does still validate @Staff_ID.
+        Task<int> CreateColonoscopyWithJourneyAsync(PatientColonoscopySaveInput input);
+
+        // Re-saves an existing colonoscopy — journey row, then detail row, then an 'UPDATED' audit row, and
+        // no second journey row. Calls spPatientColonoscopy_UpdateWithJourney.
+        //
+        // Note the asymmetry with its two siblings: this is the only one of the six writes that ends with
+        // NO trailing SELECT at all (the assessment and follow-up updates each emit `SELECT 1 AS Success`,
+        // which nothing reads). All three are ExecuteAsync, so it makes no difference here — but it is why
+        // none of the three can become a QuerySingleAsync later without reading the .sql first.
+        Task UpdateColonoscopyWithJourneyAsync(PatientColonoscopySaveInput input);
+
+        // Records a NEW follow-up: dbo.PatientJourney, then dbo.PatientFollowUp, then a 'CREATED' audit
+        // row, in the procedure's own transaction. Calls spPatientFollowUp_CreateWithJourney and returns
+        // the new PatientJourney_ID.
+        //
+        // 🔴 IT WRITES PjAppType_Name = 'PATIENT FOLLOW UP', WHICH IS NOT THE LU_PJ_APP_TYPE VALUE
+        // ("FOLLOW UP"). Nothing joins the column to the lookup, so nothing reports the mismatch, and the
+        // string the procedure writes is the one the portal switches on. See PatientFollowUpSaveInput.
+        Task<int> CreateFollowUpWithJourneyAsync(PatientFollowUpSaveInput input);
+
+        // Re-saves an existing follow-up — journey row, then detail row, then an 'UPDATED' audit row, and
+        // no second journey row. Calls spPatientFollowUp_UpdateWithJourney.
+        Task UpdateFollowUpWithJourneyAsync(PatientFollowUpSaveInput input);
+
+        // ----- Patient documents -----
+        //
+        // The patient half of nucentra's document storage: a dbo.PatientDocument row is the CATALOGUE
+        // ENTRY, and the bytes live in a private Azure Blob container reached only through a short-lived
+        // read SAS minted per click. DOCUMENTSTORAGE.md is authoritative on the mechanism and this
+        // migration changes none of it.
+        //
+        // FIVE PROCEDURES ARE WRAPPED HERE. 🔴 THE @User_ID PICTURE IS NOT UNIFORM AND MUST BE READ FILE BY
+        // FILE — this is the one feature area in the plan where grepping actively misleads:
+        //
+        //   spPatientDocument_Insert   `@User_ID INT = NULL` — ACTOR. Supplied by SqlData from the claim.
+        //   spPatientDocument_Delete   `@User_ID INT = NULL` — ACTOR. Same. (It ALSO has an OUTPUT
+        //                              parameter — see below.)
+        //   spPatientDocument_GetById  🔴 DOES NOT DECLARE @User_ID AT ALL, despite its header comment
+        //                              SAYING the words "no @User_ID and no audit row". A grep for
+        //                              "@User_ID" matches that comment and would put you one step from
+        //                              sending a parameter the procedure has no place for. Read the
+        //                              parameter list: it is `@PatientDocument_ID INT` and nothing else.
+        //   spPatientDocument_List     no @User_ID, no audit row.
+        //   spPatientDocument_LookupDocuments  no @User_ID, no audit row.
+        //
+        // spPatientDocument_PatientNames and spDocuments_Search live in the same folder and belong to
+        // Prompt 8. They are not wrapped here.
+
+        // Every document belonging to one patient, newest first. Calls spPatientDocument_List, ordered
+        // `UploadedOn DESC, PatientDocument_ID DESC` — and 🔴 THAT FIRST KEY IS A STRING SORT, because
+        // UploadedOn is VARCHAR(100) rather than a date (see PatientDocumentItem). The identity tiebreak is
+        // part of the contract, not decoration: two documents uploaded in one request share a timestamp.
+        //
+        // Unlike its staff twin @Patient_ID is REQUIRED here — spStaffDocument_List's is optional and
+        // returns every document in the system when omitted; this one has no such mode. An unknown id
+        // returns an empty list.
+        //
+        // The result carries BlobName. The endpoint deliberately does not project it.
+        Task<List<PatientDocumentItem>> GetPatientDocumentsAsync(string patientId);
+
+        // One document by id, or null. Calls spPatientDocument_GetById — the same nine columns
+        // GetPatientDocumentsAsync returns, hence the same model.
+        //
+        // It exists to resolve a blob key and a file name so a five-minute read SAS can be minted, and it
+        // is called TWICE per delete-and-download cycle: once by GetPatientDocumentUrl, and once by
+        // DeletePatientDocument purely so the audit line can name the patient the document belonged to
+        // (spPatientDocument_Delete hands back only the blob key).
+        //
+        // 🔴 REUSED BY PROMPT 8 — DocumentsController's own download endpoint calls this same method. It is
+        // created here and must not be duplicated there; see DapperLayerPlan.md's shared-procedure table.
+        //
+        // No @User_ID: it is read-only and writes no audit row. Its header comment says so in words that a
+        // grep mistakes for a declaration.
+        Task<PatientDocumentItem?> GetPatientDocumentByIdAsync(int patientDocumentId);
+
+        // Records one uploaded document. Calls spPatientDocument_Insert.
+        //
+        // 🔴 THE BYTES ARE ALREADY IN THE CONTAINER when this runs — the caller uploads and hands over the
+        // resulting key. CRC.Data has no reference to CRC.Web and cannot see IDocumentStorage. See
+        // PatientDocumentInput.
+        //
+        // spPatientDocument_Insert declares @User_ID INT = NULL — the ACTOR for the dbo.AuditTrails row it
+        // writes — and SqlData supplies it from DatabaseHelper.CurrentUserId, which is why it is absent
+        // from this signature. Before the Dapper layer, DatabaseHelper appended it automatically off
+        // sys.parameters and the controller never mentioned it; drop it now and every patient-document
+        // upload audits as user 0, with nothing failing.
+        //
+        // It does NOT return the new PatientDocument_ID. The procedure computes it from SCOPE_IDENTITY()
+        // only to name it in the audit summary and then discards it — which is why every
+        // AuditLog.PatientDocumentUploaded line in the portal records DocumentId=0 and identifies the row
+        // by its blob key instead. Exactly the same shape spStaffDocument_Insert has.
+        Task AddPatientDocumentAsync(PatientDocumentInput document);
+
+        // Deletes one document row and RETURNS ITS BLOB KEY so the caller can remove the object from
+        // storage. Calls spPatientDocument_Delete. Null means no row matched — and therefore nothing to
+        // remove — which is also what the caller gets for an id that never existed.
+        //
+        // The key comes back through `@DeletedBlobName VARCHAR(500) = NULL OUTPUT`, so this is one of the
+        // handful of calls in SqlData that needs DynamicParameters; the staff twin
+        // DeleteStaffDocumentAsync is written the same way for the same reason.
+        //
+        // Storage cannot join a database transaction, so the row goes first and the object second, on a
+        // best-effort basis — the caller logs a failed removal as a warning rather than failing the
+        // request, because from the user's side the document HAS been deleted and what is left is an
+        // orphaned blob for an operator to clean up.
+        //
+        // spPatientDocument_Delete declares @User_ID INT = NULL — the ACTOR — supplied by SqlData. The
+        // audit row is written only when a row was actually deleted.
+        Task<string?> DeletePatientDocumentAsync(int patientDocumentId);
+
+        // The patient document-type filter for Prompt 8's Documents search page. Calls
+        // spPatientDocument_LookupDocuments, ordered by the resolved name.
+        //
+        // 🔴 IT IS NOT THE SAME LIST AS GetPatientDocumentTypesAsync, AND BOTH ARE CORRECT. This one UNIONS
+        // the types actually in use on dbo.PatientDocument with the types in LU_PATDOCUMENTTYPE, and
+        // COALESCEs a missing name back to the raw id. It exists because PatientDocument.
+        // PatientDocumentType_ID has no foreign key: a document uploaded under a type later removed from
+        // the lookup must still be FINDABLE, so the filter offers the orphaned id with the id as its own
+        // label. An UPLOAD form must not offer that type, which is why it uses spLU_PatientDocumentType_List
+        // instead. Two procedures, two right answers, one lookup table — exactly the split
+        // spStaffDocument_LookupDocuments makes on the staff side.
+        //
+        // NO CALLER YET. It is wrapped here because Prompt 7 owns the spPatientDocument_* family; Prompt 8
+        // wires it to the Documents page. Do not create a second method for it there.
+        Task<List<LookupItem>> GetPatientDocumentTypeFiltersAsync();
     }
 }

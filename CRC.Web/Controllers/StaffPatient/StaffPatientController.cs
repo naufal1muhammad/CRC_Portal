@@ -1,22 +1,31 @@
-﻿using CRC.Data.Data;
+using CRC.Data.Data;
+using CRC.Data.Models;
 using CRC.Web.Infrastructure;
 using CRC.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
-using System.Data;
 
 namespace CRC.Web.Controllers.StaffPatient
 {
+    // The STAFF workspace: one patient, their whole clinical journey, and their documents. See
+    // CoreFlow.md §7 for what a journey IS and §4.9 for this controller's fifteen actions.
+    //
+    // 🔴 IT IS THE ONLY CONTROLLER IN NUCENTRA THAT MIXES POLICIES PER ACTION, AND THE SPLIT IS THE POINT:
+    // every READ is AdminOrSuperOrStaff, so an administrator may look at a patient journey; the three
+    // clinical WRITES are StaffOnly, so only a clinician may record one — which genuinely excludes the
+    // SUPERUSER. `Details`, the page itself, is StaffOnly too. There is no class-level [Authorize] to fall
+    // back on, and the global AuthorizeFilter (§2.2) is what keeps a missing attribute failing closed.
+    // Do not "tidy" these onto the class.
     public class StaffPatientController : Controller
     {
-        private readonly DatabaseHelper _db;
+        private readonly IDatabaseData _data;
         private readonly IDocumentStorage _documentStorage;
         private readonly ILogger<StaffPatientController> _logger;
 
-        public StaffPatientController(DatabaseHelper db, IDocumentStorage documentStorage, ILogger<StaffPatientController> logger)
+        public StaffPatientController(IDatabaseData data, IDocumentStorage documentStorage, ILogger<StaffPatientController> logger)
         {
-            _db = db;
+            _data = data;
             _documentStorage = documentStorage;
             _logger = logger;
         }
@@ -29,11 +38,19 @@ namespace CRC.Web.Controllers.StaffPatient
             return View();
         }
 
+        // 🔴 THE CLINICIAN, NOT THE AUDIT ACTOR. This is dbo.Staff.Staff_ID, carried in the "StaffId" claim
+        // that AccountController adds only for User_Type = 3, and it becomes PatientJourney.Staff_ID and
+        // PatientJourneyAudit.Staff_ID. It is NOT the @User_ID of CoreFlow.md §0.1 — none of the twelve
+        // journey procedures declares that parameter at all — and the two identities must never be crossed.
         private string? GetStaffId()
         {
             // IMPORTANT: use the claim you added during login
             return User.FindFirst("StaffId")?.Value;
         }
+
+        // Formats a journey's business date for a <input type="datetime-local">.
+        // PatientJourney_Date is DATETIME NOT NULL, so there is no null branch to reproduce.
+        private static string ToLocalInput(DateTime value) => value.ToString("yyyy-MM-ddTHH:mm");
 
         [Authorize(Policy = "AdminOrSuperOrStaff")]
         [HttpGet]
@@ -66,55 +83,56 @@ namespace CRC.Web.Controllers.StaffPatient
 
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spPatientBasic_GetById",
-                    new[] { new SqlParameter("@Patient_ID", patientId.Trim()) }
-                );
+                // The SAME procedure /Patient/GetBasic reads (Prompt 5's GetPatientByIdAsync) — one method
+                // per procedure, two callers. The JSON is NOT the same: this page is read-only, so it
+                // projects the six lookup NAMES and not their ids, and it formats `age` as a STRING where
+                // /Patient/GetBasic returns a number. Both shapes are live contracts; neither moves.
+                var patientRow = await _data.GetPatientByIdAsync(patientId.Trim());
 
-                if (dt.Rows.Count == 0)
+                if (patientRow == null)
                     return Ok(new { success = false, message = "Patient not found." });
 
-                var row = dt.Rows[0];
-
-                string ToDateInputString(object value)
-                {
-                    if (value == null || value == DBNull.Value) return "";
-                    var d = Convert.ToDateTime(value);
-                    return d.ToString("yyyy-MM-dd"); // for <input type="date">
-                }
+                static string ToDateInputString(DateTime? value) =>
+                    value.HasValue ? value.Value.ToString("yyyy-MM-dd") : ""; // for <input type="date">
 
                 var patient = new
                 {
-                    patientId = row["Patient_ID"]?.ToString() ?? "",
-                    name = row["Patient_Name"]?.ToString() ?? "",
-                    email = row["Patient_Email"]?.ToString() ?? "",
-                    phone = row["Patient_Phone"]?.ToString() ?? "",
-                    nric = row["Patient_NRIC"]?.ToString() ?? "",
-                    age = row["Patient_Age"] == DBNull.Value ? "" : row["Patient_Age"]?.ToString() ?? "",
-                    birthDate = ToDateInputString(row["Patient_BirthDate"]),
+                    patientId = patientRow.Patient_ID,
+                    name = patientRow.Patient_Name,
+                    email = patientRow.Patient_Email,
+                    phone = patientRow.Patient_Phone,
+                    nric = patientRow.Patient_NRIC,
 
-                    raceName = row["Race_Name"]?.ToString() ?? "",
-                    sourceName = row["Source_Name"]?.ToString() ?? "",
-                    gender = row["Patient_Gender"]?.ToString() ?? "",
-                    religionName = row["Religion_Name"]?.ToString() ?? "",
-                    maritalStatusName = row["MaritalStatus_Name"]?.ToString() ?? "",
-                    resState = row["Patient_ResState"]?.ToString() ?? "",
-                    resCity = row["Patient_ResCity"]?.ToString() ?? "",
-                    resPostcode = row["Patient_ResPostcode"]?.ToString() ?? "",
-                    addLine1 = row["Patient_AddLine1"]?.ToString() ?? "",
-                    addLine2 = row["Patient_AddLine2"]?.ToString() ?? "",
-                    emergencyName = row["Patient_EmergencyName"]?.ToString() ?? "",
-                    emergencyRelationship = row["Patient_EmergencyRelationship"]?.ToString() ?? "",
-                    emergencyNumber = row["Patient_EmergencyNumber"]?.ToString() ?? "",
-                    occupationName = row["Occupation_Name"]?.ToString() ?? "",
+                    // A STRING, deliberately: the DataTable code this replaced produced "" for a NULL age
+                    // and the digits otherwise, and this page prints it straight into a read-only field.
+                    age = patientRow.Patient_Age?.ToString() ?? "",
+                    birthDate = ToDateInputString(patientRow.Patient_BirthDate),
 
-                    iFobtStatus = row["Patient_iFOBTStatus"] == DBNull.Value ? (bool?)null : Convert.ToBoolean(row["Patient_iFOBTStatus"]),
-                    iFobtCompletionDate = ToDateInputString(row["Patient_iFOBTCompletionDate"]),
-                    iFobtResults = row["Patient_iFOBTResults"] == DBNull.Value ? (bool?)null : Convert.ToBoolean(row["Patient_iFOBTResults"]),
+                    // All six lookup names are LEFT JOINs onto tables nothing constrains the codes to, so
+                    // every one can be null while its id is set — "" here, because DBNull.ToString() was ""
+                    // and the page assigns these straight into the markup.
+                    raceName = patientRow.Race_Name ?? "",
+                    sourceName = patientRow.Source_Name ?? "",
+                    gender = patientRow.Patient_Gender,
+                    religionName = patientRow.Religion_Name ?? "",
+                    maritalStatusName = patientRow.MaritalStatus_Name ?? "",
+                    resState = patientRow.Patient_ResState,
+                    resCity = patientRow.Patient_ResCity,
+                    resPostcode = patientRow.Patient_ResPostcode,
+                    addLine1 = patientRow.Patient_AddLine1,
+                    addLine2 = patientRow.Patient_AddLine2 ?? "",
+                    emergencyName = patientRow.Patient_EmergencyName,
+                    emergencyRelationship = patientRow.Patient_EmergencyRelationship,
+                    emergencyNumber = patientRow.Patient_EmergencyNumber,
+                    occupationName = patientRow.Occupation_Name ?? "",
 
-                    dischargeTypeName = row["DischargeType_Name"] == DBNull.Value ? "" : row["DischargeType_Name"]?.ToString() ?? "",
-                    dischargeDate = ToDateInputString(row["Patient_DischargeDate"]),
-                    dischargeRemarks = row["Patient_DischargeRemarks"] == DBNull.Value ? "" : row["Patient_DischargeRemarks"]?.ToString() ?? ""
+                    iFobtStatus = patientRow.Patient_iFOBTStatus,
+                    iFobtCompletionDate = ToDateInputString(patientRow.Patient_iFOBTCompletionDate),
+                    iFobtResults = patientRow.Patient_iFOBTResults,
+
+                    dischargeTypeName = patientRow.DischargeType_Name ?? "",
+                    dischargeDate = ToDateInputString(patientRow.Patient_DischargeDate),
+                    dischargeRemarks = patientRow.Patient_DischargeRemarks ?? ""
                 };
 
                 return Ok(new { success = true, patient });
@@ -136,50 +154,38 @@ namespace CRC.Web.Controllers.StaffPatient
             {
                 patientId = patientId.Trim();
 
-                // ----- helpers -----
-                static DateTime? Dt(object v)
-                {
-                    if (v == null || v == DBNull.Value) return null;
-                    return Convert.ToDateTime(v);
-                }
-
                 // DB columns created by SYSUTCDATETIME() are UTC, but may come back as "Kind=Unspecified".
                 // Force UTC and serialize as DateTimeOffset so JSON includes +00:00 (timezone-aware).
-                static DateTimeOffset? Utc(object v)
+                static DateTimeOffset? Utc(DateTime? value)
                 {
-                    var dt = Dt(v);
-                    if (dt == null) return null;
+                    if (value == null) return null;
 
-                    var utc = DateTime.SpecifyKind(dt.Value, DateTimeKind.Utc);
+                    var utc = DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
                     return new DateTimeOffset(utc);
                 }
 
-                // 1) Timeline rows
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spPatientJourney_TimelineByPatient",
-                    new[] { new SqlParameter("@Patient_ID", patientId) }
-                );
+                // 1) Timeline rows — ordered PatientJourney_Date ASC, PatientJourney_ID ASC by the
+                //    procedure. That ordering IS the patient's clinical sequence: nucentra has no stage
+                //    column to sort on (CoreFlow.md §7). Not re-sorted here.
+                var timeline = await _data.GetJourneyTimelineAsync(patientId);
 
                 // 2) Optional: full audit history (for UI display)
                 Dictionary<int, List<object>> auditByJourney = new();
                 try
                 {
-                    var dtAudit = await _db.ExecuteDataTableAsync(
-                        "spPatientJourney_AuditsByPatient",
-                        new[] { new SqlParameter("@Patient_ID", patientId) }
-                    );
+                    var audits = await _data.GetJourneyAuditsAsync(patientId);
 
-                    auditByJourney = dtAudit.Rows.Cast<DataRow>()
-                        .GroupBy(r => Convert.ToInt32(r["PatientJourney_ID"]))
+                    auditByJourney = audits
+                        .GroupBy(a => a.PatientJourney_ID)
                         .ToDictionary(
                             g => g.Key,
-                            g => g.Select(r => (object)new
+                            g => g.Select(a => (object)new
                             {
-                                action = r["Audit_Action"]?.ToString() ?? "",
-                                at = Utc(r["Audit_At"]), // ✅ timezone-aware UTC
-                                staffId = r["Staff_ID"]?.ToString() ?? "",
-                                staffName = r["Staff_Name"]?.ToString() ?? "",
-                                note = r["Audit_Note"] == DBNull.Value ? null : r["Audit_Note"]?.ToString()
+                                action = a.Audit_Action,
+                                at = Utc(a.Audit_At), // ✅ timezone-aware UTC
+                                staffId = a.Staff_ID,
+                                staffName = a.Staff_Name ?? "",
+                                note = a.Audit_Note
                             }).ToList()
                         );
                 }
@@ -188,30 +194,25 @@ namespace CRC.Web.Controllers.StaffPatient
                     // If the SP isn't deployed yet, timeline still works.
                 }
 
-                var rows = dt.Rows.Cast<DataRow>().Select(r =>
+                var rows = timeline.Select(r => new
                 {
-                    var journeyId = Convert.ToInt32(r["PatientJourney_ID"]);
+                    patientJourneyId = r.PatientJourney_ID,
+                    journeyType = r.PjAppType_Name,
 
-                    return new
-                    {
-                        patientJourneyId = journeyId,
-                        journeyType = r["PjAppType_Name"]?.ToString() ?? "",
+                    // Journey date is a "business date" chosen by user/staff.
+                    // Leave as DateTime and let UI render it (you already format it).
+                    journeyDate = r.PatientJourney_Date,
 
-                        // Journey date is a "business date" chosen by user/staff.
-                        // Leave as DateTime? and let UI render it (you already format it).
-                        journeyDate = Dt(r["PatientJourney_Date"]),
+                    // audit timestamps stored in UTC
+                    createdAt = Utc(r.CreatedAt),
+                    createdByStaffName = r.CreatedByStaffName ?? "",
 
-                        // audit timestamps stored in UTC
-                        createdAt = Utc(r["CreatedAt"]),
-                        createdByStaffName = r["CreatedByStaffName"]?.ToString() ?? "",
+                    updatedAt = Utc(r.UpdatedAt),
+                    updatedByStaffName = r.UpdatedByStaffName ?? "",
 
-                        updatedAt = Utc(r["UpdatedAt"]),
-                        updatedByStaffName = r["UpdatedByStaffName"]?.ToString() ?? "",
-
-                        auditEvents = auditByJourney.TryGetValue(journeyId, out var ev)
-                            ? ev
-                            : new List<object>()
-                    };
+                    auditEvents = auditByJourney.TryGetValue(r.PatientJourney_ID, out var ev)
+                        ? ev
+                        : new List<object>()
                 }).ToList();
 
                 return Ok(new { success = true, data = rows });
@@ -232,42 +233,26 @@ namespace CRC.Web.Controllers.StaffPatient
             try
             {
                 // 1) Journey row
-                var dtJ = await _db.ExecuteDataTableAsync(
-                    "spPatientJourney_GetById",
-                    new[] { new SqlParameter("@PatientJourney_ID", patientJourneyId) }
-                );
-                if (dtJ.Rows.Count == 0)
+                var journeyRow = await _data.GetJourneyByIdAsync(patientJourneyId);
+                if (journeyRow == null)
                     return Ok(new { success = false, message = "Journey not found." });
-
-                var j = dtJ.Rows[0];
-
-                string ToLocalInput(object v)
-                {
-                    if (v == null || v == DBNull.Value) return "";
-                    var d = Convert.ToDateTime(v);
-                    return d.ToString("yyyy-MM-ddTHH:mm");
-                }
 
                 var journey = new
                 {
                     patientJourneyId = patientJourneyId,
-                    journeyType = j["PjAppType_Name"]?.ToString() ?? "",
-                    journeyDateInput = ToLocalInput(j["PatientJourney_Date"])
+                    journeyType = journeyRow.PjAppType_Name,
+                    journeyDateInput = ToLocalInput(journeyRow.PatientJourney_Date)
                 };
 
-                // 2) Assessment row
-                var dtA = await _db.ExecuteDataTableAsync(
-                    "spPatientAssessment_GetByJourneyId",
-                    new[] { new SqlParameter("@PatientJourney_ID", patientJourneyId) }
-                );
-
-                object? assessment = null;
-                if (dtA.Rows.Count > 0)
-                {
-                    var a = dtA.Rows[0];
-                    assessment = dtA.Columns.Cast<DataColumn>()
-                        .ToDictionary(c => c.ColumnName, c => a[c] == DBNull.Value ? null : a[c]);
-                }
+                // 2) Assessment row — a COLUMN-KEYED DICTIONARY, held as `object?` so it serializes by its
+                //    runtime type exactly as the DataTable version did. The browser receives the raw column
+                //    names ("PatientJourney_ID", "iFOBTPositive_Date", "Risks_Smoking"), which is what
+                //    wwwroot/js/staffPatient/templates/patientAssessment.js reads; a POCO would be
+                //    camelCased by the serializer and break the form silently. See IDatabaseData.
+                //
+                //    Null is a real state, not an error: the procedure INNER JOINs dbo.PatientAssessment,
+                //    so a journey of another type answers { success: true, assessment: null }.
+                object? assessment = await _data.GetAssessmentByJourneyIdAsync(patientJourneyId);
 
                 return Ok(new { success = true, journey, assessment });
             }
@@ -340,6 +325,77 @@ namespace CRC.Web.Controllers.StaffPatient
             public bool Management_Advise { get; set; }
         }
 
+        // Maps the request onto the data layer's input model. Both the create and the update path send the
+        // same object; SqlData adds @Patient_ID or @PatientJourney_ID depending on which procedure it is
+        // calling, because the two declare one different parameter each.
+        //
+        // 🔴 Staff_ID here is the CLINICIAN from the caller's "StaffId" claim, an ordinary business value.
+        // It is not, and must never become, DatabaseHelper.CurrentUserId.
+        private static PatientAssessmentSaveInput ToAssessmentInput(SavePatientAssessmentRequest model, string staffId) =>
+            new()
+            {
+                Patient_ID = model.PatientId.Trim(),
+                PatientJourney_ID = model.PatientJourneyId,
+                PatientJourney_Date = model.PatientJourneyDate,
+                Staff_ID = staffId,
+                Audit_Note = model.AuditNote,
+
+                iFOBTPositive_Date = model.iFOBTPositive_Date,
+                Risks_Smoking = model.Risks_Smoking,
+                Risks_AlcoholConsumption = model.Risks_AlcoholConsumption,
+                Risks_InflammatoryBowelDisease = model.Risks_InflammatoryBowelDisease,
+                Risks_Diet = model.Risks_Diet,
+                Risks_SedentaryLifestyle = model.Risks_SedentaryLifestyle,
+
+                Symptoms_WeightLoss = model.Symptoms_WeightLoss,
+                Symptoms_AppetiteLoss = model.Symptoms_AppetiteLoss,
+                Symptoms_Lethargic = model.Symptoms_Lethargic,
+                Symptoms_AbdominalPain = model.Symptoms_AbdominalPain,
+                Symptoms_Constipation = model.Symptoms_Constipation,
+                Symptoms_Diarrhea = model.Symptoms_Diarrhea,
+                Symptoms_RectalBleedingMucous = model.Symptoms_RectalBleedingMucous,
+                Symptoms_RectalBleedingNoMucous = model.Symptoms_RectalBleedingNoMucous,
+                Symptoms_Tenesmus = model.Symptoms_Tenesmus,
+
+                MedicalHistory_Diabetes = model.MedicalHistory_Diabetes,
+                MedicalHistory_Hypertension = model.MedicalHistory_Hypertension,
+                MedicalHistory_Dyslipidemia = model.MedicalHistory_Dyslipidemia,
+                MedicalHistory_Bleeding = model.MedicalHistory_Bleeding,
+                MedicalHistory_Asthma = model.MedicalHistory_Asthma,
+
+                AllergyHistory_Medication = model.AllergyHistory_Medication,
+                AllergyHistory_MedicationDetails = model.AllergyHistory_MedicationDetails,
+                AllergyHistory_Food = model.AllergyHistory_Food,
+                AllergyHistory_FoodDetails = model.AllergyHistory_FoodDetails,
+
+                MedicationHistory_Anticoagulant = model.MedicationHistory_Anticoagulant,
+                MedicationHistory_AnticoagulantDetails = model.MedicationHistory_AnticoagulantDetails,
+                MedicationHistory_Narcotics = model.MedicationHistory_Narcotics,
+                MedicationHistory_NarcoticsDetails = model.MedicationHistory_NarcoticsDetails,
+                MedicationHistory_Insulin = model.MedicationHistory_Insulin,
+                MedicationHistory_InsulinDetails = model.MedicationHistory_InsulinDetails,
+                MedicationHistory_AntiHypertensives = model.MedicationHistory_AntiHypertensives,
+                MedicationHistory_AntiHypertensivesDetails = model.MedicationHistory_AntiHypertensivesDetails,
+
+                PreviousScope_Date = model.PreviousScope_Date,
+
+                FamilyHistory_FirstDegree = model.FamilyHistory_FirstDegree,
+                FamilyHistory_SecondDegree = model.FamilyHistory_SecondDegree,
+
+                PhysicalExamination_Details = model.PhysicalExamination_Details ?? "",
+
+                Investigation_FBC = model.Investigation_FBC,
+                Investigation_BUSE = model.Investigation_BUSE,
+                Investigation_RBS = model.Investigation_RBS,
+                Investigation_LFT = model.Investigation_LFT,
+                Investigation_Coag = model.Investigation_Coag,
+
+                Management_BowelPrep = model.Management_BowelPrep,
+                Management_Procedure = model.Management_Procedure,
+                Management_Consent = model.Management_Consent,
+                Management_Advise = model.Management_Advise
+            };
+
         [Authorize(Policy = "StaffOnly")]
         [HttpPost]
         public async Task<IActionResult> SavePatientAssessment([FromBody] SavePatientAssessmentRequest model)
@@ -353,145 +409,22 @@ namespace CRC.Web.Controllers.StaffPatient
 
             try
             {
+                var input = ToAssessmentInput(model, staffId);
+
                 if (model.PatientJourneyId <= 0)
                 {
-                    // CREATE
-                    var prms = new List<SqlParameter>
-            {
-                new SqlParameter("@Patient_ID", model.PatientId.Trim()),
-                new SqlParameter("@PatientJourney_Date", model.PatientJourneyDate),
-                new SqlParameter("@Staff_ID", staffId),
-                new SqlParameter("@Audit_Note", (object?)model.AuditNote ?? DBNull.Value),
-
-                new SqlParameter("@iFOBTPositive_Date", model.iFOBTPositive_Date),
-                new SqlParameter("@Risks_Smoking", model.Risks_Smoking),
-                new SqlParameter("@Risks_AlcoholConsumption", model.Risks_AlcoholConsumption),
-                new SqlParameter("@Risks_InflammatoryBowelDisease", model.Risks_InflammatoryBowelDisease),
-                new SqlParameter("@Risks_Diet", model.Risks_Diet),
-                new SqlParameter("@Risks_SedentaryLifestyle", model.Risks_SedentaryLifestyle),
-
-                new SqlParameter("@Symptoms_WeightLoss", model.Symptoms_WeightLoss),
-                new SqlParameter("@Symptoms_AppetiteLoss", model.Symptoms_AppetiteLoss),
-                new SqlParameter("@Symptoms_Lethargic", model.Symptoms_Lethargic),
-                new SqlParameter("@Symptoms_AbdominalPain", model.Symptoms_AbdominalPain),
-                new SqlParameter("@Symptoms_Constipation", model.Symptoms_Constipation),
-                new SqlParameter("@Symptoms_Diarrhea", model.Symptoms_Diarrhea),
-                new SqlParameter("@Symptoms_RectalBleedingMucous", model.Symptoms_RectalBleedingMucous),
-                new SqlParameter("@Symptoms_RectalBleedingNoMucous", model.Symptoms_RectalBleedingNoMucous),
-                new SqlParameter("@Symptoms_Tenesmus", model.Symptoms_Tenesmus),
-
-                new SqlParameter("@MedicalHistory_Diabetes", model.MedicalHistory_Diabetes),
-                new SqlParameter("@MedicalHistory_Hypertension", model.MedicalHistory_Hypertension),
-                new SqlParameter("@MedicalHistory_Dyslipidemia", model.MedicalHistory_Dyslipidemia),
-                new SqlParameter("@MedicalHistory_Bleeding", model.MedicalHistory_Bleeding),
-                new SqlParameter("@MedicalHistory_Asthma", model.MedicalHistory_Asthma),
-
-                new SqlParameter("@AllergyHistory_Medication", model.AllergyHistory_Medication),
-                new SqlParameter("@AllergyHistory_MedicationDetails", (object?)model.AllergyHistory_MedicationDetails ?? DBNull.Value),
-                new SqlParameter("@AllergyHistory_Food", model.AllergyHistory_Food),
-                new SqlParameter("@AllergyHistory_FoodDetails", (object?)model.AllergyHistory_FoodDetails ?? DBNull.Value),
-
-                new SqlParameter("@MedicationHistory_Anticoagulant", model.MedicationHistory_Anticoagulant),
-                new SqlParameter("@MedicationHistory_AnticoagulantDetails", (object?)model.MedicationHistory_AnticoagulantDetails ?? DBNull.Value),
-                new SqlParameter("@MedicationHistory_Narcotics", model.MedicationHistory_Narcotics),
-                new SqlParameter("@MedicationHistory_NarcoticsDetails", (object?)model.MedicationHistory_NarcoticsDetails ?? DBNull.Value),
-                new SqlParameter("@MedicationHistory_Insulin", model.MedicationHistory_Insulin),
-                new SqlParameter("@MedicationHistory_InsulinDetails", (object?)model.MedicationHistory_InsulinDetails ?? DBNull.Value),
-                new SqlParameter("@MedicationHistory_AntiHypertensives", model.MedicationHistory_AntiHypertensives),
-                new SqlParameter("@MedicationHistory_AntiHypertensivesDetails", (object?)model.MedicationHistory_AntiHypertensivesDetails ?? DBNull.Value),
-
-                new SqlParameter("@PreviousScope_Date", (object?)model.PreviousScope_Date ?? DBNull.Value),
-
-                new SqlParameter("@FamilyHistory_FirstDegree", model.FamilyHistory_FirstDegree),
-                new SqlParameter("@FamilyHistory_SecondDegree", model.FamilyHistory_SecondDegree),
-
-                new SqlParameter("@PhysicalExamination_Details", model.PhysicalExamination_Details ?? ""),
-
-                new SqlParameter("@Investigation_FBC", model.Investigation_FBC),
-                new SqlParameter("@Investigation_BUSE", model.Investigation_BUSE),
-                new SqlParameter("@Investigation_RBS", model.Investigation_RBS),
-                new SqlParameter("@Investigation_LFT", model.Investigation_LFT),
-                new SqlParameter("@Investigation_Coag", model.Investigation_Coag),
-
-                new SqlParameter("@Management_BowelPrep", model.Management_BowelPrep),
-                new SqlParameter("@Management_Procedure", model.Management_Procedure),
-                new SqlParameter("@Management_Consent", model.Management_Consent),
-                new SqlParameter("@Management_Advise", model.Management_Advise)
-            };
-
-                    var dt = await _db.ExecuteDataTableAsync("spPatientAssessment_CreateWithJourney", prms.ToArray());
-
-                    var newJourneyId = dt.Rows.Count > 0 ? Convert.ToInt32(dt.Rows[0]["PatientJourney_ID"]) : 0;
+                    // CREATE — one procedure, three tables (PatientJourney, PatientAssessment,
+                    // PatientJourneyAudit), inside ITS OWN transaction. No transaction is opened here.
+                    var newJourneyId = await _data.CreateAssessmentWithJourneyAsync(input);
 
                     return Ok(new { success = true, patientJourneyId = newJourneyId });
                 }
                 else
                 {
-                    // UPDATE
-                    var prms = new List<SqlParameter>
-            {
-                new SqlParameter("@PatientJourney_ID", model.PatientJourneyId),
-                new SqlParameter("@PatientJourney_Date", model.PatientJourneyDate),
-                new SqlParameter("@Staff_ID", staffId),
-                new SqlParameter("@Audit_Note", (object?)model.AuditNote ?? DBNull.Value),
-
-                new SqlParameter("@iFOBTPositive_Date", model.iFOBTPositive_Date),
-                new SqlParameter("@Risks_Smoking", model.Risks_Smoking),
-                new SqlParameter("@Risks_AlcoholConsumption", model.Risks_AlcoholConsumption),
-                new SqlParameter("@Risks_InflammatoryBowelDisease", model.Risks_InflammatoryBowelDisease),
-                new SqlParameter("@Risks_Diet", model.Risks_Diet),
-                new SqlParameter("@Risks_SedentaryLifestyle", model.Risks_SedentaryLifestyle),
-
-                new SqlParameter("@Symptoms_WeightLoss", model.Symptoms_WeightLoss),
-                new SqlParameter("@Symptoms_AppetiteLoss", model.Symptoms_AppetiteLoss),
-                new SqlParameter("@Symptoms_Lethargic", model.Symptoms_Lethargic),
-                new SqlParameter("@Symptoms_AbdominalPain", model.Symptoms_AbdominalPain),
-                new SqlParameter("@Symptoms_Constipation", model.Symptoms_Constipation),
-                new SqlParameter("@Symptoms_Diarrhea", model.Symptoms_Diarrhea),
-                new SqlParameter("@Symptoms_RectalBleedingMucous", model.Symptoms_RectalBleedingMucous),
-                new SqlParameter("@Symptoms_RectalBleedingNoMucous", model.Symptoms_RectalBleedingNoMucous),
-                new SqlParameter("@Symptoms_Tenesmus", model.Symptoms_Tenesmus),
-
-                new SqlParameter("@MedicalHistory_Diabetes", model.MedicalHistory_Diabetes),
-                new SqlParameter("@MedicalHistory_Hypertension", model.MedicalHistory_Hypertension),
-                new SqlParameter("@MedicalHistory_Dyslipidemia", model.MedicalHistory_Dyslipidemia),
-                new SqlParameter("@MedicalHistory_Bleeding", model.MedicalHistory_Bleeding),
-                new SqlParameter("@MedicalHistory_Asthma", model.MedicalHistory_Asthma),
-
-                new SqlParameter("@AllergyHistory_Medication", model.AllergyHistory_Medication),
-                new SqlParameter("@AllergyHistory_MedicationDetails", (object?)model.AllergyHistory_MedicationDetails ?? DBNull.Value),
-                new SqlParameter("@AllergyHistory_Food", model.AllergyHistory_Food),
-                new SqlParameter("@AllergyHistory_FoodDetails", (object?)model.AllergyHistory_FoodDetails ?? DBNull.Value),
-
-                new SqlParameter("@MedicationHistory_Anticoagulant", model.MedicationHistory_Anticoagulant),
-                new SqlParameter("@MedicationHistory_AnticoagulantDetails", (object?)model.MedicationHistory_AnticoagulantDetails ?? DBNull.Value),
-                new SqlParameter("@MedicationHistory_Narcotics", model.MedicationHistory_Narcotics),
-                new SqlParameter("@MedicationHistory_NarcoticsDetails", (object?)model.MedicationHistory_NarcoticsDetails ?? DBNull.Value),
-                new SqlParameter("@MedicationHistory_Insulin", model.MedicationHistory_Insulin),
-                new SqlParameter("@MedicationHistory_InsulinDetails", (object?)model.MedicationHistory_InsulinDetails ?? DBNull.Value),
-                new SqlParameter("@MedicationHistory_AntiHypertensives", model.MedicationHistory_AntiHypertensives),
-                new SqlParameter("@MedicationHistory_AntiHypertensivesDetails", (object?)model.MedicationHistory_AntiHypertensivesDetails ?? DBNull.Value),
-
-                new SqlParameter("@PreviousScope_Date", (object?)model.PreviousScope_Date ?? DBNull.Value),
-
-                new SqlParameter("@FamilyHistory_FirstDegree", model.FamilyHistory_FirstDegree),
-                new SqlParameter("@FamilyHistory_SecondDegree", model.FamilyHistory_SecondDegree),
-
-                new SqlParameter("@PhysicalExamination_Details", model.PhysicalExamination_Details ?? ""),
-
-                new SqlParameter("@Investigation_FBC", model.Investigation_FBC),
-                new SqlParameter("@Investigation_BUSE", model.Investigation_BUSE),
-                new SqlParameter("@Investigation_RBS", model.Investigation_RBS),
-                new SqlParameter("@Investigation_LFT", model.Investigation_LFT),
-                new SqlParameter("@Investigation_Coag", model.Investigation_Coag),
-
-                new SqlParameter("@Management_BowelPrep", model.Management_BowelPrep),
-                new SqlParameter("@Management_Procedure", model.Management_Procedure),
-                new SqlParameter("@Management_Consent", model.Management_Consent),
-                new SqlParameter("@Management_Advise", model.Management_Advise)
-            };
-
-                    await _db.ExecuteNonQueryAsync("spPatientAssessment_UpdateWithJourney", prms.ToArray());
+                    // UPDATE — the same three tables, and 🔴 NO SECOND JOURNEY ROW: the procedure UPDATEs
+                    // dbo.PatientJourney rather than inserting, which is what keeps a re-saved assessment
+                    // from appearing twice on the timeline.
+                    await _data.UpdateAssessmentWithJourneyAsync(input);
 
                     return Ok(new { success = true, patientJourneyId = model.PatientJourneyId });
                 }
@@ -521,41 +454,20 @@ namespace CRC.Web.Controllers.StaffPatient
 
             try
             {
-                var dtJ = await _db.ExecuteDataTableAsync(
-                    "spPatientJourney_GetById",
-                    new[] { new SqlParameter("@PatientJourney_ID", patientJourneyId) }
-                );
-                if (dtJ.Rows.Count == 0)
+                var journeyRow = await _data.GetJourneyByIdAsync(patientJourneyId);
+                if (journeyRow == null)
                     return Ok(new { success = false, message = "Journey not found." });
-
-                var j = dtJ.Rows[0];
-
-                string ToLocalInput(object v)
-                {
-                    if (v == null || v == DBNull.Value) return "";
-                    var d = Convert.ToDateTime(v);
-                    return d.ToString("yyyy-MM-ddTHH:mm");
-                }
 
                 var journey = new
                 {
                     patientJourneyId = patientJourneyId,
-                    journeyType = j["PjAppType_Name"]?.ToString() ?? "",
-                    journeyDateInput = ToLocalInput(j["PatientJourney_Date"])
+                    journeyType = journeyRow.PjAppType_Name,
+                    journeyDateInput = ToLocalInput(journeyRow.PatientJourney_Date)
                 };
 
-                var dtA = await _db.ExecuteDataTableAsync(
-                    "spPatientColonoscopy_GetByJourneyId",
-                    new[] { new SqlParameter("@PatientJourney_ID", patientJourneyId) }
-                );
-
-                object? assessment = null;
-                if (dtA.Rows.Count > 0)
-                {
-                    var a = dtA.Rows[0];
-                    assessment = dtA.Columns.Cast<DataColumn>()
-                        .ToDictionary(c => c.ColumnName, c => a[c] == DBNull.Value ? null : a[c]);
-                }
+                // The JSON property is called `assessment` on all three endpoints, colonoscopy included.
+                // That is what the three template scripts read; it is not a copy-paste slip to fix.
+                object? assessment = await _data.GetColonoscopyByJourneyIdAsync(patientJourneyId);
 
                 return Ok(new { success = true, journey, assessment });
             }
@@ -607,6 +519,49 @@ namespace CRC.Web.Controllers.StaffPatient
             public string? Medication_Details { get; set; }
         }
 
+        private static PatientColonoscopySaveInput ToColonoscopyInput(SavePatientColonoscopyRequest model, string staffId) =>
+            new()
+            {
+                Patient_ID = model.PatientId.Trim(),
+                PatientJourney_ID = model.PatientJourneyId,
+                PatientJourney_Date = model.PatientJourneyDate,
+                Staff_ID = staffId,
+                Audit_Note = model.AuditNote,
+
+                ColonoscopyStatus = model.ColonoscopyStatus,
+                ColonoscopyStatus_Details = model.ColonoscopyStatus_Details,
+                BowelPreparation = model.BowelPreparation,
+
+                Findings_Anus = model.Findings_Anus,
+                Findings_AnusDetails = model.Findings_AnusDetails,
+                Findings_Rectum = model.Findings_Rectum,
+                Findings_RectumDetails = model.Findings_RectumDetails,
+                Findings_SigmoidColon = model.Findings_SigmoidColon,
+                Findings_SigmoidColonDetails = model.Findings_SigmoidColonDetails,
+                Findings_DescendingColon = model.Findings_DescendingColon,
+                Findings_DescendingColonDetails = model.Findings_DescendingColonDetails,
+                Findings_SplenicFlexure = model.Findings_SplenicFlexure,
+                Findings_SplenicFlexureDetails = model.Findings_SplenicFlexureDetails,
+                Findings_TransverseColon = model.Findings_TransverseColon,
+                Findings_TransverseColonDetails = model.Findings_TransverseColonDetails,
+                Findings_HepaticFlexure = model.Findings_HepaticFlexure,
+                Findings_HepaticFlexureDetails = model.Findings_HepaticFlexureDetails,
+                Findings_AscendingColon = model.Findings_AscendingColon,
+                Findings_AscendingColonDetails = model.Findings_AscendingColonDetails,
+                Findings_Caecum = model.Findings_Caecum,
+                Findings_CaecumDetails = model.Findings_CaecumDetails,
+
+                HPE_Status = model.HPE_Status,
+                HPE_Details = model.HPE_Details,
+
+                Complications = model.Complications ?? "",
+                Complications_Details = model.Complications_Details,
+
+                DischargePlan = model.DischargePlan ?? "",
+
+                Medication_Details = model.Medication_Details
+            };
+
         [Authorize(Policy = "StaffOnly")]
         [HttpPost]
         public async Task<IActionResult> SavePatientColonoscopy([FromBody] SavePatientColonoscopyRequest model)
@@ -620,105 +575,19 @@ namespace CRC.Web.Controllers.StaffPatient
 
             try
             {
+                var input = ToColonoscopyInput(model, staffId);
+
                 if (model.PatientJourneyId <= 0)
                 {
                     // CREATE
-                    var prms = new List<SqlParameter>
-                    {
-                        new SqlParameter("@Patient_ID", model.PatientId.Trim()),
-                        new SqlParameter("@PatientJourney_Date", model.PatientJourneyDate),
-                        new SqlParameter("@Staff_ID", staffId),
-                        new SqlParameter("@Audit_Note", (object?)model.AuditNote ?? DBNull.Value),
-
-                        new SqlParameter("@ColonoscopyStatus", model.ColonoscopyStatus),
-                        new SqlParameter("@ColonoscopyStatus_Details", (object?)model.ColonoscopyStatus_Details ?? DBNull.Value),
-                        new SqlParameter("@BowelPreparation", model.BowelPreparation),
-
-                        new SqlParameter("@Findings_Anus", model.Findings_Anus),
-                        new SqlParameter("@Findings_AnusDetails", (object?)model.Findings_AnusDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_Rectum", model.Findings_Rectum),
-                        new SqlParameter("@Findings_RectumDetails", (object?)model.Findings_RectumDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_SigmoidColon", model.Findings_SigmoidColon),
-                        new SqlParameter("@Findings_SigmoidColonDetails", (object?)model.Findings_SigmoidColonDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_DescendingColon", model.Findings_DescendingColon),
-                        new SqlParameter("@Findings_DescendingColonDetails", (object?)model.Findings_DescendingColonDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_SplenicFlexure", model.Findings_SplenicFlexure),
-                        new SqlParameter("@Findings_SplenicFlexureDetails", (object?)model.Findings_SplenicFlexureDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_TransverseColon", model.Findings_TransverseColon),
-                        new SqlParameter("@Findings_TransverseColonDetails", (object?)model.Findings_TransverseColonDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_HepaticFlexure", model.Findings_HepaticFlexure),
-                        new SqlParameter("@Findings_HepaticFlexureDetails", (object?)model.Findings_HepaticFlexureDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_AscendingColon", model.Findings_AscendingColon),
-                        new SqlParameter("@Findings_AscendingColonDetails", (object?)model.Findings_AscendingColonDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_Caecum", model.Findings_Caecum),
-                        new SqlParameter("@Findings_CaecumDetails", (object?)model.Findings_CaecumDetails ?? DBNull.Value),
-
-                        new SqlParameter("@HPE_Status", model.HPE_Status),
-                        new SqlParameter("@HPE_Details", (object?)model.HPE_Details ?? DBNull.Value),
-
-                        new SqlParameter("@Complications", model.Complications ?? ""),
-                        new SqlParameter("@Complications_Details", (object?)model.Complications_Details ?? DBNull.Value),
-
-                        new SqlParameter("@DischargePlan", model.DischargePlan ?? ""),
-
-                        // NEW: Medication_Details
-                        new SqlParameter("@Medication_Details", (object?)model.Medication_Details ?? DBNull.Value)
-                    };
-
-                    var dt = await _db.ExecuteDataTableAsync("spPatientColonoscopy_CreateWithJourney", prms.ToArray());
-
-                    var newJourneyId = dt.Rows.Count > 0
-                        ? Convert.ToInt32(dt.Rows[0]["PatientJourney_ID"])
-                        : 0;
+                    var newJourneyId = await _data.CreateColonoscopyWithJourneyAsync(input);
 
                     return Ok(new { success = true, patientJourneyId = newJourneyId });
                 }
                 else
                 {
                     // UPDATE
-                    var prms = new List<SqlParameter>
-                    {
-                        new SqlParameter("@PatientJourney_ID", model.PatientJourneyId),
-                        new SqlParameter("@PatientJourney_Date", model.PatientJourneyDate),
-                        new SqlParameter("@Staff_ID", staffId),
-                        new SqlParameter("@Audit_Note", (object?)model.AuditNote ?? DBNull.Value),
-
-                        new SqlParameter("@ColonoscopyStatus", model.ColonoscopyStatus),
-                        new SqlParameter("@ColonoscopyStatus_Details", (object?)model.ColonoscopyStatus_Details ?? DBNull.Value),
-                        new SqlParameter("@BowelPreparation", model.BowelPreparation),
-
-                        new SqlParameter("@Findings_Anus", model.Findings_Anus),
-                        new SqlParameter("@Findings_AnusDetails", (object?)model.Findings_AnusDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_Rectum", model.Findings_Rectum),
-                        new SqlParameter("@Findings_RectumDetails", (object?)model.Findings_RectumDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_SigmoidColon", model.Findings_SigmoidColon),
-                        new SqlParameter("@Findings_SigmoidColonDetails", (object?)model.Findings_SigmoidColonDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_DescendingColon", model.Findings_DescendingColon),
-                        new SqlParameter("@Findings_DescendingColonDetails", (object?)model.Findings_DescendingColonDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_SplenicFlexure", model.Findings_SplenicFlexure),
-                        new SqlParameter("@Findings_SplenicFlexureDetails", (object?)model.Findings_SplenicFlexureDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_TransverseColon", model.Findings_TransverseColon),
-                        new SqlParameter("@Findings_TransverseColonDetails", (object?)model.Findings_TransverseColonDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_HepaticFlexure", model.Findings_HepaticFlexure),
-                        new SqlParameter("@Findings_HepaticFlexureDetails", (object?)model.Findings_HepaticFlexureDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_AscendingColon", model.Findings_AscendingColon),
-                        new SqlParameter("@Findings_AscendingColonDetails", (object?)model.Findings_AscendingColonDetails ?? DBNull.Value),
-                        new SqlParameter("@Findings_Caecum", model.Findings_Caecum),
-                        new SqlParameter("@Findings_CaecumDetails", (object?)model.Findings_CaecumDetails ?? DBNull.Value),
-
-                        new SqlParameter("@HPE_Status", model.HPE_Status),
-                        new SqlParameter("@HPE_Details", (object?)model.HPE_Details ?? DBNull.Value),
-
-                        new SqlParameter("@Complications", model.Complications ?? ""),
-                        new SqlParameter("@Complications_Details", (object?)model.Complications_Details ?? DBNull.Value),
-
-                        new SqlParameter("@DischargePlan", model.DischargePlan ?? ""),
-
-                        // NEW: Medication_Details
-                        new SqlParameter("@Medication_Details", (object?)model.Medication_Details ?? DBNull.Value)
-                    };
-
-                    await _db.ExecuteNonQueryAsync("spPatientColonoscopy_UpdateWithJourney", prms.ToArray());
+                    await _data.UpdateColonoscopyWithJourneyAsync(input);
                     return Ok(new { success = true, patientJourneyId = model.PatientJourneyId });
                 }
             }
@@ -748,42 +617,19 @@ namespace CRC.Web.Controllers.StaffPatient
             try
             {
                 // 1) Journey row
-                var dtJ = await _db.ExecuteDataTableAsync(
-                    "spPatientJourney_GetById",
-                    new[] { new SqlParameter("@PatientJourney_ID", patientJourneyId) }
-                );
-                if (dtJ.Rows.Count == 0)
+                var journeyRow = await _data.GetJourneyByIdAsync(patientJourneyId);
+                if (journeyRow == null)
                     return Ok(new { success = false, message = "Journey not found." });
-
-                var j = dtJ.Rows[0];
-
-                string ToLocalInput(object v)
-                {
-                    if (v == null || v == DBNull.Value) return "";
-                    var d = Convert.ToDateTime(v);
-                    return d.ToString("yyyy-MM-ddTHH:mm");
-                }
 
                 var journey = new
                 {
                     patientJourneyId = patientJourneyId,
-                    journeyType = j["PjAppType_Name"]?.ToString() ?? "",
-                    journeyDateInput = ToLocalInput(j["PatientJourney_Date"])
+                    journeyType = journeyRow.PjAppType_Name,
+                    journeyDateInput = ToLocalInput(journeyRow.PatientJourney_Date)
                 };
 
                 // 2) Follow up row
-                var dtA = await _db.ExecuteDataTableAsync(
-                    "spPatientFollowUp_GetByJourneyId",
-                    new[] { new SqlParameter("@PatientJourney_ID", patientJourneyId) }
-                );
-
-                object? assessment = null;
-                if (dtA.Rows.Count > 0)
-                {
-                    var a = dtA.Rows[0];
-                    assessment = dtA.Columns.Cast<DataColumn>()
-                        .ToDictionary(c => c.ColumnName, c => a[c] == DBNull.Value ? null : a[c]);
-                }
+                object? assessment = await _data.GetFollowUpByJourneyIdAsync(patientJourneyId);
 
                 return Ok(new { success = true, journey, assessment });
             }
@@ -805,6 +651,20 @@ namespace CRC.Web.Controllers.StaffPatient
             public bool DischargeSummary_Status { get; set; }
         }
 
+        private static PatientFollowUpSaveInput ToFollowUpInput(SavePatientFollowUpRequest model, string staffId) =>
+            new()
+            {
+                Patient_ID = model.PatientId.Trim(),
+                PatientJourney_ID = model.PatientJourneyId,
+                PatientJourney_Date = model.PatientJourneyDate,
+                Staff_ID = staffId,
+                Audit_Note = model.AuditNote,
+
+                HPE_Results = model.HPE_Results ?? "",
+                DischargePlan = model.DischargePlan ?? "",
+                DischargeSummary_Status = model.DischargeSummary_Status
+            };
+
         [Authorize(Policy = "StaffOnly")]
         [HttpPost]
         public async Task<IActionResult> SavePatientFollowUp([FromBody] SavePatientFollowUpRequest model)
@@ -818,45 +678,19 @@ namespace CRC.Web.Controllers.StaffPatient
 
             try
             {
+                var input = ToFollowUpInput(model, staffId);
+
                 if (model.PatientJourneyId <= 0)
                 {
                     // CREATE
-                    var prms = new List<SqlParameter>
-                    {
-                        new SqlParameter("@Patient_ID", model.PatientId.Trim()),
-                        new SqlParameter("@PatientJourney_Date", model.PatientJourneyDate),
-                        new SqlParameter("@Staff_ID", staffId),
-                        new SqlParameter("@Audit_Note", (object?)model.AuditNote ?? DBNull.Value),
-
-                        new SqlParameter("@HPE_Results", model.HPE_Results ?? ""),
-                        new SqlParameter("@DischargePlan", model.DischargePlan ?? ""),
-                        new SqlParameter("@DischargeSummary_Status", model.DischargeSummary_Status)
-                    };
-
-                    var dt = await _db.ExecuteDataTableAsync("spPatientFollowUp_CreateWithJourney", prms.ToArray());
-
-                    var newJourneyId = dt.Rows.Count > 0
-                        ? Convert.ToInt32(dt.Rows[0]["PatientJourney_ID"])
-                        : 0;
+                    var newJourneyId = await _data.CreateFollowUpWithJourneyAsync(input);
 
                     return Ok(new { success = true, patientJourneyId = newJourneyId });
                 }
                 else
                 {
                     // UPDATE
-                    var prms = new List<SqlParameter>
-                    {
-                        new SqlParameter("@PatientJourney_ID", model.PatientJourneyId),
-                        new SqlParameter("@PatientJourney_Date", model.PatientJourneyDate),
-                        new SqlParameter("@Staff_ID", staffId),
-                        new SqlParameter("@Audit_Note", (object?)model.AuditNote ?? DBNull.Value),
-
-                        new SqlParameter("@HPE_Results", model.HPE_Results ?? ""),
-                        new SqlParameter("@DischargePlan", model.DischargePlan ?? ""),
-                        new SqlParameter("@DischargeSummary_Status", model.DischargeSummary_Status)
-                    };
-
-                    await _db.ExecuteNonQueryAsync("spPatientFollowUp_UpdateWithJourney", prms.ToArray());
+                    await _data.UpdateFollowUpWithJourneyAsync(input);
                     return Ok(new { success = true, patientJourneyId = model.PatientJourneyId });
                 }
             }
@@ -882,20 +716,20 @@ namespace CRC.Web.Controllers.StaffPatient
         {
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spLU_PatientDocumentType_List",
-                    Array.Empty<SqlParameter>()
-                );
+                // The UPLOAD form's list — spLU_PatientDocumentType_List, the plain lookup. NOT
+                // GetPatientDocumentTypeFiltersAsync, which unions in types that are in use but no longer
+                // in the lookup: a search filter wants those, an upload form must not offer them.
+                var types = await _data.GetPatientDocumentTypesAsync();
 
-                var types = dt.Rows.Cast<DataRow>()
-                    .Select(r => new
+                var list = types
+                    .Select(t => new
                     {
-                        documentTypeId = r["PatientDocumentType_ID"]?.ToString(),
-                        documentTypeName = r["PatientDocumentType_Name"]?.ToString()
+                        documentTypeId = t.Id,
+                        documentTypeName = t.Name
                     })
                     .ToList();
 
-                return Ok(new { success = true, data = types });
+                return Ok(new { success = true, data = list });
             }
             catch (Exception)
             {
@@ -914,25 +748,25 @@ namespace CRC.Web.Controllers.StaffPatient
 
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spPatientDocument_List",
-                    new[] { new SqlParameter("@Patient_ID", patientId) }
-                );
+                var documents = await _data.GetPatientDocumentsAsync(patientId);
 
                 // Metadata only — the blob key is deliberately NOT projected. The container is private, so a
                 // storage key is useless to the browser and is exactly the kind of detail that should never
                 // leave the server. The file itself is fetched through GetPatientDocumentUrl, which mints a
                 // short-lived read SAS for one document at click time.
-                var list = dt.Rows.Cast<DataRow>()
-                    .Select(r => new
+                var list = documents
+                    .Select(d => new
                     {
-                        documentId = Convert.ToInt32(r["PatientDocument_ID"]),
-                        patientId = r["Patient_ID"]?.ToString(),
-                        patientName = r["Patient_Name"]?.ToString(),
-                        docTypeId = r["PatientDocumentType_ID"]?.ToString(),
-                        docTypeName = r["PatientDocumentType_Name"]?.ToString(),
-                        fileName = r["FileName"]?.ToString(),
-                        uploadedOn = r["UploadedOn"]?.ToString()
+                        documentId = d.PatientDocument_ID,
+                        patientId = d.Patient_ID,
+                        patientName = d.Patient_Name ?? string.Empty,
+                        docTypeId = d.PatientDocumentType_ID ?? string.Empty,
+                        docTypeName = d.PatientDocumentType_Name ?? string.Empty,
+                        fileName = d.FileName,
+
+                        // Already a formatted string in the column — VARCHAR(100), Malaysian local time
+                        // with an offset. Nothing parses or re-formats it here, and nothing should.
+                        uploadedOn = d.UploadedOn ?? string.Empty
                     })
                     .ToList();
 
@@ -1010,18 +844,19 @@ namespace CRC.Web.Controllers.StaffPatient
                     await using var stream = file.OpenReadStream();
                     await _documentStorage.UploadAsync(stream, blobName, contentType);
 
-                    var parameters = new[]
+                    // The @User_ID actor for the dbo.AuditTrails row spPatientDocument_Insert writes is
+                    // supplied by SqlData from the claim, exactly as DatabaseHelper used to inject it —
+                    // it is not a business argument and does not appear here. See CoreFlow.md §0.1.
+                    await _data.AddPatientDocumentAsync(new PatientDocumentInput
                     {
-                new SqlParameter("@Patient_ID",             patientId),
-                new SqlParameter("@Patient_Name",           patientName ?? string.Empty),
-                new SqlParameter("@PatientDocumentType_ID", (object)docTypeId ?? DBNull.Value),
-                new SqlParameter("@PatientDocumentType_Name", (object)docTypeName ?? DBNull.Value),
-                new SqlParameter("@FileName",               safeFileName),
-                new SqlParameter("@BlobName",               blobName),
-                new SqlParameter("@ContentType",            contentType)
-            };
-
-                    await _db.ExecuteNonQueryAsync("spPatientDocument_Insert", parameters);
+                        Patient_ID = patientId,
+                        Patient_Name = patientName ?? string.Empty,
+                        PatientDocumentType_ID = docTypeId,
+                        PatientDocumentType_Name = docTypeName,
+                        FileName = safeFileName,
+                        BlobName = blobName,
+                        ContentType = contentType
+                    });
 
                     // DocumentId is 0 because spPatientDocument_Insert writes its own AuditTrails row but does
                     // not hand the new identity back to the caller; the blob key is what ties this audit line
@@ -1058,20 +893,16 @@ namespace CRC.Web.Controllers.StaffPatient
 
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spPatientDocument_GetById",
-                    new[] { new SqlParameter("@PatientDocument_ID", id) }
-                );
+                var document = await _data.GetPatientDocumentByIdAsync(id);
 
-                if (dt.Rows.Count == 0)
+                if (document == null)
                 {
                     return Ok(new { success = false, message = "Document not found." });
                 }
 
-                var row = dt.Rows[0];
-                var blobName = row["BlobName"]?.ToString();
-                var fileName = row["FileName"]?.ToString() ?? string.Empty;
-                var patientId = row["Patient_ID"]?.ToString() ?? string.Empty;
+                var blobName = document.BlobName;
+                var fileName = document.FileName;
+                var patientId = document.Patient_ID;
 
                 if (string.IsNullOrWhiteSpace(blobName))
                 {
@@ -1112,32 +943,13 @@ namespace CRC.Web.Controllers.StaffPatient
             {
                 // Read the row first, only so the audit line can name the patient the document belonged to —
                 // spPatientDocument_Delete hands back the blob key and nothing else.
-                var lookup = await _db.ExecuteDataTableAsync(
-                    "spPatientDocument_GetById",
-                    new[] { new SqlParameter("@PatientDocument_ID", model.DocumentId) }
-                );
+                var document = await _data.GetPatientDocumentByIdAsync(model.DocumentId);
 
-                var patientId = lookup.Rows.Count > 0
-                    ? lookup.Rows[0]["Patient_ID"]?.ToString() ?? string.Empty
-                    : string.Empty;
+                var patientId = document?.Patient_ID ?? string.Empty;
 
-                var deletedBlobNameParameter = new SqlParameter("@DeletedBlobName", SqlDbType.VarChar, 500)
-                {
-                    Direction = ParameterDirection.Output
-                };
-
-                var parameters = new[]
-                {
-                    new SqlParameter("@PatientDocument_ID", model.DocumentId),
-                    deletedBlobNameParameter
-                };
-
-                await _db.ExecuteNonQueryAsync("spPatientDocument_Delete", parameters);
-
-                // NULL means no row was deleted, so there is nothing in storage to remove.
-                var deletedBlobName = deletedBlobNameParameter.Value == DBNull.Value
-                    ? null
-                    : deletedBlobNameParameter.Value?.ToString();
+                // NULL means no row was deleted, so there is nothing in storage to remove. The @User_ID
+                // actor for the procedure's dbo.AuditTrails row is supplied by SqlData from the claim.
+                var deletedBlobName = await _data.DeletePatientDocumentAsync(model.DocumentId);
 
                 if (!string.IsNullOrWhiteSpace(deletedBlobName))
                 {
