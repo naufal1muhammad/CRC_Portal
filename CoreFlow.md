@@ -1,23 +1,52 @@
 # nucentra — CoreFlow: the CRC Portal, as built (Specification)
 
-This document is the **single source of truth for what the CRC Portal is**: its domain, its data model,
-its endpoints, its stored procedures, and the layer that connects them. It describes the system **as it is
-built today** — not as it was, and not as it might be.
+This document is the **single source of truth for what the CRC Portal is**: its domain, its authorization
+model, its 28 tables, its 104 stored procedures, every controller action, the Dapper layer that connects
+them, and the two audit channels that record what they did. It describes the system **as it is built
+today** — not as it was, and not as it might be.
 
-> **Audience:** anyone, human or AI agent, about to change this repo. Read the section that covers what you
-> are touching before you touch it. Nothing here is a proposal and nothing here is a change log; where a
-> piece is genuinely unfinished, it says so in those words.
+> **Audience:** anyone, human or AI agent, about to change this repo. **Read the section that covers what
+> you are touching before you touch it**, and if you are adding a feature, read **§11** first — it is the
+> ordered checklist, and every step in it points back at the section that explains why.
+>
+> **This is a specification, not a change log.** Nothing here is a proposal, nothing here records what the
+> code used to do, and nothing here is aspirational. Where a piece of the product is genuinely unfinished,
+> missing, or wrong, it says so **in those words** and stops there — §7.7 and §4.4's `SaveStaff` note are
+> the pattern. A statement in this document is a claim about the current code that you can go and check.
+>
+> **Where it disagrees with something else, this file loses to two documents and wins against the rest.**
+> `DOCUMENTSTORAGE.md` is authoritative on blob storage (§8); `SEEDING.md` is authoritative on what a
+> published database contains. Everything else — including `DapperLayerPlan.md`, which is a finished plan
+> and now history — defers to this file.
 
 > ## ⚠️ THE SECTION NUMBERS ARE LOAD-BEARING
 >
-> This document is written across the eleven prompts of `DapperLayerPlan.md`. Prompt 0 fixes all twelve
-> headings **now**, before most of them have content, precisely so that later prompts can **fill sections
-> in and never renumber them**. Code comments already cite `CoreFlow.md §n`, and every future one will.
+> All twelve sections are written. **Do not renumber any of them.** Code comments across
+> `CRC.Data/Data/`, `CRC.Data/Models/` and `CRC.Web/Controllers/` already cite `CoreFlow.md §n` by number,
+> and a renumbering silently invalidates every one of those references without breaking a build.
 >
-> Sections **3, 4 and 5 grow by appending**: each prompt adds its own feature area under a new `###`
-> sub-heading and never rewrites what an earlier prompt put there. A section marked
-> *"not yet filled in"* is a promise about where something will go, not an invitation to renumber around
-> it. If you need a thirteenth topic, add **§13**.
+> Sections **3, 4 and 5 are organised by feature area** under `###` sub-headings (`3.1`…`3.17`,
+> `4.1`…`4.15`, `5.1`…`5.10`). A new table, a new endpoint or a new procedure is **appended as a new
+> sub-heading inside the existing section**, keeping the numbering monotonic. If you need a thirteenth
+> topic, add **§13** — do not shuffle §10, §11 or §12 aside to make room.
+
+**The map, so you can jump straight to what you need:**
+
+| § | What it answers |
+|---|---|
+| **0** | The conventions to apply rather than re-derive — layering, naming, response shape, **and the `@User_ID` rule (§0.1), which is the one thing here that fails silently** |
+| **1** | What a colorectal-cancer screening portal actually does, in one paragraph |
+| **2** | Who can see what: `UserType` 1/2/3, five policies, antiforgery, lockout |
+| **3** | The 28 tables, grouped, with the columns and the missing constraints that matter |
+| **4** | Every page and every controller action, with its policy and the exact JSON it returns |
+| **5** | All 104 stored procedures: parameters, result sets, which method calls each, `@User_ID` kind |
+| **6** | The Dapper layer — `IDatabaseData`, `SqlData`, `DatabaseHelper`, Models, and the two transactions |
+| **7** | The patient journey, the core feature — **including, explicitly, that there is no state machine** |
+| **8** | Documents: two families, the settings layer that makes one mandatory, the endpoints |
+| **9** | The two audit channels, why they are not the same thing, and how to check the actor mechanism |
+| **10** | Folder structure / file map — where everything lives and why |
+| **11** | End-of-feature checklist — the ordered steps for adding a feature, with the traps named |
+| **12** | Decisions locked — settled deliberately, not to be re-opened without a reason |
 
 ---
 
@@ -46,8 +75,14 @@ Historically nobody had to know this. `DatabaseHelper` queried `sys.parameters` 
 *"does this procedure declare `@User_ID`?"*, and appended the caller's `ClaimTypes.NameIdentifier` value if
 it did. That is how `dbo.AuditTrails` learned who did what, with no controller ever passing an actor.
 **Dapper has no such hook** — it sends the anonymous parameter object's properties and nothing else — so
-`SqlData` passes the value explicitly, per call, and the distinction below became something every author
-must hold in their head.
+`SqlData` passes the value explicitly, per call, and the distinction below is something every author must
+hold in their head.
+
+🔴 **THAT AUTO-INJECTION MACHINERY NO LONGER EXISTS.** `TryInjectUserIdAsync`, `SupportsUserIdParameterAsync`
+and the static support cache behind them were **deleted** along with the rest of `DatabaseHelper`'s ADO
+surface (§6.5). It is not coming back, and re-introducing it would be a mistake rather than a convenience:
+a generic injector cannot see the difference between the two meanings below, and applying it to
+`spUsers_Unlock` would unlock the wrong account. `@User_ID` is now **always** written out at the call site.
 
 **`@User_ID INT = NULL` — THE ACTOR (19 procedures).** Who performed the write, for the `dbo.AuditTrails`
 row the procedure inserts. It is not a business argument, so it **never appears in an `IDatabaseData`
@@ -217,10 +252,21 @@ claim.
 | Policy | Types | Applied to |
 |---|---|---|
 | `SuperUserOnly` | 1 | **class:** `BranchController`, `DashboardController`, `SettingsController`, `DocumentsController`, `AuditTrailsController` · **action:** `Account.Register`, `Account.RegisterUser`, `Account.GetUsers`, `Account.UnlockUser` |
-| `AdminOrSuper` | 1, 2 | **class:** `AdminDashboardController`, `AppointmentController`, `PatientController`, `PatientTrackerController` · **action:** most of `StaffController` |
-| `AdminOrSuperOrStaff` | 1, 2, 3 | **class:** `MyProfileStaffController`, `StaffScheduleController`, `StaffPerformanceController` · **action:** `StaffController.GetStaffTypes` and most reads in `StaffPatientController` |
-| `StaffOnly` | 3 | **class:** `StaffDashboardController` · **action:** the clinical *writes* in `StaffPatientController` (assessment, colonoscopy, follow-up) |
+| `AdminOrSuper` | 1, 2 | **class:** `AdminDashboardController`, `AppointmentController`, `PatientController`, `PatientTrackerController` · **action:** **seventeen of `StaffController`'s eighteen** |
+| `AdminOrSuperOrStaff` | 1, 2, 3 | **class:** `MyProfileStaffController`, `StaffScheduleController`, `StaffPerformanceController` · **action:** `StaffController.GetStaff` — the *only* one of its eighteen — and **eleven** actions on `StaffPatientController`: every read **plus all five document actions** |
+| `StaffOnly` | 3 | **class:** `StaffDashboardController` · **action:** **four** on `StaffPatientController` — the three clinical writes (assessment, colonoscopy, follow-up) **and `Details`, the page itself** |
 | `AdminOnly` | 2 | 🔴 **nothing.** |
+
+Two entries in that table are easy to get wrong from memory and are stated exactly, counted attribute by
+attribute against the two controllers that carry per-action policies:
+
+- **`StaffController`'s single `AdminOrSuperOrStaff` action is `GetStaff`, not `GetStaffTypes`.**
+  `GetStaffTypes` is `AdminOrSuper` like the other sixteen. `GetStaff` is the exception because
+  `/MyProfileStaff` reads a clinician's own record through it, and it carries its own ownership check on
+  top of the policy (§4.4).
+- **`StaffPatientController` splits eleven / four, and `Details` is on the `StaffOnly` side.** The page is
+  `StaffOnly` while every endpoint it calls is `AdminOrSuperOrStaff` — an administrator reaching those
+  endpoints directly gets the data and simply has no page to render it in (§4.9).
 
 **`AdminOnly` is declared and never used — not by one controller, not by one action.** It is dead
 configuration. Do not read its existence as evidence that some screen is ADMIN-exclusive; nothing is. Every
@@ -363,8 +409,19 @@ Stated plainly, because each one is a thing a reader may reasonably expect to fi
 
 ## 3. Data model
 
-> *Grows by appending one `###` sub-section per feature area, across Prompts 1 and 3–9. Prompts 3–9 add
-> theirs below; nothing already here is rewritten.*
+> **All 28 tables in `CRC.Database/dbo/Tables/` are covered below**, one `###` sub-section per table except
+> §3.1, which takes the twelve `LU_*` reference tables together. A new table gets the next number.
+>
+> 🔴 **Read the "no foreign key" notes rather than skimming them.** nucentra has **FIVE enforced foreign
+> keys in the whole 28-table schema**, and here they are, in full: `LU_LOCATION.ParentId` → itself (§3.1);
+> `PatientAssessment`, `PatientColonoscopy` and `PatientFollowUp` → `PatientJourney` (§3.12–§3.14); and
+> `StaffSlots.PatientAppointment_ID` → `PatientAppointment` (§3.7). **Every other relationship in this
+> product is a `VARCHAR(100)` column holding somebody else's key by convention** — `Staff.Staff_Base`,
+> `Users.Staff_ID`, `PatientAppointment.Patient_ID`, every `LU_*` code, all of them. The referential
+> integrity that exists lives inside stored procedures, where a direct `INSERT` or `DELETE` bypasses it
+> entirely (§3.4, §5.4). Two of the five are also load-bearing in a way their direction does not suggest:
+> the three journey FKs are what make deleting a patient half-succeed (§7.7), and the `StaffSlots` one
+> points the wrong way to protect a slot from deletion (§3.7).
 
 ### 3.1 Reference data (`dbo.LU_*`)
 
@@ -670,7 +727,7 @@ must have a CV"; no row means nothing. The `IsMandatory` that appears in JSON an
 because an unaliased `CASE` over integer literals is typed `INT`. It exists so the Settings screen can
 render every document type as a checklist with the configured ones ticked. **Do not go looking for the
 column, and do not add one**: a settings row is deleted, not un-flagged
-(`spStaffDocumentSettings_DeleteByStaffType`, Prompt 8).
+(`spStaffDocumentSettings_DeleteByStaffType`, §5.9).
 
 **An empty table means nothing is mandatory anywhere**, which is the state a freshly published `CRC_DB` is
 in — every staff type saves with no documents at all until somebody configures the Settings screen.
@@ -1365,8 +1422,14 @@ and *add* to this one. It grows monotonically for the life of the installation.
 
 ## 4. Pages, endpoints, policies
 
-> *Grows by appending one `###` sub-section per feature area, across Prompts 1 and 3–9. Prompts 3–9 add
-> theirs below; nothing already here is rewritten.*
+> **All 16 controllers are covered below**, one `###` sub-section per screen — which is not always one per
+> controller: `PatientController` is split across §4.7 and §4.8.1 because it is two features sharing a
+> class, and the three appointment controllers are grouped into §4.8. A new screen gets the next number.
+>
+> 🔴 **Every `jsonc` block in this section is a CONTRACT, not an illustration.** 59 JavaScript files read
+> these shapes by property name, and none of them is generated from anything. A property renamed here is a
+> table that silently renders `undefined`. The "behaviours that look like bugs, are not, and must be
+> preserved" list under each screen is where the non-obvious parts of that contract are written down.
 
 ### 4.1 Branch (Admin > Branch)
 
@@ -1431,8 +1494,9 @@ Four behaviours that look like bugs, are not, and must be preserved:
 - **A missing branch is `200 OK` with `success = false`**, not a 404. A *blank* `branchId` is a 400. Two
   different failures, two different status codes, both in the same action.
 - **`DeleteBranch` swallows the exception without logging it** — `catch (Exception)` with no `_logger` call,
-  unlike `SaveBranch` — so a delete that fails is invisible outside the database. Left exactly as found;
-  Prompt 9 owns the logging sweep.
+  unlike `SaveBranch` — so a delete that fails is invisible outside the database. 🔴 **It is one of FORTY
+  catch blocks in the portal that log nothing**, counted and located in §9.2. A real defect, stated rather
+  than fixed, because closing it changes behaviour.
 
 ### 4.2 My Profile (Staff)
 
@@ -1454,8 +1518,8 @@ actions, one of them data:
 ```
 
 **It resolves three names by fetching three whole levels of the tree** — up to 2,784 postcode rows to find
-one — because there is no `spLU_LOCATION_GetById`. That is what the page did before the Dapper layer and it
-is unchanged; adding the procedure is a later prompt's decision, not a mid-migration one. The cascade is
+one — because there is no `spLU_LOCATION_GetById`. That is a known inefficiency, not a subtlety: adding the
+procedure would be a straightforward §11 change and nobody has needed it enough. The cascade is
 strict: a city is only looked up if a state id was supplied, a postcode only if a city id was. An id that
 matches nothing yields `""` rather than an error, and `success` stays `true` — the page shows a blank field.
 The `StaffId` claim never touches this endpoint: the ids arrive as query parameters, so **any authenticated
@@ -1590,11 +1654,9 @@ declares a class default). Seventeen of its eighteen actions are `AdminOrSuper`;
 Views: `Views/Staff/Index.cshtml` and `Views/Staff/StaffEdit.cshtml`; scripts: `wwwroot/js/staff/index.js`
 and `wwwroot/js/staff/edit-staffbasic.js`. Antiforgery is global, so every POST needs `X-CSRF-TOKEN` (§0).
 
-> 🔴 **§2.3's policy table is wrong about this controller.** It lists
-> `StaffController.GetStaffTypes` under `AdminOrSuperOrStaff`. `GetStaffTypes` is `AdminOrSuper`, like
-> everything else here; the one `AdminOrSuperOrStaff` action is **`GetStaff`**. The table below is what the
-> attributes actually say, read action by action. §2 belongs to Prompt 2 and is not rewritten here — the
-> correction is flagged for Prompt 10's consistency pass.
+> **The one `AdminOrSuperOrStaff` action here is `GetStaff`** — not `GetStaffTypes`, which is
+> `AdminOrSuper` like the other sixteen. §2.3 says the same; the table below is what the attributes
+> actually say, read action by action.
 
 | # | Verb | Route | Policy | Returns |
 |---|---|---|---|---|
@@ -1645,7 +1707,8 @@ dropdown, so nothing consumes `GetActiveBranches`; and `edit-staffbasic.js` post
     "staffTypeId": "END", "staffTypeName": "ENDOSCOPIST" } }
 { "success": true,  "data": null }                     // BLANK staffId — 200, success TRUE, no data
 { "success": false, "message": "Staff not found." }    // unknown id — 200, not 404
-// 403, empty body                                     // a STAFF user asking for someone else's id
+// 302 → /Account/AccessDenied, empty body             // a STAFF user asking for someone else's id.
+//                                                     // Forbid() under cookie auth is a REDIRECT — §4.5
 
 // POST /Staff/SaveStaff  and  POST /Staff/SaveStaffWithDocuments
 { "success": true,  "message": "Staff created successfully.", "staffId": "NUR-00003" }
@@ -1715,15 +1778,19 @@ Five behaviours that look like bugs, are not, and must be preserved:
 - **A blank `staffId` is `200 { success: true, data: null }`**, not a 400 and not an error. `/Branch/GetBranch`
   answers a blank id with a 400 (§4.1); this one answers with a successful nothing, because
   `/Staff/Edit` with no route id opens the *new staff* form and calls this endpoint anyway.
-- **`GetStaff` returns 403 with an empty body**, via `Forbid()`, when a STAFF user asks for an id that is
-  not their own `StaffId` claim (`CanAccessStaff`). ADMIN and SUPERUSER pass unconditionally. This is the
-  **only ownership check in the controller** — every other action is guarded by the policy alone, so an
-  ADMIN sees every staff member and a STAFF user cannot reach any of them.
+- **`GetStaff` refuses via `Forbid()`** when a STAFF user asks for an id that is not their own `StaffId`
+  claim (`CanAccessStaff`). ADMIN and SUPERUSER pass unconditionally. This is the **only ownership check in
+  the controller** — every other action is guarded by the policy alone, so an ADMIN sees every staff member
+  and a STAFF user cannot reach any of them. 🔴 **`Forbid()` is an MVC result, not a status code: under
+  cookie authentication it goes over the wire as `302 Location: /Account/AccessDenied?ReturnUrl=…` with an
+  empty body**, never a 403 — measured, and the same for all five refusal paths in §4.5 and §4.6. The
+  practical consequence is for the `.js`: a `fetch` follows the redirect to an HTML page, so `response.ok`
+  is `true` and `response.json()` is what fails.
 - **`DeleteStaff` is the one action that does not use `ErrorResponse.ForUser`.** Its catch returns a bare
   `{ success = false, message = "An unexpected error occurred." }` with **no `correlationId`**, so a
   user's complaint about a failed delete cannot be tied to a line in `app-*.log`. It *does* log
-  (unlike `BranchController.DeleteBranch`, §4.1, which does not). Left exactly as found; Prompt 9 owns the
-  logging sweep.
+  (unlike `BranchController.DeleteBranch`, §4.1, which does not). A real gap, stated rather than fixed —
+  see §9.2 and §12 decision 10.
 - **The two `success = false` document messages from `DeleteStaff` are the stored procedure's own strings**,
   passed through untouched. `"Failed to delete staff."` is the controller's fallback for the case that
   cannot currently happen — a status that is neither `Success` nor accompanied by a message.
@@ -1848,13 +1915,12 @@ still there afterwards, while the same user deleting their own slot succeeded an
 exists. A slot that does exist and is not theirs is refused by the authorization stack instead.
 
 🔴 **`Forbid()` under cookie authentication is a 302 to `/Account/AccessDenied`, not a 403.** Measured on all
-five refusal paths in §4.5 and §4.6: the response is
+five refusal paths in §4.5 and §4.6 and on `/Staff/GetStaff`'s in §4.4: the response is
 `302 Location: /Account/AccessDenied?ReturnUrl=%2FStaffSchedule%2FDelete`, with an empty body — the cookie
-handler's `AccessDeniedPath` (§2.5) turns the forbid into a redirect. §4.4 describes the same `Forbid()` on
-`/Staff/GetStaff` as "403 with an empty body"; that is the MVC result, not what goes over the wire.
-**Flagged for Prompt 10's consistency pass**; §4.4 belongs to Prompt 3 and is not rewritten here. The
-practical consequence is for the `.js`: a `fetch` sees a 302 it follows to an HTML page, so `response.ok` is
-`true` and `response.json()` is what fails.
+handler's `AccessDeniedPath` (§2.5) turns the forbid into a redirect. `Forbid()` is the MVC *result*; the
+redirect is what goes over the wire, and the same is true of a policy failure on any `[Authorize]` action in
+the portal. The practical consequence is for the `.js`: a `fetch` sees a 302 it follows to an HTML page, so
+`response.ok` is `true` and `response.json()` is what fails.
 
 #### Two more asymmetries worth knowing
 
@@ -1934,11 +2000,13 @@ POSTs need `X-CSRF-TOKEN` (§0).
 > The **patient half** — the Active and Discharged lists, and the Basic Details + Discharge tabs of
 > `/Patient/Edit` — is the thirteen actions below. The **appointment half** — `GetAppointmentLookups`,
 > `GetAppointmentStaffList`, `GetAppointmentSlots`, `GetAppointments`, `SaveAppointment`,
-> `DeleteAppointment` — is the Appointment tab of the same page, and **Prompt 6 documents it in its own
-> sub-section**. The split is not cosmetic: the appointment half owns the hand-rolled `SqlTransaction` that
-> becomes `SaveAppointmentAsync` (§6.6), and until Prompt 6 lands **this one class holds both `IDatabaseData
-> _data` (the patient half) and `DatabaseHelper _db` (the appointment half)**. That is expected and correct
-> for exactly one prompt's worth of time; a comment on the two fields says so.
+> `DeleteAppointment` — is the Appointment tab of the same page and is **§4.8.1**. The split is not
+> cosmetic: the appointment half owns `SaveAppointmentAsync`, one of the data layer's only two transactional
+> units of work (§6.6, §6.7), while the patient half is thirteen ordinary one-procedure calls.
+>
+> **The class injects `IDatabaseData` and nothing else data-related** — one field, both halves, no
+> `DatabaseHelper` and no `System.Data`. At 1,100-odd lines it is the largest controller in the portal;
+> splitting it into two would be a routing change, so it has not been done.
 
 Views: `Views/Patient/Active.cshtml`, `Discharged.cshtml`, `Edit.cshtml`. Scripts:
 `wwwroot/js/patient/active-list.js`, `discharged-list.js`, `edit-basic.js`, `edit-discharge.js`.
@@ -2113,7 +2181,7 @@ procedure calls and the document check moved. Every derivation, every validation
 stayed in the controller; `CRC.Data/Models/PatientSaveInput.cs` carries the values and decides nothing. The
 one thing that genuinely changed shape is that a save which somehow produced no `Patient_ID` now throws
 (and is caught into the generic message) where it previously returned `{ success: true, patientId: "" }` —
-an unreachable path, and the same choice Prompt 3 made for `spStaff_Insert` (§6.6).
+an unreachable path, and the same choice `SaveStaffWithDocumentsAsync` makes for `spStaff_Insert` (§6.6).
 
 ### 4.8 Appointments — three controllers, thirteen actions
 
@@ -2138,11 +2206,10 @@ and `spPatientAppointment_UpdateStatus` backs the identically-named action on bo
 
 Views: `Views/Patient/Edit.cshtml`. Script: `wwwroot/js/patient/edit-appointment.js`.
 
-> This completes the controller §4.7 describes half of. **After Prompt 6, `PatientController` injects
-> `IDatabaseData` and nothing else data-related** — the `DatabaseHelper _db` field, its constructor
-> parameter and `using System.Data;` are gone, and the file contains no `SqlParameter`, no `DataTable` and
-> no `DataRow`. §4.7's note about the class holding both surfaces described a state that lasted exactly
-> one prompt.
+> This completes the controller §4.7 describes half of. The six actions below and the thirteen in §4.7 are
+> one class, one `IDatabaseData` field, one `[Authorize(Policy = "AdminOrSuper")]` — and the file contains
+> no `SqlParameter`, no `DataTable` and no `DataRow`. The only `Microsoft.Data.SqlClient` reference left in
+> it is `catch (SqlException)`, which is exception classification rather than data access (§12).
 
 | # | Verb | Route | Returns |
 |---|---|---|---|
@@ -2441,13 +2508,10 @@ plus three partials under `Views/StaffPatient/Templates/`; scripts `wwwroot/js/s
 > these onto the class — doing so would either lock an administrator out of the journey reads or let a
 > SUPERUSER write a clinical record.
 >
-> 🔴 **§2.3 is incomplete about this controller.** It lists `StaffOnly` as *"the clinical writes in
-> `StaffPatientController`"* — which misses `Details`, the page itself, and it lists
-> `AdminOrSuperOrStaff` as *"most reads"* when it is in fact **every** read plus all five document
-> actions. The eleven-and-four split below is what the attributes actually say, counted action by
-> action and checked against the pre-migration file (11 and 4, unchanged). §2 belongs to Prompt 2 and is
-> not rewritten here; **flagged for Prompt 10's consistency pass**, alongside §4.4's correction about
-> `StaffController`.
+> **The eleven-and-four split is exact and §2.3 states it the same way.** `StaffOnly` is not merely "the
+> clinical writes": it is the three writes **and `Details`**. `AdminOrSuperOrStaff` is not merely "most
+> reads": it is **every** read **plus all five document actions**. Counted attribute by attribute against
+> the table below.
 
 | # | Verb | Route | Policy | Returns |
 |---|---|---|---|---|
@@ -2597,8 +2661,8 @@ under a SUPERUSER session and again under a STAFF session, plus ten edge cases �
   empty array, because the page calls it before a patient is chosen.
 - **`GetBasic` and the three detail reads swallow their exception with a BARE `catch` and no logging.**
   Unlike the Save actions, which log to `app-*.log` with a correlation id, these five return their message
-  and nothing reaches any log — a failure there is invisible outside the database. Left exactly as found;
-  Prompt 9 owns the logging sweep. Compare `BranchController.DeleteBranch` (§4.1), which has the same gap.
+  and nothing reaches any log — a failure there is invisible outside the database. Five of the forty
+  unlogged catches §9.2 counts; `BranchController.DeleteBranch` (§4.1) has the same gap.
 - **`DeletePatientDocument` answers `{ success: true }` for an id that matched nothing**, because
   `spPatientDocument_Delete` returns NULL in its OUTPUT parameter and the controller treats that as
   "nothing in storage to remove". No `AuditLog` line is written on that path either — the
@@ -2736,7 +2800,8 @@ left exactly as found:
 - **The two saves disagree about error reporting.** The staff save has a bare `catch (Exception)` that
   returns a fixed string and **logs nothing** — no `_logger.LogError`, no correlation id, so a failed staff
   save cannot be traced to a line in `app-*.log`. The discharge save catches `SqlException` and `Exception`
-  separately, logs both, and answers through `ErrorResponse.ForUser`. Prompt 9 owns the logging sweep.
+  separately, logs both, and answers through `ErrorResponse.ForUser`. One of the forty unlogged catches
+  §9.2 counts.
 
 🔴 **NOTHING ON THIS SCREEN IS AUDITED, IN EITHER CHANNEL.** None of the five procedures declares `@User_ID`,
 so no `dbo.AuditTrails` row is written; and there is no `AuditLog.*` call anywhere in the controller. Adding
@@ -3069,8 +3134,23 @@ still returned by the search, with a blank name. The dropdown is not a complete 
 
 ## 5. Stored procedures
 
-> *Grows by appending one `###` sub-section per feature area, across Prompts 1 and 3–9. Prompts 3–9 add
-> theirs below; nothing already here is rewritten.*
+> **All 104 procedures under `CRC.Database/Stored Procedures/` are catalogued below**, grouped by feature
+> area into `###` sub-sections, each with a table giving the procedure's parameters, what it returns, the
+> `IDatabaseData` method that calls it, and whether it declares `@User_ID` — and if so, **ACTOR or TARGET**
+> (§0.1). Every one of the 104 is called from `SqlData.cs` and from nowhere else; there are no unused
+> procedures. **100 have exactly one method; the remaining four — `spPatientAppointment_Insert`,
+> `spPatientAppointment_Update`, `spStaffSlots_AssignAppointment` and `spStaffSlots_ClearAppointment` — are
+> reachable only through `SaveAppointmentAsync`** (§5.7, §6.7).
+>
+> The sub-section counts are `14 + 6 + 9 + 12 + 7 + 7 + 12 + 17 + 7 + 16 = 107`, which is **104 plus three
+> procedures deliberately tabled twice**: `spStaffDocumentSettings_GetByStaffType` in §5.4 and §5.9, and
+> the two `spStaffSlots_*Appointment` procedures in §5.5 and §5.7. Each repetition says so where it occurs.
+>
+> 🔴 **The recurring lesson of this section is: read the `.sql`, never the family resemblance.** Three of
+> nucentra's composed-id inserts return the new id with a trailing `SELECT` and two return it through an
+> `OUTPUT` parameter with no result set at all; two procedures named `*_Delete` answer through an `OUTPUT`
+> parameter; one returns two result sets and one returns four. Guessing any of these from the name compiles
+> perfectly and fails at runtime.
 
 ### 5.1 Lookups — `CRC.Database/Stored Procedures/LU_*/` (14)
 
@@ -3125,7 +3205,7 @@ Three asymmetries between the writes, all of them real and none of them obviousl
   `branchId = "NOSUCHBRANCHEVER"` answers `"Branch deleted successfully."`, `POST /Branch/SaveBranch` with
   `isNew = false` and the same id answers `"Branch updated successfully."`, and `dbo.AuditTrails` gains
   nothing from either. Making that visible means returning `@@ROWCOUNT`, which is an additive `.sql` change
-  and a later prompt's call.
+  and a behaviour change to the endpoint above it — the owner's call, per §12 decision 10.
 - **The insert is the only one that returns anything**, which is why `CreateBranchAsync` is the only Branch
   write that is a `QuerySingleAsync` rather than an `ExecuteAsync`.
 
@@ -3151,8 +3231,9 @@ channel (`AuditLog.*` → `Logs/audit-*.log`), written by `AccountController`, n
 
 #### 🔴 THE ONE `.sql` CHANGE IN THE WHOLE DAPPER MIGRATION
 
-`spUsers_RegisterFailedLogin` is **the only procedure in nucentra with `OUTPUT` parameters**, and the only
-`.sql` file this migration has edited. Prompt 2 **appended** one statement to the end of its body:
+**`spUsers_RegisterFailedLogin` is one of SEVEN procedures in nucentra with `OUTPUT` parameters** — §5.8
+carries the complete list, and it is the only one of the seven whose `.sql` was edited. One statement was
+**appended** to the end of its body:
 
 ```sql
 SELECT @LockoutTriggered AS [LockoutTriggered],
@@ -3167,9 +3248,9 @@ A result set maps onto `CRC.Data/Models/FailedLoginResult.cs` by name, like ever
 
 **What was deliberately NOT changed.** All three `OUTPUT` parameters are still declared, still have their
 `= NULL` defaults, and are still `SET` on exactly the paths they were before. The change is **purely
-additive**: any caller still using `ParameterDirection.Output` gets byte-identical behaviour and simply
-ignores an extra result set. That mattered mid-migration, when `AccountController` was the old code and the
-new procedure was already deployed, and it is why the additive-only rule exists at all.
+additive**: a caller using `ParameterDirection.Output` gets byte-identical behaviour and simply ignores an
+extra result set. Keeping it that way is why an already-deployed procedure could sit in front of an
+un-migrated caller without either noticing, and it is the standing rule for editing any `.sql` here (§12).
 
 **The surprise it exposed, and the reason `SqlData` uses `QuerySingleOrDefaultAsync`.** The procedure has
 **two early `RETURN` statements** — an unknown `@Username`, and an attempt against an account whose lockout
@@ -3249,7 +3330,8 @@ and the write still succeeds, naming nobody. The other seven declare no `@User_I
 | `spStaffDocument_StaffNames` | — | `Staff_Name` only, `DISTINCT`, `INNER JOIN`, ordered by name | `GetStaffDocumentStaffNamesAsync` → `List<string>` | no |
 | `spStaffDocumentSettings_GetByStaffType` | `@StaffType_ID VARCHAR(100)` | **every** `LU_STAFFDOCUMENTTYPE` row plus a computed `IsMandatory INT` | `GetStaffDocumentSettingsAsync` → `List<StaffDocumentSetting>` | no |
 
-`spStaff_GetPerformance` also lives in `Stored Procedures/Staff/` and belongs to Prompt 4.
+`spStaff_GetPerformance` also lives in `Stored Procedures/Staff/`, but it backs the Performance tab rather
+than the staff register, so it is documented in §5.5 with the slot procedures.
 
 #### 🔴 `spStaff_Delete` returns two result sets, and it is three procedures wearing one name
 
@@ -3315,20 +3397,18 @@ fails (§6.6).
 
 #### The other findings, from reading all twelve
 
-- 🔴 **`spStaffDocument_Delete` IS A SECOND PROCEDURE WITH AN `OUTPUT` PARAMETER, and §5.3 says there is
-  only one.** That claim was written in Prompt 2, before this area had been read, and it is wrong:
+- 🔴 **`spStaffDocument_Delete` ANSWERS THROUGH AN `OUTPUT` PARAMETER** — one of the seven that do (§5.8).
   `@DeletedBlobName VARCHAR(500) = NULL OUTPUT` carries the blob key of the row that was just deleted, or
-  `NULL` when no row matched. The two are not in the same position, though, and the difference is what
-  could be done about each: Prompt 2 was permitted to **append** a trailing `SELECT` to
-  `spUsers_RegisterFailedLogin`, whereas **Prompt 3 was permitted to touch no `.sql` at all** — and this
-  procedure has no result set to append to without changing it. So `SqlData.DeleteStaffDocumentAsync` reads
-  the parameter through `DynamicParameters`, in the one place in the data layer that does, with the name
-  and the `DbType.AnsiString` written out where a reader can check them against the `.sql`.
+  `NULL` when no row matched, and the procedure has **no result set at all** to read it from. Unlike
+  `spUsers_RegisterFailedLogin`, which had a trailing `SELECT` appended to it (§5.3), this one has nothing
+  to append to without changing its behaviour — so `SqlData.DeleteStaffDocumentAsync` reads the parameter
+  through `DynamicParameters`, with the name and the `DbType.AnsiString` written out where a reader can
+  check them against the `.sql`.
 - **`spStaffDocument_Insert` does not return the new `StaffDocument_ID`.** It computes it
   (`SCOPE_IDENTITY()`) purely to put it in the `AuditTrails` summary, and then discards it. That is why
   **every `AuditLog.StaffDocumentUploaded` line in the portal records `DocumentId=0`** and identifies the
   row by its blob key instead. The database trail has the id; the Serilog trail does not. Making them agree
-  is an additive `.sql` change and a later prompt's call.
+  is an additive `.sql` change and the owner's call, per §12 decision 10.
 - **`spStaff_Update` audits only when a row actually changed** (`IF @RowsAffected > 0`) and returns nothing
   either way, so an update against an unknown id succeeds silently and reports success — the same
   asymmetry `spBranch_Update` has (§5.2). `spStaff_Insert`, by contrast, is the only one of the three that
@@ -3344,8 +3424,8 @@ fails (§6.6).
   document query scans.
 - **`spStaffDocument_List`'s `@Staff_ID` is optional** (`= NULL`, and `''` is treated the same way), in
   which case it returns **every document in the system**. Nothing calls it that way — `StaffController`
-  rejects a blank `staffId` first — but the capability is there, and Prompt 8's search page is presumably
-  what it was written for.
+  rejects a blank `staffId` first — but the capability is there, and the Documents search page (§4.11) is
+  presumably what it was written for, though that page uses `spDocuments_Search` instead.
 - **`spStaffDocument_LookupDocuments` unions the types IN USE with the types in the lookup**, and
   `COALESCE`s a missing name back to the raw id. It exists because `StaffDocument.StaffDocumentType_ID` has
   no foreign key (§3.5): a document uploaded under a type later removed from `LU_STAFFDOCUMENTTYPE` must
@@ -3361,7 +3441,7 @@ fails (§6.6).
   is therefore constant and answers nothing; every caller filters `IsMandatory = 1` itself. `IsMandatory`
   is an `INT`, not a `BIT`.
 
-### 5.5 Staff slots and staff performance (5 wrapped, 2 deferred)
+### 5.5 Staff slots and staff performance (5 with a method of their own, 2 inside a transaction)
 
 **Two of the five declare `@User_ID INT = NULL` — the ACTOR** (§0.1): `spStaffSlots_CreateRange` and
 `spStaffSlots_Delete`. Both write a `dbo.AuditTrails` row with `ISNULL(@User_ID, 0)`, which is the
@@ -3378,21 +3458,21 @@ silent-failure surface. The other three declare no `@User_ID` and write no audit
 `spStaff_GetPerformance` lives in `Stored Procedures/Staff/` with the other five `spStaff_*` procedures
 (§5.4) but belongs to the Performance tab, so it is documented here.
 
-#### 🔴 The two `StaffSlots` procedures that are NOT wrapped, and why
+#### 🔴 The two `StaffSlots` procedures with NO method of their own, and why
 
-`Stored Procedures/StaffSlots/` holds **six** files. The two missing from the table are
+`Stored Procedures/StaffSlots/` holds **six** files. The two missing from the table above are
 **`spStaffSlots_AssignAppointment`** (`@ApptId INT`, `@StaffSlotIds VARCHAR(MAX)` — a comma-separated list
 split with `STRING_SPLIT`, stamping the appointment id onto every named slot) and
 **`spStaffSlots_ClearAppointment`** (`@ApptId INT` — clearing it off every slot that carries it).
 
-**They are deliberately absent from `IDatabaseData`, not forgotten.** Neither has a caller of its own:
-both are run only from inside `PatientController.SaveAppointment`'s transaction, which reads
-`spStaffSlots_List` under a lock, checks that every chosen hour is still free, writes the appointment, and
-*then* claims the slots. Publishing them as standalone data-layer methods would offer a second way to change
-a slot's booking state — one that is not inside that transaction — and that race is precisely what the
-transaction exists to prevent. **Prompt 6 adds them to `SaveAppointmentAsync`**, the second of the two
-transactional units of work (§6.6). The banner comment in `IDatabaseData.cs` says the same thing at the
-place a future author would otherwise add them.
+**They are deliberately absent from `IDatabaseData`, not forgotten.** Both run only from inside
+`SaveAppointmentAsync` (§6.7), which reads `spStaffSlots_List` under a lock, checks that every chosen hour
+is still free, writes the appointment, and *then* claims the slots. Publishing them as standalone data-layer
+methods would offer a second way to change a slot's booking state — one that is **not** inside that
+transaction — and that race is precisely what the transaction exists to prevent. They are two of the four
+procedures in the whole catalogue with no method of their own; the other two are
+`spPatientAppointment_Insert` and `_Update`, absent for the same reason (§5.7). The banner comment in
+`IDatabaseData.cs` says so at the place a future author would otherwise add them.
 
 #### 🔴 `spStaff_GetPerformance` returns FOUR result sets, and the order is the whole contract
 
@@ -3492,26 +3572,19 @@ succeeds, naming nobody. The other four declare no `@User_ID` and write no audit
 | `spPatient_Discharge_CheckMissingDocuments` | `@Patient_ID`, `@DischargeType_ID` | `PatientDocumentType_ID, PatientDocumentType_Name` — **the MISSING ones**; an empty set is the pass | `GetMissingDischargeDocumentsAsync` → `List<PatientDocumentRequirement>` | no |
 
 `spPatient_Discharge_CheckMissingDocuments` lives in `Stored Procedures/PatientDocumentSettings/` with the
-Settings-screen procedures (Prompt 8) but belongs to the discharge flow, so it is documented here.
+Settings-screen procedures (§5.9) but belongs to the discharge flow, so it is documented here.
 
-#### 🔴 `spPatientBasic_Insert` answers through an OUTPUT parameter, and it is the THIRD one that does
+#### 🔴 `spPatientBasic_Insert` answers through an OUTPUT parameter
 
 **`@NewPatient_ID VARCHAR(100) OUTPUT`. There is no trailing `SELECT`.** That matters because the two other
 composed-id inserts in nucentra do the opposite: `spBranch_Insert` ends `SELECT @Branch_ID AS NewBranch_ID`
 and `spStaff_Insert` ends `SELECT @Staff_ID AS NewStaff_ID`, so both are a `QuerySingleAsync<string>`
 (§5.2, §5.4). Assume the same shape here and `QuerySingleAsync` throws *"Sequence contains no elements"* on
-every successful insert. **Read the `.sql` before writing the method; the family resemblance is a trap.**
+every successful insert. **Read the `.sql` before writing the method; the family resemblance is a trap** —
+and it is a trap in both directions, since the three `…WithJourney` creates go the other way (§5.8).
 
-It also means **§5.3's claim that `spUsers_RegisterFailedLogin` is "the only procedure in nucentra with
-OUTPUT parameters" is wrong twice over.** §5.4 already corrected it once with `spStaffDocument_Delete`;
-this is the third. The three are in three different positions, and what separates them is what each prompt
-was allowed to do about it:
-
-| Procedure | Prompt | `.sql` change allowed? | How `SqlData` reads it |
-|---|---|---|---|
-| `spUsers_RegisterFailedLogin` | 2 | **yes** — appended a trailing `SELECT` of the same three values | `QuerySingleOrDefaultAsync<FailedLoginResult>` |
-| `spStaffDocument_Delete` | 3 | no | `DynamicParameters`, `DbType.AnsiString`, size 500 |
-| `spPatientBasic_Insert` | 5 | no | `DynamicParameters`, `DbType.AnsiString`, size 100 |
+It is one of the seven `OUTPUT`-parameter procedures listed in §5.8, and one of the six that `SqlData`
+reads with `DynamicParameters` — `DbType.AnsiString`, size 100.
 
 `CreatePatientAsync` therefore builds a `DynamicParameters`, pours the ordinary arguments in with
 `AddDynamicParams(new { … })` so the parameter list still reads as one block, adds the OUTPUT parameter,
@@ -3677,21 +3750,11 @@ checked in the `.sql` rather than inferred from the fact that they mutate a tabl
 reachable only through `SaveAppointmentAsync`. That is the point of the transaction, not an oversight
 (§5.5, §6.7).
 
-#### 🔴 THREE OF THE FOUR WRITES ANSWER THROUGH OUTPUT PARAMETERS — nucentra now has six such procedures
+#### 🔴 THREE OF THE FOUR WRITES ANSWER THROUGH OUTPUT PARAMETERS
 
-§5.3 called `spUsers_RegisterFailedLogin` *"the only procedure in nucentra with OUTPUT parameters"*. §5.4
-corrected it once (`spStaffDocument_Delete`), §5.6 a second time (`spPatientBasic_Insert`), and this area
-adds **three more**, bringing the total to **six**. The claim in §5.3 is simply wrong and should be read as
-"the only one Prompt 2 had met".
-
-| Procedure | Prompt | OUTPUT parameters | `.sql` change allowed? | How `SqlData` reads it |
-|---|---|---|---|---|
-| `spUsers_RegisterFailedLogin` | 2 | 3 | **yes** — appended a trailing `SELECT` | `QuerySingleOrDefaultAsync<FailedLoginResult>` |
-| `spStaffDocument_Delete` | 3 | 1 | no | `DynamicParameters` |
-| `spPatientBasic_Insert` | 5 | 1 | no | `DynamicParameters` |
-| `spPatientAppointment_Insert` | **6** | **1** | no | `DynamicParameters` |
-| `spPatientAppointment_Update` | **6** | **8** | no | `DynamicParameters` |
-| `spPatientAppointment_UpdateStatus` | **6** | **8** | no | `DynamicParameters` |
+This area holds **three of nucentra's seven `OUTPUT`-parameter procedures** — more than any other — and
+**seventeen of the twenty-three `OUTPUT` parameters in the product**. The complete seven-row list is in
+§5.8; all three here are read with `DynamicParameters`.
 
 **`spPatientAppointment_Insert` sets the same trap `spPatientBasic_Insert` does.** It ends by assigning
 `@NewPatientAppointment_ID = CONVERT(INT, SCOPE_IDENTITY())` and **there is no trailing `SELECT`** — so
@@ -3882,7 +3945,8 @@ too, since it validates the staff member even though it does not validate the pa
 | `spPatientDocument_Delete` | `@PatientDocument_ID`, `@User_ID`, **`@DeletedBlobName VARCHAR(500) = NULL OUTPUT`** | nothing; the answer is the OUTPUT parameter | `DeletePatientDocumentAsync` → `string?` | **`INT = NULL` — ACTOR** |
 | `spPatientDocument_LookupDocuments` | — | `PatientDocumentType_ID, PatientDocumentType_Name` — the **union** of types in use and types in the lookup | `GetPatientDocumentTypeFiltersAsync` → `List<LookupItem>` | no |
 
-`spPatientDocument_PatientNames` and `spDocuments_Search` live in the same folder and belong to Prompt 8.
+`spPatientDocument_PatientNames` and `spDocuments_Search` live in the same folder but belong to the
+Documents search page and are documented in §5.9.
 
 #### 🔴 THE SIX `…WithJourney` PROCEDURES — WHAT EACH WRITES, IN WHAT ORDER, AND WHERE ATOMICITY COMES FROM
 
@@ -3963,18 +4027,29 @@ OTHER TWO COMPOSED-ID INSERTS IN NUCENTRA.** `spPatientBasic_Insert` (§5.6) and
 `spPatientAppointment_Insert` (§5.7) both answer through `OUTPUT` parameters with no trailing `SELECT`, and
 both set a trap for anyone reaching for `QuerySingleAsync`. Here the trap runs the other way: these three
 *are* `QuerySingleAsync<int>`. **Read the `.sql`; the family resemblance is worthless in both directions.**
-That also means this area adds **nothing** to nucentra's six OUTPUT-parameter procedures except
-`spPatientDocument_Delete`, which was already one of them in spirit — bringing the count to **seven**:
 
-| Procedure | Prompt | OUTPUT parameters | How `SqlData` reads it |
+#### 🔴 THE COMPLETE LIST — the SEVEN procedures with `OUTPUT` parameters
+
+This is the authoritative list for the whole product, verified against every parameter list under
+`CRC.Database/Stored Procedures/`: **seven procedures, twenty-three `OUTPUT` parameters.** Six of the seven are
+read with `DynamicParameters` — the one place per method where the data layer works through a string-keyed
+bag rather than a typed model, because **an `OUTPUT` parameter is the single thing Dapper cannot reach
+through an anonymous object**. The seventh is the one exception, and it is the one `.sql` this migration
+edited (§5.3).
+
+| Procedure | `OUTPUT` params | Carries | How `SqlData` reads it |
 |---|---|---|---|
-| `spUsers_RegisterFailedLogin` | 2 | 3 | a trailing `SELECT` appended additively → `QuerySingleOrDefaultAsync` |
-| `spStaffDocument_Delete` | 3 | 1 | `DynamicParameters` |
-| `spPatientBasic_Insert` | 5 | 1 | `DynamicParameters` |
-| `spPatientAppointment_Insert` | 6 | 1 | `DynamicParameters` |
-| `spPatientAppointment_Update` | 6 | 8 | `DynamicParameters` |
-| `spPatientAppointment_UpdateStatus` | 6 | 8 | `DynamicParameters` |
-| **`spPatientDocument_Delete`** | **7** | **1** | `DynamicParameters`, `DbType.AnsiString`, size 500 |
+| `spUsers_RegisterFailedLogin` | 3 | the lockout decision | a trailing `SELECT` appended additively → `QuerySingleOrDefaultAsync<FailedLoginResult>` |
+| `spStaffDocument_Delete` | 1 | the deleted row's blob key | `DynamicParameters`, `DbType.AnsiString`, size 500 |
+| `spPatientDocument_Delete` | 1 | the deleted row's blob key | `DynamicParameters`, `DbType.AnsiString`, size 500 |
+| `spPatientBasic_Insert` | 1 | the new `Patient_ID` | `DynamicParameters`, `DbType.AnsiString`, size 100 |
+| `spPatientAppointment_Insert` | 1 | the new `PatientAppointment_ID` | `DynamicParameters` |
+| `spPatientAppointment_Update` | 8 | the re-read row, for the audit line | `DynamicParameters` |
+| `spPatientAppointment_UpdateStatus` | 8 | the re-read row, for the audit line | `DynamicParameters` |
+
+**Nothing else in the catalogue declares one.** If you add an eighth, add it here — and prefer a trailing
+`SELECT` if the procedure has no callers left on the parameter, because a result set maps onto a model by
+name and a `DynamicParameters` key does not.
 
 #### 🔴 `spPatientJourney_TimelineByPatient` — the five audit columns are not on the journey row
 
@@ -4023,8 +4098,8 @@ OUTER APPLY (SELECT TOP 1 …  WHERE a.Audit_Action IN ('UPDATED','EDITED') ORDE
   `PatientDocument.PatientDocumentType_ID` is itself nullable.
 - 🔴 **`spPatientDocument_List`'s `@Patient_ID` is REQUIRED and `spStaffDocument_List`'s is OPTIONAL.** The
   staff one defaults to `NULL` and returns every document in the system when omitted (§5.4); this one has
-  no such mode, so Prompt 8's Documents page must use `spDocuments_Search` rather than calling this with a
-  blank id.
+  no such mode, which is why the Documents page (§4.11) uses `spDocuments_Search` rather than calling this
+  with a blank id.
 - **`spPatientDocument_Insert` writes `UploadedOn` as a CONVERTed string** because the column is a
   `VARCHAR(100)` (§3.15), and it audits with the **client-posted** `@PatientDocumentType_Name` while
   `spPatientDocument_Delete` audits with the name it **re-joined** from `LU_PATDOCUMENTTYPE`. Measured: one
@@ -4039,9 +4114,9 @@ OUTER APPLY (SELECT TOP 1 …  WHERE a.Audit_Action IN ('UPDATED','EDITED') ORDE
   foreign key (§3.15), so a document uploaded under a type later removed from `LU_PATDOCUMENTTYPE` must
   still be **findable**. An upload form must **not** offer that type, which is why
   `/StaffPatient/GetPatientDocumentTypes` uses `spLU_PatientDocumentType_List` instead. Two procedures, two
-  correct answers, one lookup table — exactly `spStaffDocument_LookupDocuments`'s arrangement (§5.4).
-  **It has no caller until Prompt 8**; it is wrapped here because Prompt 7 owns the `spPatientDocument_*`
-  family.
+  correct answers, one lookup table — exactly `spStaffDocument_LookupDocuments`'s arrangement (§5.4). Its
+  one caller is the **Documents search page**, `/Documents/GetLookups` (§4.11), not the journey screen this
+  sub-section otherwise describes.
 
 ### 5.9 Document settings and the Documents search — `Stored Procedures/{PatientDocumentSettings,StaffDocumentSettings,PatientDocument}/` (7)
 
@@ -4050,9 +4125,9 @@ grepping — and not one writes a `dbo.AuditTrails` row. Confirmed empirically: 
 trip over both settings families produced **zero** new `AuditTrails` rows. Everything here is either a plain
 read or a write that nothing records (§4.10).
 
-Six of the seven were wrapped in Prompt 8. The seventh, `spStaffDocumentSettings_GetByStaffType`, was
-wrapped in Prompt 3 for `StaffController`'s mandatory-document check and is **reused, not duplicated** — it
-is documented in §5.4 and repeated in the table below only so that the area reads as a whole.
+`spStaffDocumentSettings_GetByStaffType` is the odd one out: its first caller is `StaffController`'s
+mandatory-document check (§4.4, §5.4), and the Settings screen **reuses that one method rather than
+duplicating it**. It is repeated in the table below only so the area reads as a whole.
 
 | Procedure | Parameters | Returns | `IDatabaseData` method | `@User_ID` |
 |---|---|---|---|---|
@@ -4099,11 +4174,11 @@ Two things keep it from misfiring in ordinary use, and both are load-bearing rat
 delete has already run**; and the controller skips any id that is not in `spLU_STAFFDOCUMENTTYPE_List`
 rather than letting the insert fail on it.
 
-**The Dapper migration left all of this exactly as it was.** The two staff procedures are two methods, per
-the one-method-per-procedure rule, and the sequencing stays in the controller where a reader can see it.
-Moving it into a `SqlData` unit of work — the shape §6.6 uses for `SaveStaffWithDocumentsAsync` — would fix
-the atomicity gap and would be a **behaviour change**, which this migration does not make. It is written
-down here so that whoever closes the gap does it deliberately.
+**The two staff procedures are two methods**, per the one-method-per-procedure rule (§12 decision 1), and the
+sequencing stays in the controller where a reader can see it. Moving it into a `SqlData` unit of work — the
+shape §6.6 uses for `SaveStaffWithDocumentsAsync` — would close the atomicity gap and would be a
+**behaviour change**, which §12 decision 10 makes the owner's call rather than a passing tidy-up. It is written down
+here so that whoever closes the gap does it deliberately.
 
 #### `spDocuments_Search` — one procedure, three branches, and `@Mode` picks the table
 
@@ -4309,7 +4384,7 @@ id. This section describes what replaces that.
 
 | File | Role |
 |---|---|
-| `DatabaseHelper.cs` | Owns the connection string (`ConnectionStrings:CRC_DB`) and the current user's id. **Moved here** from `CRC.Data/Database/`; its namespace is now `CRC.Data.Data`. |
+| `DatabaseHelper.cs` | Owns the connection string (`ConnectionStrings:CRC_DB`) and the current user's id. **Two members and a constructor, and nothing else** — see §6.5, which also records what used to be here. |
 | `IDatabaseData.cs` | The contract, and the **documentation** of the data layer. One method per stored procedure; a `//` comment above each saying what it is for and naming the procedure; methods grouped under `// ----- Area (where it is used) -----` banners. |
 | `SqlData.cs` | The only implementation, and **the only place in the solution that names a stored procedure.** The mechanism only — read the interface to find out *what*, this file to find out *how*. |
 
@@ -4318,8 +4393,9 @@ leftover: the repo has a `Data/` folder for code and a `Database/Migrations/` fo
 
 ### 6.2 The rules
 
-- **One method per stored procedure.** No method calls two — with exactly two named exceptions, the
-  transactional units of work in Prompts 3 and 6, each commented as such where it is declared.
+- **One method per stored procedure.** No method calls two — with exactly two named exceptions,
+  `SaveStaffWithDocumentsAsync` and `SaveAppointmentAsync` (§6.6), each commented as such where it is
+  declared. 102 methods cover 104 procedures: 100 one-to-one, plus those two.
 - **Named for what it does, not for the procedure.** `GetActiveBranchesAsync`, not `SpBranchListActiveAsync`.
 - **Anonymous parameter objects**, property names matching the procedure's parameters without the `@`.
 - **`commandType: CommandType.StoredProcedure` on every call.** No inline SQL, ever (§0).
@@ -4334,9 +4410,19 @@ leftover: the repo has a `Data/` folder for code and a `Database/Migrations/` fo
 
 ### 6.3 `CRC.Data/Models/`
 
-POCOs for Dapper to map result sets onto — public properties, no logic, no attributes, one type per file,
-named for the data (`BranchListItem`, `StaffDetail`, `PatientDocumentItem`) and not for the procedure.
-Prompt 0 establishes the pattern with a single file, `LookupItem.cs`.
+**53 files, one type per file** — POCOs for Dapper to map result sets onto: public properties, no logic, no
+attributes, named for the data (`BranchListItem`, `StaffDetail`, `PatientDocumentItem`) and not for the
+procedure. Four kinds live here and the distinction is worth keeping: **row models** (the majority),
+**input models** carrying a write's parameter set (`StaffSaveInput`, `PatientSaveInput`,
+`AppointmentSaveInput`), **result models** for procedures that answer with more than a row
+(`StaffDeleteResult`, `StaffPerformanceResult`, `AppointmentSaveResult`), and one enum,
+`AppointmentSaveFailure` (§6.7).
+
+🔴 **Two models are not one model just because their columns overlap.** `spUsers_GetById` returns a strict
+subset of `spUsers_ValidateLogin`, so sharing a type would hand every caller `LockoutEndUtc = null` on a
+locked account, silently — hence `UserAccountRecord` and `UserAuthRecord` (§5.3). `spStaffDocument_List`
+and `_GetById` genuinely select the same nine columns, so they correctly share `StaffDocumentItem` (§5.4).
+**Reuse the shape, never the name.**
 
 **`LookupItem.Id` is a `string`, and that is the schema, not a shortcut.** Eleven of nucentra's twelve
 `LU_*` tables key on `VARCHAR(100)` — `LU_DISCHARGETYPE`, `LU_MARITALSTATUS`, `LU_OCCUPATION`,
@@ -4345,12 +4431,15 @@ Prompt 0 establishes the pattern with a single file, `LookupItem.cs`.
 `LU_STAFFTYPE` the outlier using three-letter mnemonics (`"ANE"`, `"END"`, `"NUR"`). Every column that
 references one is `VARCHAR(100)` too. Parsing an id to an `int` would appear to work and would lose the
 leading zero. **`LU_LOCATION` is the single exception**: `LocationId INT IDENTITY(1,1)`, display column
-`Name`, so the three `spLU_LOCATION_*` procedures do not fit `LookupItem` — Prompt 1 decides what they get
-instead, after reading all fourteen lookup procedures.
+`Name`, so the three `spLU_LOCATION_*` procedures get their own model, **`LocationLookupItem`** (`int Id`,
+`string Name`), and are the only lookups mapped by column name rather than by ordinal (§3.1, §5.1).
 
-A model is never serialized straight to the browser. It is mapped into the camelCase anonymous object the
-endpoint already returns (§0), because 59 JavaScript files depend on those shapes and this migration does
-not touch any of them.
+🔴 **A model is never serialized straight to the browser.** It is mapped into the camelCase anonymous object
+the endpoint already returns (§0), because 59 JavaScript files depend on those shapes by name. That
+boilerplate is the point, not an oversight: it keeps the JSON contract independent of the data layer's
+types, so renaming a model property is a compile-time change with no wire effect (§12). **The three journey
+detail reads are the one deliberate exception**, and they are exceptions to the *return type* rather than
+to this rule — see §7.8.
 
 ### 6.4 Registration
 
@@ -4364,22 +4453,51 @@ builder.Services.AddScoped<CRC.Data.Data.IDatabaseData, CRC.Data.Data.SqlData>()
 **Scoped**, because `SqlData` resolves the current user's id per request for the audit-actor parameter — a
 singleton would capture one request's `IHttpContextAccessor` state and stamp every later audit row with it.
 
-### 6.5 `DatabaseHelper` currently has two surfaces, and one of them is dying
+### 6.5 🔴 `DatabaseHelper` is two members and a constructor — and what used to be there matters
 
-This is the state of a migration in progress, and it is deliberate:
+The whole class, in full:
 
-| Surface | Used by | Fate |
-|---|---|---|
-| `ExecuteNonQueryAsync`, `ExecuteDataTableAsync`, `ExecuteDataSetAsync`, `CreateStoredProcedureCommandAsync`, and the `sys.parameters` `@User_ID` auto-injection behind them | the 16 controllers not yet migrated | **Deleted in Prompt 10**, whatever of it is dead by then |
-| `CreateConnection()` and `CurrentUserId` | `SqlData` | Kept — this is the Dapper path |
+| Member | What it is |
+|---|---|
+| the constructor | reads `ConnectionStrings:CRC_DB`, throws if it is absent, and keeps `IHttpContextAccessor` |
+| `_connectionString` | the string, private |
+| `CreateConnection()` | a closed `SqlConnection` for `SqlData` to hand to Dapper |
+| `CurrentUserId` | `int?` — the `NameIdentifier` claim, parsed; `null` when there is no authenticated caller |
+| `GetCurrentUserId()` | private; the property's implementation |
 
-Both live side by side until Prompt 10, and that is why nothing broke when the file moved. **`CurrentUserId`
-is new in Prompt 0**: it exposes the previously private `GetCurrentUserId()` because the auto-injection the
-old surface performs cannot be reproduced by Dapper, so `SqlData` must read the claim itself (§0.1).
+**That is everything. There is no other data-access surface anywhere in the solution.**
 
-Prompt 0 deliberately leaves `IDatabaseData` **empty of methods**. The layer is created, referenced and
-registered before a single call moves into it, so that the file move and the DI change can be proved
-harmless on their own — the one change in this whole plan with no behavioural surface at all.
+#### What was deleted, and why saying so is worth a section
+
+Before the Dapper layer, this class **was** the data-access layer, and it carried an ADO surface all
+sixteen controllers called with hand-built `SqlParameter[]` arrays: `ExecuteNonQueryAsync`,
+`ExecuteDataTableAsync`, `ExecuteDataSetAsync` and `CreateStoredProcedureCommandAsync`. Behind them sat a
+piece of machinery that is the reason this sub-section exists:
+
+> **Before executing ANY command it queried `sys.parameters`** — behind a static `ConcurrentDictionary`
+> cache — asking *"does this stored procedure declare a parameter called `@User_ID`?"*, and if it did it
+> **silently appended the caller's `ClaimTypes.NameIdentifier` value.** That is how `dbo.AuditTrails`
+> learned who performed a write. No controller ever passed an actor; it arrived by magic.
+
+All of it is gone: the four ADO methods, `TryInjectUserIdAsync`, `SupportsUserIdParameterAsync`,
+`NormalizeStoredProcedure`, `HasParameter` and the `_userIdParamSupportCache` dictionary. Dapper sends
+exactly the properties of the anonymous parameter object and nothing else, so there was no hook left to
+hang the injection on — and once every call site had moved to `SqlData`, the machinery had no callers at
+all. The class-level comment on `DatabaseHelper.cs` records the same thing at the file, for a reader who
+arrives at it from old git history and wonders where a controller's procedure call went.
+
+🔴 **DO NOT RE-INTRODUCE IT.** It is not merely redundant now; it was **unsafe in a way nobody had to
+notice while it existed**. A generic injector keyed on a parameter *name* cannot see that `@User_ID` means
+two different things in this codebase (§0.1) — and applied to `spUsers_Unlock`, whose `@User_ID` is the
+locked-out account being unlocked, it would unlock the administrator's own account, leave the locked user
+locked, and report success. The explicit `User_ID = _databaseHelper.CurrentUserId` at each of the nineteen
+actor call sites is the replacement, and its cost — remembering it — is paid by §0.1, by a comment on every
+one of the nineteen, and by the standing health check in §9.1.
+
+**`CurrentUserId` is public for exactly one reason**: `SqlData` needs the claim value, because nothing
+supplies it automatically any more. It is not a general-purpose "who is logged in" accessor — controllers
+read `User.FindFirst(...)` for that, and the `StaffId` claim in particular must never come from here
+(§4.13, §7).
 
 ### 6.6 Transactional units of work
 
@@ -5145,11 +5263,14 @@ sqlcmd -S localhost -d CRC_DB -E -C -Q "SELECT TOP 5 AuditTrail_Id, User_Id, Aud
 SELECT COUNT(*) FROM dbo.AuditTrails WHERE User_Id IS NULL OR User_Id = 0;   -- must be 0
 ```
 
-*Measured at the end of Prompt 9, over the 105 rows accumulated by Prompts 1-8: **zero** unattributed rows.
-Every row names `1` (SUPERUSER, 101 rows), `4` (a STAFF user, 3) or `3` (1 row, an account since deleted).
-All seventeen (action, category) combinations produced by the migration are present and correctly
-attributed.* That number is the evidence that the explicit-actor migration worked; re-run the query rather
-than trusting this paragraph.
+*Measured on the local `CRC_DB` at the end of the migration, over 124 accumulated rows: **zero**
+unattributed rows. Every row names a real `dbo.Users` identity. The last sweep drove one write of each
+kind — a branch, a staff member, a patient, an appointment, a staff document, a patient document, a slot
+range — then the matching deletes, as two different signed-in users, and **every resulting row carried the
+id of the user who actually performed it**: `1` for the SUPERUSER's writes and `7` for the two appointment
+status changes an ADMIN made. Not one `0`.* That is the evidence that the explicit-actor mechanism works;
+re-run the query rather than trusting this paragraph, because the number it protects only ever goes wrong
+in the future.
 
 The five `spUsers_*` procedures that declare `@User_ID INT` **without** a default are the other kind — a
 target user row, not an actor — and none of them writes to this table at all. §0.1 has both lists.
@@ -5230,6 +5351,31 @@ returns the same id to the browser as `correlationId`, which is how a user's com
 request to `app-*.log`. `MinimumLevel` is `Information` with `Microsoft.AspNetCore` overridden to `Warning`,
 which is what keeps the framework's own per-request chatter out.
 
+#### 🔴 FORTY CATCH BLOCKS LOG NOTHING, AND THAT IS THE OPERATIONAL CHANNEL'S BIGGEST HOLE
+
+Counted across `CRC.Web/Controllers/`: **40 `catch` blocks return a user-facing message without calling
+`_logger`**, spread over eleven of the sixteen controllers.
+
+| Controller | Unlogged catches |
+|---|---:|
+| `PatientController` | 13 |
+| `StaffPatientController` | 8 |
+| `DashboardController` | 4 |
+| `StaffDashboardController`, `SettingsController` | 3 each |
+| `AuditTrailsController`, `AppointmentController`, `AdminDashboardController` | 2 each |
+| `StaffController`, `MyProfileStaffController`, `BranchController` | 1 each |
+
+**What that costs is precise, not vague.** Those actions answer `{ success: false, message: "…" }` with
+**no `correlationId`**, because `ErrorResponse.ForUser` is what mints one — so a user reporting "the branch
+list is empty" hands you nothing to `grep` for, and `app-*.log` contains no record that anything failed.
+The reads are the worse half: a failing `GET` renders an empty table, which looks exactly like "no data".
+
+The pattern to follow instead is the one `SaveBranch`, `SaveStaff` and the three clinical writes already
+use: `catch (SqlException ex)` then `catch (Exception ex)`, both `_logger.LogError(ex, "…", args)`, both
+returning `Ok(ErrorResponse.ForUser(HttpContext, "…"))`. **Every new action must do that** (§11). The forty
+are recorded here rather than fixed because changing them alters what a caught failure returns, which is a
+behaviour change and the owner's call — but a new one is a defect, not a precedent.
+
 #### 🔴 Secrets are never logged, and the rule is wider than passwords
 
 **No password, password hash, antiforgery token, session cookie, SAS URL or connection string is ever
@@ -5267,17 +5413,357 @@ database row to the request that produced it means matching on time and actor by
 
 ## 10. Folder structure / file map
 
-> *Written in Prompt 10 — not yet filled in.*
+**Three projects in one solution (`CRC_Portal.slnx`), and the dependency runs one way only:**
+`CRC.Web → CRC.Data`. `CRC.Database` is referenced by neither — it is a classic SSDT project that produces
+a `.dacpac`, not an assembly, and is deployed by hand.
+
+🔴 **`CRC.Data` HAS NO REFERENCE TO `CRC.Web` AND MUST NOT GAIN ONE.** That single rule explains several
+shapes that otherwise look like awkwardness: why `IDocumentStorage` lives in `CRC.Web` and the blob work
+stays in controllers, why `SaveStaffWithDocumentsAsync` takes a `Func<>` callback instead of an uploader,
+and why nothing in `CRC.Data` knows that HTTP or Azure Storage exist (§6.6, §12).
+
+```
+CRC_Portal/
+  CoreFlow.md                       THIS FILE — the specification. Read §11 before adding anything.
+  DapperLayerPlan.md                the finished 11-prompt plan that produced the Dapper layer. HISTORY:
+                                    it records how the layer was built and in what order. Where it and
+                                    CoreFlow.md disagree, CoreFlow.md is right (it was written last).
+  DOCUMENTSTORAGE.md                AUTHORITATIVE on blob storage — container, key layout, SAS, Azurite,
+                                    the two DocumentStorage settings. §8 defers to it.
+  DocumentStoragePlan.md            the finished plan that moved documents off wwwroot/uploads into Blob.
+  SEEDING.md                        AUTHORITATIVE on what a published database contains, and the source
+                                    of the bootstrap SUPERUSER / ChangeMe!123 warning.
+  Nucentra_Azure_Deployment_Guide.md  the click-by-click Azure deployment runbook. The owner performs
+                                    every Azure action by hand from this file; nothing automates it.
+  Export-NucentraPortal.ps1         packages the repo for hand-off.
+  CRC_Portal.slnx                   the solution.
+
+CRC.Data/            net8.0 · Dapper 2.1.79 · Microsoft.Data.SqlClient 6.1.3 · Nullable + ImplicitUsings on
+  Data/
+    DatabaseHelper.cs               connection factory + CurrentUserId. TWO MEMBERS (§6.5). Its class
+                                    comment records the sys.parameters auto-injection that was deleted.
+    IDatabaseData.cs                THE CONTRACT AND THE DOCUMENTATION. 102 methods, one per procedure
+                                    (plus the two transactions), each with a // comment naming the
+                                    procedure it calls, grouped under `// ----- Area -----` banners.
+                                    Read this to find out WHAT the layer does.
+    SqlData.cs                      THE ONLY PLACE IN THE SOLUTION THAT NAMES A STORED PROCEDURE.
+                                    Same banners, same order, so the two files read side by side.
+                                    Read this to find out HOW. 3 private helpers (§3.1, §7.8) + the
+                                    3 shared staff writers used by the transaction and its non-
+                                    transactional twins.
+  Models/                           53 POCOs, one type per file (§6.3): row models, *SaveInput write
+                                    models, *Result models, and the AppointmentSaveFailure enum.
+  Database/
+    Migrations/                     the twelve LU_* seed CSVs + MigrationQuery.txt. DATA, not code —
+                                    this folder is why CRC.Data has both a Data/ and a Database/.
+
+CRC.Database/        classic SSDT .sqlproj — MSBuild only, `dotnet build` CANNOT build it (§11)
+  dbo/Tables/                       28 .sql files, one per table (§3). FIVE foreign keys in total.
+  Stored Procedures/                104 .sql files in 30 per-feature subfolders:
+    LU_*/                 (14)      the twelve lookup tables' reads; LU_LOCATION has three
+    Branch/               (6)   Users/              (9)   Staff/               (6, incl. _GetPerformance)
+    StaffDocument/        (6)   StaffDocumentSettings/ (3) StaffSlots/         (6)
+    PatientBasic/         (6)   PatientDocument/    (7)   PatientDocumentSettings/ (3)
+    PatientAppointment/   (10)  PatientJourney/     (3)   PatientAssessment/   (3)
+    PatientColonoscopy/   (3)   PatientFollowUp/    (3)   PatientTracker/      (5)
+    Dashboard/            (4)   StaffDashboard/     (3)   AuditTrails/         (4)
+  Scripts/
+    Script.PostDeployment.sql       the one <PostDeploy> item; :r-includes the three seeds in order
+    Seed_Lookups.sql                the eleven small LU_* tables, guarded per row
+    Seed_Location.sql               LU_LOCATION — 3,242 generated rows, guarded whole-table
+    Seed_Users.sql                  the bootstrap SUPERUSER, guarded on Username
+    Tools/New-SeedLocation.ps1      regenerates Seed_Location.sql from the CSV; never runs on publish
+  CRC.Database.sqlproj              🔴 EVERY .sql above needs a <Build Include="…" /> HERE. An
+                                    unregistered file builds locally and is SILENTLY ABSENT from the
+                                    .dacpac — the page then fails only against a freshly published DB.
+
+CRC.Web/             net8.0 MVC · Serilog · Azure.Storage.Blobs
+  Program.cs                        the whole composition root, top to bottom: Serilog's two-sink split,
+                                    the options binding, global AuthorizeFilter +
+                                    AutoValidateAntiforgeryToken, DI (DatabaseHelper, IDatabaseData →
+                                    SqlData, IDocumentStorage), cookie auth, the login rate limiter, the
+                                    five policies (§2.3), the /uploads 404 branch, and the default route
+                                    {controller=Account}/{action=Login}/{id?}.
+  Controllers/                      16 controllers. AccountController.cs sits at the root; every other
+    {Feature}/                      one lives in a per-feature subfolder — Branch/, Staff/ (three
+                                    controllers), Patient/, StaffPatient/, Appointment/, Dashboard/,
+                                    AdminDashboard/, StaffDashboard/, PatientTracker/, Documents/,
+                                    Settings/, AuditTrails/, MyProfileStaff/. Request DTOs are NESTED
+                                    CLASSES inside their controller, not files in Models/ (§11).
+  Models/                           only four files, and NONE of them is a request DTO:
+                                    ErrorViewModel.cs + the three IOptions classes bound in Program.cs
+                                    (PasswordPolicyOptions, SessionTimeoutOptions, LoginLockoutOptions).
+  Infrastructure/
+    AuditLog.cs                     the security channel — 24 static methods (§9.2). Routing is the
+                                    "AuditChannel" property; _logger.LogInformation("AUDIT…") does NOT
+                                    reach audit-*.log.
+    ErrorResponse.cs                ForUser / ForView — { success=false, message, correlationId }
+    CorrelationIdMiddleware.cs      mints/echoes X-Correlation-ID, pushes CorrelationId/UserName/RemoteIp
+    DocumentValidation.cs           THE ONLY place upload rules live: extensions AND content types, the
+                                    20 MB cap, SafeFileName (255), BuildBlobName
+    StaffAccessExtensions.cs        User.CanAccessStaff(staffId) — the ownership check (§4.4, §4.5)
+  Services/
+    IDocumentStorage.cs             UploadAsync / GetReadSasUrl / DeleteAsync
+    AzureBlobDocumentStorage.cs     the only code that talks to Blob storage. Singleton.
+    DocumentStorageOptions.cs       bound from the DocumentStorage config section
+  Views/                            30 .cshtml in 15 folders, one per screen, plus Shared/ (_Layout and
+                                    the error pages). StaffPatient/Templates/ holds the three journey
+                                    partials GetJourneyTemplate returns as HTML rather than JSON (§4.9).
+  wwwroot/js/                       59 files. {area}/ per screen — branch/, staff/, patient/,
+                                    staffPatient/ (+templates/), account/, appointment/, dashboard/,
+                                    adminDashboard/, staffDashboard/, patientTracker/, documents/,
+                                    settings/, auditTrails/, myprofileStaff/ — plus the shared
+                                    builders/, classes/, common/, functions/, helpers/.
+  Logs/                             app-*.log (31 days) and audit-*.log (365 days), git-ignored (§9.2).
+                                    On Azure a publish deliberately does NOT delete them.
+  Properties/launchSettings.json    🔴 use the `https` profile (https://localhost:7276). The __Host-CSRF
+                                    antiforgery cookie requires HTTPS, so every POST 400s over http.
+  appsettings.json                  ConnectionStrings:CRC_DB, DocumentStorage, Account:{Password,
+                                    SessionTimeout,LoginLockout} — the lockout and password thresholds
+                                    are config, not database policy (§2.6).
+```
+
+**Two folder facts that surprise people, both deliberate:**
+
+- **`CRC.Data/Data/` (code) and `CRC.Data/Database/Migrations/` (seed CSVs) both exist.** They are not
+  duplicates and neither is a leftover.
+- **Request DTOs are nested classes inside controllers**, so `CRC.Web/Models/` holds four files and none of
+  them is one. Follow the local convention; do not start a parallel `Models/{Feature}/` tree.
 
 ---
 
 ## 11. End-of-feature checklist
 
-> *Written in Prompt 10 — not yet filled in.*
+**Work top to bottom. The order is the layering of §0** — a procedure before a method, a method before an
+action, an action before a script, a script before a view — and it is chosen so that each step can be
+proved before the next one depends on it.
+
+### 11.1 The database
+
+- [ ] **Write `sp{Table}_{What}.sql` in the right per-feature subfolder** of
+      `CRC.Database/Stored Procedures/`. Match the neighbours: `SET NOCOUNT ON;` first, a header comment
+      saying what it does and — if it takes `@User_ID` — **which kind**, `@PascalCase` parameters,
+      `[bracketed]` identifiers.
+- [ ] 🔴 **Register it in `CRC.Database.sqlproj`** as
+      `<Build Include="Stored Procedures\{Folder}\{File}.sql" />`, in the existing block, reordering
+      nothing. **An unregistered file builds locally and is silently absent from the `.dacpac`** — the
+      failure surfaces only against a freshly published database, on somebody else's machine.
+- [ ] **Decide `@User_ID` deliberately** (§0.1). Writing a row somebody should be accountable for? Declare
+      `@User_ID INT = NULL`, `INSERT` the `dbo.AuditTrails` row with `ISNULL(@User_ID, 0)`, and guard it
+      with `IF @@ROWCOUNT > 0` if the write can miss. Operating *on* a user row? `@User_ID INT` with **no
+      default** — and then it is an ordinary argument that belongs in the method signature.
+- [ ] **Decide how it answers, and write it down in the header comment.** A trailing `SELECT` is preferred
+      over an `OUTPUT` parameter, because a result set maps onto a model **by name** and an `OUTPUT`
+      parameter needs `DynamicParameters` (§5.8). If the procedure must emit several result sets, emit a
+      **stable number of them on every path** — `spStaff_Delete` `SELECT TOP 0`s a placeholder grid on its
+      two early returns precisely so a caller can read grid 2 unconditionally (§5.4).
+- [ ] **If you are editing an existing `.sql`, be additive.** Add a trailing `SELECT`, add a column alias,
+      add an optional parameter with a default. **Never** remove or rename a parameter or an output column,
+      and never change existing behaviour (§12).
+- [ ] **Build it:** MSBuild, **not `dotnet build`** —
+      `"C:/Program Files/Microsoft Visual Studio/18/Insiders/MSBuild/Current/Bin/MSBuild.exe" CRC.Database/CRC.Database.sqlproj /t:Rebuild /p:Configuration=Debug /p:VisualStudioVersion=18.0`.
+      Pass condition: `0 Error(s)` and **exactly two** `SQL71502` warnings, both in
+      `spStaffSlots_CreateRange.sql` (§3.7). **Warnings only appear on `/t:Rebuild`** — an incremental
+      build prints none and proves nothing.
+- [ ] **Publish it to your local `CRC_DB`** before touching C#, or the method you are about to write has
+      nothing to run against.
+
+### 11.2 The data layer
+
+- [ ] **Add ONE `IDatabaseData` method**, named for what it does (`GetActiveBranchesAsync`), never for the
+      procedure (`SpBranchListActiveAsync`), under the right `// ----- Area -----` banner.
+- [ ] **Write the `//` comment above it** — this is where the layer is documented. Name the procedure, say
+      what it is for, and say anything surprising about the result: an empty set that means "pass", a grid
+      order that is the contract, a column that is a string where you would expect a date.
+- [ ] **Implement it in `SqlData.cs` at the matching position**, under the same banner in the same order.
+      Nothing enforces that the two files stay parallel; it is on you, and it is what lets them be read
+      side by side.
+- [ ] **`commandType: CommandType.StoredProcedure`, an anonymous parameter object, and no inline SQL** —
+      not a `SELECT`, not a one-line `UPDATE`, not "just for this" (§12).
+- [ ] **Pick the Dapper verb from what the procedure GUARANTEES, not from what today's caller wants.**
+      `QuerySingleOrDefaultAsync` for a row that may not exist; `QuerySingleAsync` only when exactly one is
+      certain; `QueryAsync` for a set; `ExecuteAsync` for a write with no result set; `QueryMultipleAsync`
+      for several grids, read **in the order the procedure emits them**.
+- [ ] 🔴 **Pass `@User_ID` explicitly if the procedure declares the actor kind** —
+      `User_ID = _databaseHelper.CurrentUserId` — with a comment saying it is the actor. **Omitting it
+      throws nothing, fails no page, and writes `AuditTrails.User_Id = 0`.** If it is one of the five
+      TARGET procedures, it is a method argument instead and must never come from `CurrentUserId`.
+- [ ] **Add the model to `CRC.Data/Models/`**, one type per file, named for the data. **Type a property
+      nullable if the column is nullable OR the join is a `LEFT JOIN` OR it is an aggregate over a possibly
+      empty set** — Dapper *throws* mapping `NULL` onto a non-nullable `int`/`bool`/`DateTime`, and that
+      turns "this clinician has done nothing yet" into a 500 (§4.6).
+- [ ] **Do not share a model between two procedures unless they select the same columns.** A strict subset
+      is not the same shape; sharing hides the missing ones as silent defaults (§5.3). **Reuse the shape,
+      never the name.**
+- [ ] **If you are tempted to make one method call two procedures, don't** (§12). There are exactly two
+      transactional units of work and adding a third needs a reason written down beside it.
+
+### 11.3 The controller
+
+- [ ] **Add the action to the existing controller for that screen**, or a new one in
+      `Controllers/{Feature}/`. Inject `IDatabaseData` — never `DatabaseHelper`.
+- [ ] 🔴 **State the policy explicitly**: `[Authorize(Policy = "…")]` on the class, or per action if the
+      screen genuinely mixes levels (only `StaffController` and `StaffPatientController` do). The global
+      `AuthorizeFilter` means a forgotten attribute fails **closed**, which is right — but "authenticated"
+      is rarely the level you meant.
+- [ ] **Antiforgery is global.** A POST needs no attribute, and a caller needs the `X-CSRF-TOKEN` header.
+- [ ] **Return `Ok(new { success, message, … })` with camelCase properties** — or a bare array if you are
+      extending a list endpoint that already returns one. **Build the anonymous object by hand and map the
+      model into it**; never serialize a model directly (§12).
+- [ ] **Coerce nulls the way the neighbouring properties do, and check what the page expects.** `""` for
+      anything assigned straight into an input; `null` only where a `.js` file tests truthiness to make a
+      decision (`dischargeTypeId` is the example worth reading — §4.7).
+- [ ] **Catch, log, return** — `catch (SqlException ex)` then `catch (Exception ex)`, both
+      `_logger.LogError(ex, "…", args)`, both `Ok(ErrorResponse.ForUser(HttpContext, "…"))`. 🔴 **A new
+      unlogged catch is a defect**, whatever the forty existing ones do (§9.2). Never return an exception
+      message to the browser.
+- [ ] **Add `AuditLog.*` for every write**, and **only after the data call has returned successfully** —
+      never inside a flow that might roll back (§6.6). Log the outcome, never a password, a hash, a token
+      or a SAS URL (§9.2).
+- [ ] **Put the request DTO in a nested class inside the controller**, like every other one.
+- [ ] **Keep business decisions out of `SqlData`.** A scoping predicate such as the `StaffId` claim is
+      resolved in the controller and passed as an argument; only the audit actor comes from the data layer
+      (§4.13). Moving that boundary is a security change, not a refactor.
+
+### 11.4 The front end
+
+- [ ] **Add the JS in `wwwroot/js/{area}/`**, sending `X-CSRF-TOKEN` on every POST and reading the exact
+      property names the action returns.
+- [ ] **Add or extend the view in `Views/{Area}/`**, loading the script and passing ids through `ViewData`
+      / `ViewBag` rather than baking them into the script.
+- [ ] **Remember `Forbid()` is a 302, not a 403** (§4.5) — a `fetch` follows it to an HTML page, so
+      `response.ok` is `true` and `response.json()` is what throws.
+
+### 11.5 Prove it, then write it down
+
+- [ ] **`dotnet build CRC.Web/CRC.Web.csproj`** — 0 errors, 0 new warnings. (It builds `CRC.Data` too.)
+- [ ] 🔴 **RUN THE SITE AND DRIVE THE ENDPOINT.** A Dapper mapping mistake compiles perfectly: a column the
+      model does not match comes back as the property's default, with **no exception and nothing in a
+      log**. Nothing but a running request catches it. Use the `https` profile.
+- [ ] **Check `CRC.Web/Logs/app-*.log` afterwards, not just the page.** An empty table with a logged
+      exception behind it is the characteristic shape of this failure.
+- [ ] 🔴 **If the write touches an actor procedure, check the audit row by hand:**
+      ```bash
+      sqlcmd -S localhost -d CRC_DB -E -C -Q "SELECT TOP 5 AuditTrail_Id, User_Id, AuditTrail_Action, AuditTrail_Category, AuditTrail_Summary FROM dbo.AuditTrails ORDER BY AuditTrail_Id DESC"
+      ```
+      `User_Id` must be the signed-in user's id. **`0` means the actor parameter was dropped.**
+- [ ] **Update `CoreFlow.md`** — §3 for a table or a column, §4 for an endpoint and **its exact JSON**, §5
+      for the procedure and its `@User_ID` kind. Append a sub-heading; renumber nothing. If the thing you
+      built has a surprise in it, that surprise is the most valuable sentence you will write.
+- [ ] **If you changed anything §12 locks, stop and re-open the decision deliberately** — with the owner,
+      and in writing — rather than in passing.
 
 ---
 
 ## 12. Decisions locked
 
-> *Written in Prompt 10 — not yet filled in. Until then, the four decisions in `DapperLayerPlan.md`'s
-> "The four decisions locked before writing this plan" hold and are not to be re-opened.*
+Each of these was **decided deliberately**, and each looks, from one angle, like something worth tidying.
+They are recorded here so that the next person to have that idea finds the reason before they act on it.
+None is a law of nature — but re-opening one is a decision with a cost, taken with the owner, not a
+refactor taken in passing.
+
+**1 — One `SqlData` method per stored procedure. There are exactly two exceptions and they are named.**
+`SaveStaffWithDocumentsAsync` and `SaveAppointmentAsync` (§6.6, §6.7) each run several procedures inside one
+`SqlTransaction`, and each exists because a single business fact would otherwise be able to land half-way:
+a staff row without the documents the mandatory rule requires, or an appointment holding an hour somebody
+else took while the check was in flight. **Do not write a third without adding it to §6.6 in the same
+breath as the code.** Two procedures behind one method is a claim that they are one operation, and every
+such claim is a place a reader can no longer tell from the interface whether a partial write is possible.
+
+**2 — No inline SQL, anywhere, ever.** Not a `SELECT`, not a one-line `UPDATE`, not "just for this one
+report". Every database call in the product is `commandType: CommandType.StoredProcedure` from
+`CRC.Data/Data/SqlData.cs`, which is **the only file in the solution that names a procedure** — and that is
+the property worth protecting: grepping for `"sp` answers "who calls this?" completely, and a procedure's
+signature changing is a compiler error rather than a user's bad afternoon. A new query is a new `.sql` file,
+registered in the `.sqlproj`, plus a new interface method (§11).
+
+**3 — 🔴 `@User_ID` IS ALWAYS PASSED EXPLICITLY. THE `sys.parameters` AUTO-INJECTION IS GONE AND IS NOT
+COMING BACK.** `DatabaseHelper` used to ask the catalogue whether each procedure declared `@User_ID` and
+silently append the caller's claim if it did; that machinery was **deleted** with the rest of its ADO
+surface (§6.5). Re-introducing it would not merely be redundant — a generic injector keyed on a parameter
+*name* cannot see that the name means two different things here:
+
+> **THE ACTOR — 19 procedures, declared `@User_ID INT = NULL`.** Who performed the write, for the
+> `dbo.AuditTrails` row. Never in a method signature; `SqlData` supplies it from
+> `DatabaseHelper.CurrentUserId`:
+>
+> ```
+> spBranch_Insert              spPatientAppointment_Insert       spStaff_Insert
+> spBranch_Update              spPatientAppointment_Update       spStaff_Update
+> spBranch_Delete              spPatientAppointment_Delete       spStaff_Delete
+> spPatientBasic_Insert        spPatientAppointment_UpdateStatus spStaffDocument_Insert
+> spPatientBasic_Update        spPatientDocument_Insert          spStaffDocument_Delete
+> spPatient_DeleteCascade      spPatientDocument_Delete          spStaffSlots_CreateRange
+>                                                                spStaffSlots_Delete
+> ```
+>
+> **A TARGET USER ROW — 5 procedures, declared `@User_ID INT` with no default.** Which user the procedure
+> operates *on*. An ordinary argument, in the signature, from the caller:
+>
+> ```
+> spUsers_GetById        spUsers_Unlock          spUsers_UpdatePassword
+> spUsers_ResetFailedLogins                      spUsers_UpdateLastLogin
+> ```
+
+**The default is the tell, and it is a rule you can apply to a procedure you have never seen.** Confusing
+them costs differently in each direction: dropping an actor writes `AuditTrails.User_Id = 0` and breaks
+nothing visible, while auto-filling `spUsers_Unlock`'s target would unlock the administrator's own account,
+leave the locked user locked, and report success. §0.1 and §9.1 carry the full argument and the health
+check.
+
+**4 — Controllers map data models into hand-built anonymous objects. A model is never serialized
+directly.** Yes, it is boilerplate. It is also what keeps the JSON contract — which 59 JavaScript files
+read by property name — **independent of the data layer's types**: renaming a model property is a
+compile-time change with no effect on the wire, and a procedure gaining a column does not silently gain a
+JSON field. It is equally what made this migration verifiable rather than hopeful, because every endpoint's
+payload could be diffed byte-for-byte before and after. **The three journey detail reads are the one
+exception** — they return `IReadOnlyDictionary<string, object?>` because the browser must receive the
+procedure's raw column names, and §7.8 explains why a POCO there would break three clinical forms while
+returning `200`.
+
+**5 — Authorization is one integer and five policies. There is no permission-key model, and adding one is
+a project.** `dbo.Users.User_Type` (1 SUPERUSER / 2 ADMIN / 3 STAFF) becomes a `UserType` claim, checked by
+five `RequireClaim` policies (§2). **There is no `dbo.Permissions`, no `dbo.Roles`, no `dbo.RolePermissions`,
+no `dbo.UserRoles`, and no equivalent of HEART's `HeartPermissionKeys.cs`** — unlike the sibling portal,
+which guards endpoints by key so that new roles need no endpoint changes. Adding a fourth kind of user here
+means a policy in `Program.cs` and an attribute on every action that should admit it: a code change and a
+redeploy, not an admin screen. Do not go looking for the tables and do not "restore" them.
+
+**6 — 🔴 `CRC.Data` NEVER REFERENCES `CRC.Web`.** The dependency runs one way, and that is why
+`IDocumentStorage` lives in `CRC.Web` and the blob work stays in controllers. It is not tidiness: it is what
+keeps the data layer from knowing that HTTP, Azure Storage or a user's browser exist. The visible cost is
+`SaveStaffWithDocumentsAsync`'s `Func<string, Task<IReadOnlyList<StaffDocumentInput>>>` callback — needed
+because a new staff member's blob key contains a `Staff_ID` that does not exist until `spStaff_Insert` has
+run *inside* the transaction (§6.6). The two rejected alternatives, pre-generating the id in C# and giving
+the data layer an uploader of its own, are recorded there with their reasons.
+
+**7 — Stored procedures were NOT renamed. nucentra keeps `sp{Table}_{What}`.** HEART uses
+`sp_{Table}_{What}`, with the underscore, and the Dapper layer was copied from HEART in *shape* only. Not
+one of the 104 names changed during the migration, because a rename touches the `.sql`, the `.sqlproj`, the
+deployed database and `SqlData` at once, buys nothing at runtime, and would have made the before/after
+verification that justified the whole exercise impossible to read. **New procedures follow nucentra's
+convention**, not HEART's — and the same goes for the rest of the house style: block-scoped namespaces,
+`Ok(new { … })` rather than `Json(...)`, `ErrorResponse.ForUser` for caught exceptions.
+
+**8 — The two `SQL71502` warnings are the baseline, not a defect.** A `CRC.Database` rebuild reports
+`Build succeeded`, `0 Error(s)` and **exactly two** warnings, both
+`[dbo].[spStaffSlots_CreateRange] has an unresolved reference to object [sys].[all_objects]`, at lines 46
+and 52. The procedure uses `sys.all_objects` as a row generator because nucentra has no numbers table; the
+reference is valid at runtime and unresolvable in the project model. **Do not "fix" them** — a master
+database reference adds a build dependency for a cosmetic gain, and rewriting the row generator changes a
+procedure for no functional reason. 🔴 **If the count is anything other than two, something you did caused
+it** (§3.7).
+
+**9 — `.sql` edits are additive only.** Add a trailing `SELECT`, add a column alias, add an optional
+parameter with a default. Never remove or rename an existing parameter or output column, and never change
+existing behaviour. **One `.sql` was edited during the whole Dapper migration** —
+`spUsers_RegisterFailedLogin` gained a trailing `SELECT` of its three `OUTPUT` values so the result could
+map onto a model by name (§5.3) — and it stayed compatible with the caller that was still reading the
+`OUTPUT` parameters. Every touched file stays registered in `CRC.Database.sqlproj` with nothing reordered.
+
+**10 — What is written down as broken stays written down, not quietly fixed.** §7.7's two integrity gaps,
+§4.4's `SaveStaff` returning `success: false` after committing, §4.10's unaudited Settings screen, §5.9's
+non-transactional staff-settings save and §9.2's forty unlogged catches are **real defects, recorded
+precisely, deliberately not repaired here** — every one of them is a behaviour change, and a behaviour
+change is the owner's call. Fixing one is welcome; fixing one *on the way past something else*, without
+saying so, is not. Update the section in the same commit.
