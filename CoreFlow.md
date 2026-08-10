@@ -1322,6 +1322,45 @@ whole set for one discharge reason in a single batch, resolving `DischargeType_N
 and `PatientDocumentType_Name` from `LU_PATDOCUMENTTYPE` itself — so nothing outside the procedure has to
 keep the denormalized names honest at write time. The staff table has no such procedure (§5.9).
 
+### 3.17 `dbo.AuditTrails`
+
+**Six columns, one index, and no foreign keys.** It is the only table in nucentra that no controller ever
+inserts into: every row is written **from inside a stored procedure**, by the nineteen that declare the
+`@User_ID` actor parameter (§0.1, §9).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `AuditTrail_Id` | `INT IDENTITY(1,1)` | NOT NULL | `PK_AuditTrails` |
+| `AuditTrail_EventUTC` | `DATETIME2(0)` | NOT NULL | defaults to `SYSUTCDATETIME()`. **UTC, always** — no procedure ever passes a value, so the default is the only writer |
+| `User_Id` | `INT` | **NULL** | the ACTOR. Written as `ISNULL(@User_ID, 0)` by all nineteen, so in practice it is never null and `0` means "nobody said" |
+| `AuditTrail_Action` | `VARCHAR(20)` | NOT NULL | `INSERT`, `UPDATE` or `DELETE` — by convention, not by constraint |
+| `AuditTrail_Category` | `VARCHAR(50)` | NOT NULL | the TABLE that was written: `Branch`, `Staff`, `StaffSlots`, `StaffDocument`, `PatientBasic`, `PatientAppointment`, `PatientDocument` |
+| `AuditTrail_Summary` | `VARCHAR(500)` | NOT NULL | a `CONCAT`ed sentence naming the row and its salient fields |
+
+`IX_AuditTrails_Category_EventUTC` on `(AuditTrail_Category, AuditTrail_EventUTC)` is the only index. The
+search screen's most common filter is the actor, which that index does not cover — fine at this table size,
+and the thing to notice before it grows.
+
+🔴 **`User_Id` IS NOT A FOREIGN KEY, AND THAT IS DELIBERATE — AN AUDIT ROW MUST OUTLIVE THE USER IT NAMES.**
+Deleting a user therefore leaves their rows behind with an id that resolves to nothing. `spAuditTrails_Search`
+`LEFT JOIN`s and renders those with a blank name; `spAuditTrails_LookupUsers` `INNER JOIN`s and drops them
+from the filter dropdown entirely (§5.10). Measured on the local database: one row out of 105, actor `3`,
+visible in the results and unselectable in the filter.
+
+**A `User_Id` of `0` and a `User_Id` that no longer resolves look identical on the page — both render as a
+blank name — and they mean opposite things.** `0` is the silent failure of §0.1: a `SqlData` method that
+forgot to pass the actor. Anything else is a real actor whose account has since gone. **The id is what tells
+them apart**, which is why the page shows it next to the name.
+
+```sql
+-- the health check for the whole @User_ID mechanism; the correct answer is 0
+SELECT COUNT(*) FROM dbo.AuditTrails WHERE User_Id IS NULL OR User_Id = 0;
+```
+
+**Nothing prunes this table.** There is no retention job, no archive procedure and no delete path — not even
+the cascades: `spPatient_DeleteCascade` and `spStaff_Delete` remove a subject's rows from every other table
+and *add* to this one. It grows monotonically for the life of the installation.
+
 ---
 
 ## 4. Pages, endpoints, policies
@@ -2770,6 +2809,262 @@ document in the system is precisely the read worth having on the security channe
 `AuditLog.StaffDocumentDownloaded` or `AuditLog.PatientDocumentDownloaded` **before** the URL leaves the
 server, because the download itself happens against storage where the application can no longer see it.
 
+### 4.12 Dashboard (the SUPERUSER landing page)
+
+`CRC.Web/Controllers/Dashboard/DashboardController.cs` — **`[Authorize(Policy = "SuperUserOnly")]` on the
+class**. View `Views/Dashboard/Index.cshtml`, script `wwwroot/js/dashboard/`. Five actions, four of them
+data, **all reads, none parameterised**: the SUPERUSER dashboard is the whole programme and has no filters
+to pass.
+
+| Verb | Route | Returns |
+|---|---|---|
+| GET | `/Dashboard/Index` | the page |
+| GET | `/Dashboard/GetActiveBranchCount` | `{ success, count }` |
+| GET | `/Dashboard/GetPatientsByRace` | `{ success, data: [{ label, count }] }` |
+| GET | `/Dashboard/GetPatientsByAgeGroup` | `{ success, data: [{ label, count }] }` |
+| GET | `/Dashboard/GetPatientsByDischargeType` | `{ success, data: [{ label, count }] }` |
+
+```jsonc
+// GET /Dashboard/GetActiveBranchCount
+{ "success": true, "count": 1 }
+{ "success": false, "message": "Error loading active branch count." }
+
+// GET /Dashboard/GetPatientsByRace
+{ "success": true, "data": [ { "label": "MALAY", "count": 4 }, { "label": "CHINESE", "count": 3 },
+                             { "label": "INDIAN", "count": 2 }, { "label": "Unknown", "count": 1 } ] }
+
+// GET /Dashboard/GetPatientsByAgeGroup
+{ "success": true, "data": [ { "label": "20 and below", "count": 1 }, { "label": "21-40", "count": 3 },
+                             { "label": "41-60", "count": 2 }, { "label": "61-80", "count": 2 },
+                             { "label": "81 and above", "count": 2 } ] }
+
+// GET /Dashboard/GetPatientsByDischargeType
+{ "success": true, "data": [ { "label": "NORMAL", "count": 3 }, { "label": "BENIGN POLYPS", "count": 2 },
+                             { "label": "CANCER", "count": 1 } ] }
+```
+
+**What each chart actually shows** — the four are not variations on one idea and cannot be read against each
+other:
+
+| Card | Population counted | Grouped by | Ordered by |
+|---|---|---|---|
+| **Active branches** (card) | `dbo.Branch` where `ISNULL(Branch_Status, 0) = 1` | — | — |
+| **Patients by race** (pie) | **every** patient in `dbo.PatientBasic` | `LU_RACE.Race_Name`, `COALESCE`d to `"Unknown"` | count **DESC** |
+| **Patients by age group** (pie) | **every** patient | a five-band `CASE` over `Patient_Age` | **age**, youngest band first |
+| **Patients by discharge type** (bar) | **only patients with a `DischargeType_ID`** | `LU_DISCHARGETYPE.DischargeType_Name`, `COALESCE`d | count **DESC** |
+
+🔴 **THE THREE CHARTS DO NOT SHARE A DENOMINATOR.** Race and age count the whole patient table; discharge
+counts only the discharged, because a NULL `DischargeType_ID` *is* the definition of an active patient
+(§3.8). A viewer who adds up the third chart and compares it with the first two is comparing two different
+questions, and the page does not say so anywhere.
+
+**"Unknown" means something different in each chart.** In the race pie it is a `Race_ID` matching no
+`LU_RACE` row, or a race whose name is blank. In the discharge chart it is a discharge reason the lookup no
+longer knows — never "not discharged", which the `WHERE` has already excluded. In the age pie it is
+**unreachable**: the bucket exists in the `CASE` but `Patient_Age` is `INT NOT NULL`, so nothing can land in
+it.
+
+**Two ordering facts a reader should not have to discover empirically.** The two count-ordered charts have
+**no tie-breaker**, so two races on the same count arrive in whatever order the engine produced — stable in
+practice, guaranteed by nothing, and the reason this area's smoke test uses a fixture with distinct counts.
+The age chart is ordered by a second `CASE`, so its axis is fixed regardless of the data.
+
+**Every action catches bare `Exception`, returns `{ success = false, message }` and logs nothing** — no
+`_logger`, no `ErrorResponse.ForUser`, so no correlation id. A dashboard that fails is invisible in
+`Logs/app-*.log`. Left exactly as found; the same gap `DeleteBranch` has (§4.1). The controller also still
+injects `IWebHostEnvironment` and never uses it.
+
+### 4.13 Staff Dashboard (the STAFF landing page)
+
+`CRC.Web/Controllers/StaffDashboard/StaffDashboardController.cs` —
+**`[Authorize(Policy = "StaffOnly")]` on the class**, so `UserType = 3` only: a SUPERUSER or ADMIN cannot
+open this page at all. View `Views/StaffDashboard/Index.cshtml`, script `wwwroot/js/staffdashboard/`. Four
+actions, three of them data.
+
+| Verb | Route | Returns |
+|---|---|---|
+| GET | `/StaffDashboard/Index` | the page |
+| GET | `/StaffDashboard/GetTodayAppointments` | `{ success, data: [ … ] }` |
+| GET | `/StaffDashboard/GetThisWeekAppointments` | `{ success, data: [ … ] }` |
+| GET | `/StaffDashboard/GetMonthAppointments?year=&month=` | `{ success, data: [ … ], year, month }` |
+
+```jsonc
+// GET /StaffDashboard/GetTodayAppointments
+{ "success": true, "data": [
+  { "patientAppointmentId": 11, "patientId": "PAT-000001", "patientName": "P8 PATIENT ALPHA",
+    "appointmentType": "PATIENT ASSESSMENT", "status": "Scheduled", "branchName": "P7 SMOKE BRANCH",
+    "appointmentDate": "10/08/2026", "appointmentDateSort": "2026-08-10",
+    "fromTime": "09:00", "toTime": "10:00" } ] }
+
+// GET /StaffDashboard/GetMonthAppointments?year=2026&month=9   — empty month, still success
+{ "success": true, "data": [], "year": 2026, "month": 9 }
+{ "success": false, "message": "Invalid month value." }                                  // month outside 1-12
+{ "success": false, "message": "Your user is not linked to a Staff record (StaffId is missing)." }
+{ "success": false, "message": "Error loading this month's staff appointments." }
+```
+
+🔴 **THE `StaffId` CLAIM IS THE ONLY THING SCOPING THIS PAGE, AND IT IS RESOLVED IN THE CONTROLLER.**
+`GetStaffId()` reads `User.FindFirst("StaffId")`, stamped at login from `dbo.Users.Staff_ID`, and each action
+passes it to the data layer as an ordinary argument. All three stored procedures filter on
+`pa.Staff_ID = @Staff_ID`; there is no second check anywhere. **A STAFF account whose `Staff_ID` is NULL is
+refused with a message rather than being run unscoped** — the one case where the absence of a value must not
+become "no filter".
+
+**That resolution deliberately does not live in `SqlData`,** and the contrast with `@User_ID` is the point:
+the audit actor is bookkeeping nobody should have to remember, so the data layer supplies it; a scoping
+predicate is a business argument, and a data-access method that filled one from the ambient claim would be
+performing authorization out of sight of the endpoint accountable for it. Moving `GetStaffId()` down a layer
+would be a security change, not a refactor.
+
+*Asserted against the running site (Prompt 9):* two STAFF accounts, `END-00002` and `END-00003`, each
+holding appointments the other does not. `END-00002` saw ids 11-14 in its three windows and `END-00003` saw
+15-17 — no overlap in either direction, and neither saw `END-00001`'s id 18.
+
+**The three windows, which the procedures define and the labels understate:**
+
+- **Today** — `PatientAppointment_Date = @ForDate`, and the endpoint always passes `DateTime.Today`. There
+  is no way to ask for another day.
+- **"This week"** — a **rolling seven days**, `>= @FromDate` to `< @FromDate + 7`, start inclusive and end
+  exclusive. It has nothing to do with Monday: it means "today and the next six days".
+- **"This month"** — a real calendar month built by `DATEFROMPARTS(@Year, @Month, 1)`, so month length and
+  leap years are the database's problem. **The 1-12 check in the controller is load-bearing**, because
+  `DATEFROMPARTS` throws on an out-of-range month rather than returning nothing; the year is not validated
+  anywhere and a year outside 1-9999 surfaces as the generic error message.
+
+**Three shaping details that are the page's contract:**
+
+- **`appointmentDate` and `appointmentDateSort` are the same date twice**, `dd/MM/yyyy` for the eye and
+  `yyyy-MM-dd` for the table's sort comparator. Both are emitted; neither is derived client-side.
+- **`fromTime` / `toTime` are `hh\:mm` strings** cut from `TIME(0)` columns. These procedures return the raw
+  time (a `TimeSpan`), unlike `spPatientAppointment_ListByPatient`, which `CONVERT`s to `VARCHAR(5)` in SQL —
+  same columns, two different result types, which is why there are two models (§6.3).
+- **The controller re-sorts** by date, then start time, then id — the same three keys the procedures already
+  order by. Redundant, preserved, and not quite a no-op: a null date or time sorts **last** here
+  (`DateTime.MaxValue` / `TimeSpan.MaxValue`) where SQL's `ORDER BY` puts nulls first.
+
+### 4.14 Patient Tracker (Admin > Patient Tracker)
+
+`CRC.Web/Controllers/PatientTracker/PatientTrackerController.cs` —
+**`[Authorize(Policy = "AdminOrSuper")]` on the class** (`UserType` 1 or 2, **not** STAFF). View
+`Views/PatientTracker/Index.cshtml`, script `wwwroot/js/patienttracker/`. Three actions, two of them data.
+
+| Verb | Route | Returns |
+|---|---|---|
+| GET | `/PatientTracker/Index` | the page |
+| GET | `/PatientTracker/GetAppointmentTypes` | `{ success, data: [{ pjAppTypeId, pjAppTypeName }] }` |
+| GET | `/PatientTracker/GetTrackerData` | `{ success, appointmentTypes, patients, appointments, procedures, stalledCount }` |
+
+```jsonc
+// GET /PatientTracker/GetTrackerData — the whole page in one response
+{ "success": true,
+  "appointmentTypes": [ { "pjAppTypeId": "01", "pjAppTypeName": "PATIENT ASSESSMENT" } ],
+  "patients": [ { "patientId": "PAT-000003", "name": "P9 PATIENT CHARLIE", "nric": "000003145900",
+                  "phone": "0199000003", "age": 18, "gender": "MALE",
+                  "dischargeDate": "11/07/2026", "isStalled": true } ],
+  "appointments": [ { "patientId": "PAT-000003", "pjAppTypeId": "02",
+                      "status": "Completed", "date": "10/08/2026" } ],
+  "procedures":   [ { "patientId": "PAT-000003", "pjAppTypeName": "COLONOSCOPY",
+                      "date": "08/08/2026" } ],
+  "stalledCount": 4 }
+{ "success": false, "message": "Error loading tracker data." }
+```
+
+**`GetTrackerData` is five sequential procedure calls in one action** — types, patients, appointments,
+procedures, stalled count — and is explicitly *not* a unit of work: they are independent parameterless reads
+and a row written between the first and the last is seen by some of them and not others. The page loads the
+entire programme and filters in the browser; there is no server-side paging, searching or filtering
+anywhere on it.
+
+🔴 **WHAT "STALLED" MEANS — the definition lives in SQL and in no other place.**
+**A patient is stalled when they have at least one `dbo.PatientAppointment` row AND the status of their most
+recent one — latest by date, then start time, then `PatientAppointment_ID`, all descending — is anything
+other than `'Scheduled'`.** A patient with **no appointment at all is not stalled**: someone registered and
+never booked looks exactly as calm on this page as someone booked for tomorrow. Full derivation in §5.10.
+
+**The flag and the badge are computed twice, by two procedures.** `spPatientTracker_Patients_List` produces
+the per-row `isStalled` bit; `spPatientTracker_StalledCount_Get` produces `stalledCount`. They agree today
+because the ranking CTE is duplicated character-for-character. **Nothing enforces that**, and the failure
+mode is a badge that disagrees with the rows beneath it while both look plausible.
+
+**`appointments` and `procedures` are two different things and the page shows both on purpose.**
+`appointments` is what was **booked** — `dbo.PatientAppointment`, reduced to **one row per patient per
+journey type**, the newest only. `procedures` is what was **done** — `dbo.PatientJourney`, **every** row.
+Nothing in the schema ties a journey row to the appointment that produced it (§3.10), so a patient can have
+either without the other, and the grid renders the gap. They also join to the type differently:
+`appointments` carries `pjAppTypeId`, `procedures` carries `pjAppTypeName`, because `dbo.PatientJourney`
+stores the name and no id at all. **Renaming a row in `LU_PJ_APP_TYPE` silently disconnects the two.**
+
+**`GetAppointmentTypes` is a second endpoint returning what `GetTrackerData` already includes** under
+`appointmentTypes`, from the same procedure. Both filter out an entry with a blank id in C#. Both are kept;
+neither is dead.
+
+**This controller logs its exceptions** — `_logger.LogError(ex, …)` in both catches — where §4.12 and §4.15
+do not. The message to the user is still the bare string, with no correlation id.
+
+### 4.15 Audit Trails (the SUPERUSER audit page)
+
+`CRC.Web/Controllers/AuditTrails/AuditTrailsController.cs` — **`[Authorize(Policy = "SuperUserOnly")]` on the
+class**. View `Views/AuditTrails/Index.cshtml`, script `wwwroot/js/audittrails/`. Three actions. **This page
+is where the `@User_ID` mechanism of §0.1 becomes visible to a human**, and it is the only reader of
+`dbo.AuditTrails` in the portal.
+
+| Verb | Route | Returns |
+|---|---|---|
+| GET | `/AuditTrails/Index` | the page |
+| GET | `/AuditTrails/GetLookups` | `{ success, users, actions, categories }` |
+| POST | `/AuditTrails/Search` | `{ success, data: [{ userId, name, dateTime, action, category, summary }] }` |
+
+```jsonc
+// GET /AuditTrails/GetLookups — the three filter dropdowns
+{ "success": true,
+  "users":      [ { "id": "4", "name": "P7 STAFF USER" }, { "id": "1", "name": "SYSTEM SUPERUSER" } ],
+  "actions":    [ { "name": "DELETE" }, { "name": "INSERT" }, { "name": "UPDATE" } ],
+  "categories": [ { "name": "Branch" }, { "name": "PatientAppointment" }, { "name": "PatientBasic" },
+                  { "name": "PatientDocument" }, { "name": "Staff" }, { "name": "StaffDocument" },
+                  { "name": "StaffSlots" } ] }
+{ "success": false, "message": "Error loading audit trail lookups." }
+
+// POST /AuditTrails/Search  { userId?, fromDate?, toDate?, action?, category? }   — all five optional
+{ "success": true, "data": [
+  { "userId": 1, "name": "SYSTEM SUPERUSER", "dateTime": "10/08/2026 12:38", "action": "INSERT",
+    "category": "PatientBasic",
+    "summary": "Created Patient: Patient_ID=PAT-000002; Name=P8 PATIENT BRAVO; …" } ] }
+{ "success": false, "message": "Error searching audit trails." }
+// 400 { "success": false, "message": "Invalid request." }     // null body only
+```
+
+**`"id"` in the users dropdown is a STRING** (`"4"`, not `4`) while `"userId"` in a search result is a
+**number**. Both shapes predate this document, both are what `wwwroot/js/audittrails/` reads, and neither is
+to be tidied.
+
+🔴 **`@UserId` HERE IS A FILTER, NOT AN ACTOR — and it is the one place in the codebase where the two
+spellings sit close enough to be confused.** `spAuditTrails_Search` declares `@UserId INT = NULL`, without
+the underscore of §0.1's `@User_ID`, and it means "show me this person's rows". It is passed straight
+through from the request body. Filling it from `DatabaseHelper.CurrentUserId` — the reflex nineteen other
+call sites in `SqlData` deliberately have — would silently narrow every search to the searcher's own
+actions, and the page would look like a working audit trail with almost nothing in it.
+
+**The filters, exactly:**
+
+- **All five are optional and independent**, `AND`ed together, and NULL means "no filter" for each.
+- **The dates are Malaysian, the storage is UTC.** The procedure filters and displays the same expression,
+  `DATEADD(HOUR, 8, AuditTrail_EventUTC)`. **`toDate` is inclusive of its whole day** (`< @ToDate + 1 day`),
+  so `from = to = 2026-08-08` returns that entire Malaysian day.
+- **An unparseable date is dropped to "no filter", not rejected.** `DateTime.TryParse` fails, the value stays
+  null, and the search runs unfiltered — a typo in a date box silently widens the result set.
+- **`action` and `category` are exact matches**, not `LIKE`; blank or whitespace is normalised to "no
+  filter". Both come from the dropdowns, which come from the data.
+
+**The dropdowns are built from `dbo.AuditTrails` itself**, `SELECT DISTINCT`, not from any catalogue — so
+they can only ever offer combinations that have actually happened. 🔴 **But the users dropdown `INNER JOIN`s
+`dbo.Users`, so it hides exactly what an auditor most wants to find**: an actor of `0` (the silent failure of
+§0.1) and an actor whose account has since been deleted are both absent from the filter while their rows are
+still returned by the search, with a blank name. The dropdown is not a complete list of who is in the table;
+`SELECT DISTINCT User_Id FROM dbo.AuditTrails` is.
+
+**Both actions swallow their exception without logging it** — bare `catch (Exception)`, no `_logger`, no
+`ErrorResponse.ForUser`, so no correlation id. Same gap as §4.1's `DeleteBranch` and §4.12.
+
 ---
 
 ## 5. Stored procedures
@@ -3850,6 +4145,155 @@ JOIN` is the exclusion**: a document whose `Patient_ID` no longer matches a pati
 so its owner cannot be picked from the filter, even though the document still appears in an unfiltered
 search (that read `LEFT JOIN`s). Given §7's orphaning bug, that case is reachable.
 
+### 5.10 Dashboards, tracker and audit trails — `Stored Procedures/{Dashboard,StaffDashboard,PatientTracker,AuditTrails}/` (16)
+
+**All sixteen are reads. Not one declares `@User_ID`** — verified by reading all sixteen parameter lists,
+eleven of which are empty — and **not one writes a `dbo.AuditTrails` row**. This is the largest block of
+procedures in the portal with no write in it, which is what makes it the last migration prompt.
+
+| Procedure | Parameters | Returns | `IDatabaseData` method | `@User_ID` |
+|---|---|---|---|---|
+| `spDashboard_Branch_CountActive` | — | `ActiveBranchCount INT` — one row, one column | `GetActiveBranchCountAsync` → `int` | no |
+| `spDashboard_Patient_ByRace` | — | `Race_Name, PatientCount` | `GetPatientsByRaceAsync` → `List<PatientsByRaceItem>` | no |
+| `spDashboard_Patient_ByAgeGroup` | — | `AgeGroup, PatientCount` | `GetPatientsByAgeGroupAsync` → `List<PatientsByAgeGroupItem>` | no |
+| `spDashboard_Patient_ByDischargeType` | — | `DischargeType_Name, PatientCount` | `GetPatientsByDischargeTypeAsync` → `List<PatientsByDischargeTypeItem>` | no |
+| `spStaffDashboard_TodayAppointments` | `@Staff_ID VARCHAR(100)`, `@ForDate DATE` | 9 columns, one day | `GetStaffTodayAppointmentsAsync` → `List<StaffDashboardAppointmentItem>` | no |
+| `spStaffDashboard_ThisWeekAppointments` | `@Staff_ID`, `@FromDate DATE` | the same 9, rolling 7 days | `GetStaffWeekAppointmentsAsync` | no |
+| `spStaffDashboard_ThisMonthAppointments` | `@Staff_ID`, `@Year INT`, `@Month INT` | the same 9, one calendar month | `GetStaffMonthAppointmentsAsync` | no |
+| `spPatientTracker_AppointmentTypes_List` | — | `PjAppType_ID, PjAppType_Name`, by id | `GetTrackerAppointmentTypesAsync` → `List<LookupItem>` | no |
+| `spPatientTracker_Patients_List` | — | 7 `PatientBasic` columns + `IsStalled BIT`, by name then id | `GetTrackerPatientsAsync` → `List<PatientTrackerPatientItem>` | no |
+| `spPatientTracker_Appointments_List` | — | `Patient_ID, PjAppType_ID, Status, Date` — **latest per pair**, unordered | `GetTrackerAppointmentsAsync` | no |
+| `spPatientTracker_Procedures_List` | — | `Patient_ID, PjAppType_Name, PatientJourney_Date` — **all rows** | `GetTrackerProceduresAsync` | no |
+| `spPatientTracker_StalledCount_Get` | — | `StalledCount INT` — one row, one column | `GetTrackerStalledCountAsync` → `int` | no |
+| `spAuditTrails_Search` | `@UserId INT = NULL`, `@FromDate DATE = NULL`, `@ToDate DATE = NULL`, `@Action VARCHAR(20) = NULL`, `@Category VARCHAR(50) = NULL` | 6 columns, newest first | `SearchAuditTrailsAsync` → `List<AuditTrailSearchItem>` | **no — `@UserId` is a FILTER** |
+| `spAuditTrails_LookupUsers` | — | `User_ID, User_Name`, `DISTINCT`, `INNER JOIN dbo.Users` | `GetAuditTrailUsersAsync` → `List<LookupItem>` | no |
+| `spAuditTrails_LookupActions` | — | `AuditTrail_Action`, `DISTINCT`, one column | `GetAuditTrailActionsAsync` → `List<string>` | no |
+| `spAuditTrails_LookupCategories` | — | `AuditTrail_Category`, `DISTINCT`, one column | `GetAuditTrailCategoriesAsync` → `List<string>` | no |
+
+#### 🔴 "Stalled" — the definition, and where it lives
+
+This is the one piece of clinical business logic in nucentra that exists **only inside stored procedures**,
+with no C# to read it from and no name in the schema. Written out in full:
+
+> **A patient is STALLED when they have at least one `dbo.PatientAppointment` row *and* the
+> `PatientAppointment_Status` of their most recent one is not `'Scheduled'`.**
+> "Most recent" is `ROW_NUMBER() OVER (PARTITION BY Patient_ID ORDER BY PatientAppointment_Date DESC,
+> PatientAppointment_StartTime DESC, PatientAppointment_ID DESC) = 1` — date first, start time to break a
+> same-day tie, identity id to break the rest, so the ranking is total and deterministic.
+
+Four consequences worth stating, because none is obvious from the word:
+
+- **A patient with no appointment at all is NOT stalled.** In `spPatientTracker_Patients_List` the
+  `LEFT JOIN` misses and the `CASE`'s first branch returns `0`; in `spPatientTracker_StalledCount_Get` the
+  `INNER JOIN` from the appointment side never sees them. So a patient registered and never booked is
+  indistinguishable, on this page, from one booked for tomorrow. **The tracker measures stalled *journeys*,
+  not neglected *patients*.**
+- **"Not `'Scheduled'`" is an open set, not a list.** The test is `<> 'Scheduled'`, so `Completed`,
+  `Cancelled`, `Attended`, and any typo or future status all count as stalled. Adding a new status makes it
+  stalled by default; only the exact string `'Scheduled'` is safe. The comparison inherits the column's
+  collation, so it is case-insensitive in practice.
+- **It is not a date test.** Nothing in either procedure looks at how long ago the latest appointment was.
+  A patient whose colonoscopy was completed this morning is stalled; one with a `Scheduled` appointment from
+  three years ago is not. **"Stalled" means "the journey has no next step booked", not "nothing has happened
+  recently"** — and the second is what most readers assume the word means.
+- **Discharged patients are counted.** Neither procedure looks at `DischargeType_ID`, so a patient who has
+  completed the programme and left is stalled by this definition. The tracker lists every patient (§4.14),
+  so they are on the page to be counted.
+
+**The rule is implemented twice.** The two CTEs are character-for-character identical; the only difference
+is the join direction — `Patients_List` `LEFT JOIN`s from `dbo.PatientBasic` to produce a per-row bit,
+`StalledCount_Get` `INNER JOIN`s from the ranked appointments to `dbo.PatientBasic` to produce a count. They
+agree, and they agree for a reason neither states: an appointment whose `Patient_ID` matches no patient is
+dropped by the count's `INNER JOIN` and is invisible to the list's patient-driven `LEFT JOIN` anyway.
+**Verified on the running site: `stalledCount = 4` against exactly four rows flagged `isStalled: true`.**
+If you change one procedure, change the other.
+
+#### The four dashboard aggregates — grouping and ordering
+
+| Procedure | `FROM` | `WHERE` | `GROUP BY` | `ORDER BY` |
+|---|---|---|---|---|
+| `spDashboard_Branch_CountActive` | `dbo.Branch` | `ISNULL(Branch_Status, 0) = 1` | — | — |
+| `spDashboard_Patient_ByRace` | `PatientBasic` `LEFT JOIN LU_RACE` | none | `COALESCE(NULLIF(LTRIM(RTRIM(Race_Name)),''),'Unknown')` | `PatientCount DESC` |
+| `spDashboard_Patient_ByAgeGroup` | `PatientBasic` | none | a `CASE` over `Patient_Age` | a second `CASE` — **age order**, `Unknown` last |
+| `spDashboard_Patient_ByDischargeType` | `PatientBasic` `LEFT JOIN LU_DISCHARGETYPE` | **`DischargeType_ID IS NOT NULL`** | `COALESCE(NULLIF(LTRIM(RTRIM(DischargeType_Name)),''),'Unknown')` | `PatientCount DESC` |
+
+- **The age bands are `20 and below` / `21-40` / `41-60` / `61-80` / `81 and above`, inclusive on both ends,
+  with no gap and no overlap.** They exist in that `CASE` and nowhere else — no C# constant, no lookup table.
+  A sixth branch, `Unknown`, fires on `Patient_Age IS NULL` and is **unreachable** while the column is
+  `INT NOT NULL` (§3.8); it is the branch that would start returning rows if that ever changed.
+- **Both count-ordered charts have no tie-breaker.** Equal counts come back in an arbitrary order that the
+  charts do not care about and a before/after diff does.
+- **`ISNULL(Branch_Status, 0)` is defensive only** — the column is `BIT NOT NULL` (§3.2).
+- **`spDashboard_Branch_CountActive` and `spPatientTracker_StalledCount_Get` are both a single `COUNT(*)`
+  with no `GROUP BY`**, so each always returns exactly one row. `SqlData` reads both with
+  `ExecuteScalarAsync<int>` rather than `QuerySingleAsync<int>`: identical for every reachable input, and it
+  answers `0` instead of throwing for an empty result set — which is exactly what the `DataTable` guards
+  these replaced did.
+
+#### The three staff-dashboard reads — one query, three windows
+
+The same nine columns from the same four tables (`PatientAppointment` `LEFT JOIN` `PatientBasic`,
+`LU_PJ_APP_TYPE`, `Branch`), the same `ORDER BY PatientAppointment_Date, PatientAppointment_StartTime,
+PatientAppointment_ID`, and the same `Staff_ID` predicate. **Only the date window differs**, which is why
+one model serves all three (§6.3):
+
+| | Window | Built by |
+|---|---|---|
+| Today | `= @ForDate` | the caller, always `DateTime.Today` |
+| This week | `>= @FromDate AND < DATEADD(DAY, 7, @FromDate)` | the procedure — **rolling**, start inclusive, end exclusive |
+| This month | `>= DATEFROMPARTS(@Year,@Month,1) AND < DATEADD(MONTH,1,…)` | the procedure — a real calendar month |
+
+🔴 **`pa.Staff_ID = @Staff_ID` is the portal's only scoping of the STAFF dashboard**, and the parameter is
+supplied from the caller's own claim by the controller, never from this layer (§4.13). A staff id matching
+nothing — including a valid id belonging to somebody else — returns an **empty set, not an error**, which is
+what makes it a filter rather than a check.
+
+**`DATEFROMPARTS` throws on a month outside 1-12** rather than returning nothing, which is why
+`GetMonthAppointments` range-checks before calling and answers `"Invalid month value."` itself. The year is
+not validated by anyone.
+
+#### `spAuditTrails_Search` — and why its `@UserId` is not §0.1's `@User_ID`
+
+Six columns out of `dbo.AuditTrails` `LEFT JOIN dbo.Users`, ordered by `AuditTrail_EventUTC DESC`.
+
+- 🔴 **`@UserId` (no underscore) IS A FILTER.** It selects which rows to show, it comes from a dropdown, and
+  it is passed straight through from the request. `@User_ID` (with the underscore), in the nineteen writing
+  procedures, is the actor being recorded. **Same table, adjacent concepts, one character apart.** Filling
+  `@UserId` from `DatabaseHelper.CurrentUserId` would restrict every search to the searcher's own trail and
+  break nothing visibly.
+- **`AuditTrail_EventMYT` is a computed column name that exists nowhere on disk.** The procedure returns
+  `DATEADD(HOUR, 8, a.AuditTrail_EventUTC)` under that alias, and filters the same expression, so display
+  and filtering agree. Malaysia has no DST, so the fixed eight hours is correct rather than approximate.
+- **`@ToDate` is inclusive of its whole day** — the predicate is `< DATEADD(DAY, 1, @ToDate)`. Both dates are
+  `DATE`, so a time of day on either is discarded before it arrives.
+- **`ISNULL(a.User_Id, 0) AS User_ID` and `ISNULL(u.User_Name, '') AS User_Name`** mean neither column is
+  ever null, and a missed join is a blank name rather than an absent row.
+- **The ordering is on the raw UTC column** while the display is on the shifted one — the same ordering, by
+  construction, since the shift is monotonic.
+
+*Verified against the running site, filter by filter, against `SELECT COUNT(*)` over the same predicates:*
+no filters 105, `userId=1` 101, `userId=4` 3, `action='DELETE'` 40, `category='StaffSlots'` 27, a two-day
+Malaysian range 74, and a four-way combination 6 — each matching SQL exactly.
+
+#### The three lookup procedures — built from the data, not from a catalogue
+
+All three are `SELECT DISTINCT … FROM dbo.AuditTrails`, so the filter dropdowns can only ever offer values
+that have actually been recorded. The two single-column ones drop NULL and blank before the `DISTINCT`; the
+users one filters `User_Id IS NOT NULL`.
+
+🔴 **`spAuditTrails_LookupUsers` uses an `INNER JOIN dbo.Users`, and that hides exactly the rows an auditor
+most wants.** `User_Id = 0` (the silent failure of §0.1) joins to nothing; so does a real actor whose account
+has since been deleted. Neither appears in the dropdown, though both still appear in the search results with
+a blank name. **The dropdown is not a complete list of who is in the table.** Measured on the local database:
+105 rows, actors `1` (101), `4` (3) and `3` (1) — and `3` is a deleted account, so the dropdown offers two
+users where the table holds three.
+
+Because the users lookup returns `(User_ID INT, User_Name)`, `SqlData` reads it with the same
+ordinal-mapping helper as the eleven `spLU_*` code lookups (§5.1) and gets a **string** id — which is
+exactly what this endpoint's JSON has always carried, because `DataRow["User_ID"].ToString()` did the same.
+The two single-column lookups cannot use that helper — there is no ordinal 1 — and come back as
+`List<string>`.
+
 ---
 
 ## 6. The data access layer
@@ -4602,7 +5046,222 @@ configuration, and local development with Azurite.
 
 ## 9. Audit and logging
 
-> *Written in Prompt 9 — not yet filled in.*
+> ### 🔴 nucentra HAS TWO INDEPENDENT AUDIT CHANNELS. THEY ARE NOT THE SAME THING AND MUST NEVER BE CONFLATED.
+>
+> **1 — `dbo.AuditTrails`.** Rows written **from inside stored procedures**, using the `@User_ID` actor
+> parameter. Queryable data: joinable, filterable, and readable by a SUPERUSER on `/AuditTrails` without a
+> server login. It records **what changed in the database**.
+>
+> **2 — The Serilog channels.** Append-only text files under `CRC.Web/Logs/`, split into a security channel
+> (`audit-*.log`, 365 days) and an operational one (`app-*.log`, 31 days). No SQL, no UI, no join. It
+> records **what happened in the application** — logins, lockouts, document downloads, rate-limit
+> rejections, exceptions — including a great deal that never touches a table.
+>
+> **A write that matters gets both**, and neither is a substitute for the other. Creating an appointment
+> writes an `AuditTrails` row (`INSERT` / `PatientAppointment`, naming the actor) *and* an
+> `AuditLog.AppointmentCreated` line (naming the patient, staff, branch, times and correlation id). Losing
+> one loses half the story: the table cannot tell you a document was **downloaded**, and the file cannot be
+> joined to `dbo.Users`.
+
+### 9.1 Channel one — `dbo.AuditTrails`, written by the procedures
+
+The table is §3.17: `AuditTrail_Id`, `AuditTrail_EventUTC` (defaulted, UTC, never passed by anyone),
+`User_Id`, `AuditTrail_Action`, `AuditTrail_Category`, `AuditTrail_Summary`.
+
+**Nineteen stored procedures write to it, and nothing else does.** No controller inserts a row; no
+`SqlData` method inserts a row; there is no `spAuditTrails_Insert`. Each of the nineteen ends with an
+`INSERT INTO [dbo].[AuditTrails]` of its own, inside the same statement batch as the write it is recording,
+so the audit row and the change it describes commit or roll back together.
+
+```
+spBranch_Insert              spPatientAppointment_Insert       spStaff_Insert
+spBranch_Update              spPatientAppointment_Update       spStaff_Update
+spBranch_Delete              spPatientAppointment_Delete       spStaff_Delete
+spPatientBasic_Insert        spPatientAppointment_UpdateStatus spStaffDocument_Insert
+spPatientBasic_Update        spPatientDocument_Insert          spStaffDocument_Delete
+spPatient_DeleteCascade      spPatientDocument_Delete          spStaffSlots_CreateRange
+                                                               spStaffSlots_Delete
+```
+
+**What the three text columns hold:**
+
+- **`AuditTrail_Action`** — `INSERT`, `UPDATE` or `DELETE`, hard-coded as a literal in each procedure. The
+  column is a `VARCHAR(20)` with no constraint, so this is a convention the writers happen to keep, not a
+  guarantee the schema makes.
+- **`AuditTrail_Category`** — the **table** that was written: `Branch`, `Staff`, `StaffSlots`,
+  `StaffDocument`, `PatientBasic`, `PatientAppointment`, `PatientDocument`. Not the screen, not the feature.
+  Seven categories for nineteen procedures.
+- **`AuditTrail_Summary`** — a `CONCAT`ed sentence built in SQL from the procedure's own parameters, naming
+  the row and the fields worth seeing later: `'Created Appointment: PatientAppointment_ID=9;
+  Patient_ID=PAT-000001; Date=2026-09-02; Time=…'`. It is **denormalized prose**, capped at 500 characters,
+  and it is the only record of the *values* involved — the table stores no before/after images.
+
+**Three consequences of that design worth knowing before relying on it:**
+
+- **It records that a row changed, not what it changed from.** There is no old-value column and no diff.
+- **`spStaffSlots_CreateRange` writes ONE row for a range**, not one per slot created — its summary carries
+  the from/to dates and the counts. Row counts in this table are not change counts.
+- **Reads are not recorded here at all.** No procedure writes an audit row for a `SELECT`, which is exactly
+  why the Documents search is audited by the *application* instead (§4.11).
+
+#### 🔴 The actor is now passed EXPLICITLY by `SqlData`
+
+**This is the single most important sentence in this section.** `dbo.AuditTrails.User_Id` comes from each
+procedure's `@User_ID INT = NULL` parameter, written as `ISNULL(@User_ID, 0)`. Historically **nobody passed
+it**: `DatabaseHelper` queried `sys.parameters` before every command, asked *"does this procedure declare
+`@User_ID`?"*, and appended the caller's `ClaimTypes.NameIdentifier` value if it did. The actor appeared by
+magic and no controller knew it existed.
+
+**Dapper has no such hook.** `connection.ExecuteAsync("dbo.spBranch_Delete", new { … })` sends the
+properties of that anonymous object and nothing else. So `SqlData` passes the actor itself, once per call
+site, in the open:
+
+```csharp
+// spBranch_Delete declares @User_ID INT = NULL for its dbo.AuditTrails row: the ACTOR, not a target.
+await connection.ExecuteAsync(
+    "dbo.spBranch_Delete",
+    new { Branch_ID = branchId, User_ID = _databaseHelper.CurrentUserId },
+    commandType: CommandType.StoredProcedure);
+```
+
+**What breaks when a future method forgets it: nothing visible.** Because all nineteen declare a **default**,
+the parameter is optional — the procedure runs, the write succeeds, the page reports success, the build is
+clean, no exception is thrown and no log line is written. The only trace is `AuditTrails.User_Id = 0`, and
+on `/AuditTrails` that renders as a blank name in a row that otherwise looks perfectly normal. **You find
+out the day you need the audit trail, about the period you no longer have.**
+
+Worse, a `0` is indistinguishable *on the page* from a real actor whose account has since been deleted —
+both show a blank name. The id is the tell: `0` is the bug, anything else is a departed user (§3.17).
+
+**How to check.** After any change that touches one of the nineteen:
+
+```bash
+sqlcmd -S localhost -d CRC_DB -E -C -Q "SELECT TOP 5 AuditTrail_Id, User_Id, AuditTrail_Action, AuditTrail_Category, AuditTrail_Summary FROM dbo.AuditTrails ORDER BY AuditTrail_Id DESC"
+```
+
+`User_Id` must be the logged-in user's id. And as a standing health check over the whole table:
+
+```sql
+SELECT COUNT(*) FROM dbo.AuditTrails WHERE User_Id IS NULL OR User_Id = 0;   -- must be 0
+```
+
+*Measured at the end of Prompt 9, over the 105 rows accumulated by Prompts 1-8: **zero** unattributed rows.
+Every row names `1` (SUPERUSER, 101 rows), `4` (a STAFF user, 3) or `3` (1 row, an account since deleted).
+All seventeen (action, category) combinations produced by the migration are present and correctly
+attributed.* That number is the evidence that the explicit-actor migration worked; re-run the query rather
+than trusting this paragraph.
+
+The five `spUsers_*` procedures that declare `@User_ID INT` **without** a default are the other kind — a
+target user row, not an actor — and none of them writes to this table at all. §0.1 has both lists.
+
+### 9.2 Channel two — the Serilog files
+
+One pipeline, configured in `CRC.Web/Program.cs` (lines ~17-41), with **two file sinks split by a single
+property**:
+
+| | `Logs/audit-*.log` | `Logs/app-*.log` |
+|---|---|---|
+| Written by | `CRC.Web/Infrastructure/AuditLog.cs` | every `ILogger<T>`, plus `UseSerilogRequestLogging()` |
+| Selected by | `Filter.ByIncludingOnly(e => e.Properties.ContainsKey("AuditChannel"))` | `Filter.ByExcluding(…)` — the same key |
+| Rolling | daily | daily |
+| **Retention** | **365 files** | **31 files** |
+| Template | timestamp, `[Cid:]`, `[User:]`, `[Ip:]`, message | the same **plus `[{Level:u3}]` and `{Exception}`** |
+
+`AuditLog` is a static class holding one `Serilog.ILogger` built as `Log.ForContext("AuditChannel", true)`.
+**That property is the entire routing mechanism**: everything written through `AuditLog` carries it and lands
+in the audit file; everything else lacks it and lands in the app file. There is no second logger
+configuration, no category filter and no level filter doing this work — which also means **writing
+`_logger.LogInformation("AUDIT …")` by hand does not put a line on the audit channel**, it just puts the
+word "AUDIT" in `app-*.log`. Use `AuditLog`.
+
+A **console sink** sits outside the split and receives both.
+
+**What goes down the audit channel** — 24 methods, in five groups, at `Information` for normal events and
+`Warning` for the ones a reader should stop at:
+
+| Group | Methods | Level |
+|---|---|---|
+| Authentication | `LoginSucceeded`, `Logout` | Information |
+| | `LoginFailed`, `LoginLockoutTriggered`, `LoginAttemptWhileLocked`, `LoginRateLimited` | **Warning** |
+| Account administration | `AccountUnlocked` | Information |
+| Appointments and slots | `AppointmentCreated`, `AppointmentUpdated`, `StaffSlotRangeCreated` | Information |
+| | `AppointmentDeleted`, `StaffSlotDeleted` | **Warning** |
+| Staff records | `StaffCreated`, `StaffUpdated` / `StaffDeleted` | Information / **Warning** |
+| Documents | `*DocumentUploaded`, `*DocumentDownloaded`, `DocumentSearched` | Information |
+| | `*DocumentDeleted`, `*DocumentsPurged` | **Warning** |
+
+**The document methods are the ones the database cannot replace.** A download mints a five-minute read SAS
+and the bytes are then fetched from storage directly, where the application can no longer see them — so
+`PatientDocumentDownloaded` / `StaffDocumentDownloaded`, written **before** the URL leaves the server, is the
+only record that someone was handed access to a patient's file. Nothing writes a `dbo.AuditTrails` row for a
+read.
+
+#### `CorrelationIdMiddleware` and the enrichers
+
+`CRC.Web/Infrastructure/CorrelationIdMiddleware.cs` runs on every request and does four things: it takes the
+inbound `X-Correlation-ID` header **or mints a `Guid.NewGuid().ToString("N")`**, stores it in
+`HttpContext.Items["CorrelationId"]`, **echoes it back on the response**, and pushes three properties onto
+Serilog's `LogContext` for the duration of the request:
+
+```
+CorrelationId   the id above
+UserName        context.User?.Identity?.Name ?? "anonymous"
+RemoteIp        context.Connection.RemoteIpAddress
+```
+
+`Enrich.FromLogContext()` is what carries those onto every event; `Enrich.WithMachineName()` adds the host
+(available to any template that asks for it — neither of the two file templates does). `ErrorResponse.ForUser`
+returns the same id to the browser as `correlationId`, which is how a user's complaint becomes a `grep` over
+`app-*.log`.
+
+**Two consequences of the pipeline order, both real and both observable in the files:**
+
+- **`UseMiddleware<CorrelationIdMiddleware>()` runs AFTER `UseAuthentication()`**, so `UserName` is the
+  signed-in user for ordinary requests — but **a successful login logs `[User:anonymous]`**, because the
+  cookie is issued in the response of the very request being logged. Every `AUDIT Login succeeded` line
+  says `anonymous`; the `Username=` inside the message is the one to read.
+- **`UseRateLimiter()` runs BEFORE it**, so a 429 rejection is logged outside the `LogContext` scope
+  entirely: `AUDIT Login rate limited` lines carry **empty `[Cid:]` and `[User:]`**. Verified —
+  `2026-08-10 15:29:01 [Cid:] [User:] [Ip:::1] AUDIT Login rate limited. RemoteIp=::1`. The `[Ip:]` is
+  filled only because that message happens to carry its own `RemoteIp` property, which the output template
+  picks up by name.
+
+`UseSerilogRequestLogging()` adds one `HTTP {Method} {Path} responded {StatusCode} in {Elapsed} ms` line per
+request to `app-*.log`. `MinimumLevel` is `Information` with `Microsoft.AspNetCore` overridden to `Warning`,
+which is what keeps the framework's own per-request chatter out.
+
+#### 🔴 Secrets are never logged, and the rule is wider than passwords
+
+**No password, password hash, antiforgery token, session cookie, SAS URL or connection string is ever
+written to either channel, and none is ever to be added.** The places this is deliberately upheld:
+
+- **`AuditLog.LoginFailed(context, username, reason)`** takes the username and a *reason string* — never the
+  attempted password. `AccountController` also returns one generic `"Invalid username or password."` to the
+  browser for every failure path, so the log is more specific than the response, never less.
+- **`ChangePassword` and `RegisterUser` log the outcome and the username**, never the value or the hash.
+- **The document methods log `BlobName`** — the key inside the private container — but **never the SAS URL**,
+  which carries a signature that is itself a bearer credential. `BlobName` is useless without one.
+- **Exceptions go to `app-*.log` through `_logger.LogError(ex, …)` and never to the browser**; the user gets
+  a fixed message plus the correlation id (§0).
+
+`CRC.Web/Logs/*.log` is git-ignored. On Azure the files live on the App Service disk and **a publish does not
+delete them** — "Remove additional files at destination" is deliberately off precisely so that a deploy
+cannot erase a year of audit history.
+
+### 9.3 Which channel answers which question
+
+| Question | Channel |
+|---|---|
+| Who changed this branch, and when? | `dbo.AuditTrails` — filter by category and actor on `/AuditTrails` |
+| Who *looked at* this patient's documents? | `audit-*.log` — the table records no reads |
+| Which account tried to log in eleven times from one address? | `audit-*.log` — never reaches the database |
+| What did the summary of that delete say? | `dbo.AuditTrails.AuditTrail_Summary` |
+| Why did this request 500 for that user? | `app-*.log`, by the correlation id the user was shown |
+| Is the actor mechanism still working? | `SELECT COUNT(*) … WHERE User_Id = 0` — §9.1 |
+
+**What neither channel has:** no retention or archiving job for the table (§3.17), no alerting, no
+aggregation, and no cross-channel correlation — an `AuditTrails` row carries no correlation id, so tying a
+database row to the request that produced it means matching on time and actor by hand.
 
 ---
 

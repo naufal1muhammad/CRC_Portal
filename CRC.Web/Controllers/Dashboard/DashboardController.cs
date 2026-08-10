@@ -1,20 +1,18 @@
-﻿using CRC.Data.Data;
+using CRC.Data.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using System.Data;
 
 namespace CRC.Web.Controllers.Dashboard
 {
     [Authorize(Policy = "SuperUserOnly")]
     public class DashboardController : Controller
     {
-        private readonly DatabaseHelper _db;
+        private readonly IDatabaseData _data;
         private readonly IWebHostEnvironment _env;
 
-        public DashboardController(DatabaseHelper db, IWebHostEnvironment env)
+        public DashboardController(IDatabaseData data, IWebHostEnvironment env)
         {
-            _db = db;
+            _data = data;
             _env = env;
         }
 
@@ -33,15 +31,7 @@ namespace CRC.Web.Controllers.Dashboard
         {
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spDashboard_Branch_CountActive",
-                    Array.Empty<SqlParameter>());
-
-                int count = 0;
-                if (dt.Rows.Count > 0 && dt.Columns.Contains("ActiveBranchCount"))
-                {
-                    count = Convert.ToInt32(dt.Rows[0]["ActiveBranchCount"]);
-                }
+                var count = await _data.GetActiveBranchCountAsync();
 
                 return Ok(new { success = true, count });
             }
@@ -59,15 +49,13 @@ namespace CRC.Web.Controllers.Dashboard
         {
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spDashboard_Patient_ByRace",
-                    Array.Empty<SqlParameter>());
+                var rows = await _data.GetPatientsByRaceAsync();
 
-                var items = dt.Rows.Cast<DataRow>()
+                var items = rows
                     .Select(r => new
                     {
-                        label = r["Race_Name"]?.ToString() ?? "Unknown",
-                        count = Convert.ToInt32(r["PatientCount"])
+                        label = r.Race_Name ?? "Unknown",
+                        count = r.PatientCount
                     })
                     .ToList();
 
@@ -87,15 +75,13 @@ namespace CRC.Web.Controllers.Dashboard
         {
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spDashboard_Patient_ByAgeGroup",
-                    Array.Empty<SqlParameter>());
+                var rows = await _data.GetPatientsByAgeGroupAsync();
 
-                var items = dt.Rows.Cast<DataRow>()
+                var items = rows
                     .Select(r => new
                     {
-                        label = r["AgeGroup"]?.ToString() ?? "Unknown",
-                        count = Convert.ToInt32(r["PatientCount"])
+                        label = r.AgeGroup ?? "Unknown",
+                        count = r.PatientCount
                     })
                     .ToList();
 
@@ -115,15 +101,13 @@ namespace CRC.Web.Controllers.Dashboard
         {
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spDashboard_Patient_ByDischargeType",
-                    Array.Empty<SqlParameter>());
+                var rows = await _data.GetPatientsByDischargeTypeAsync();
 
-                var items = dt.Rows.Cast<DataRow>()
+                var items = rows
                     .Select(r => new
                     {
-                        label = r["DischargeType_Name"]?.ToString() ?? "Unknown",
-                        count = Convert.ToInt32(r["PatientCount"])
+                        label = r.DischargeType_Name ?? "Unknown",
+                        count = r.PatientCount
                     })
                     .ToList();
 

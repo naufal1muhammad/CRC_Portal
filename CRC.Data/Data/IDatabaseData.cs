@@ -1283,5 +1283,203 @@ namespace CRC.Data.Data
         // means a document whose Patient_ID no longer matches a patient contributes nothing and its owner
         // cannot be picked from the filter, though the document still appears in an unfiltered search.
         Task<List<string>> GetPatientDocumentPatientNamesAsync();
+
+        // ----- Dashboard (SUPERUSER) -----
+        //
+        // Four aggregates behind /Dashboard, one card and three charts. None declares @User_ID, none takes
+        // a parameter, and none has a filter the caller can influence: the SUPERUSER dashboard is the whole
+        // programme, not a slice of it. Each is a single GROUP BY over dbo.PatientBasic or a COUNT over
+        // dbo.Branch, so the database does the arithmetic and the endpoint only renames the columns.
+        //
+        // 🔴 THE THREE CHARTS DO NOT SHARE A DENOMINATOR, and that is the thing to know before reading one
+        // against another. Race and age count EVERY patient; discharge counts only patients with a
+        // DischargeType_ID, which is the definition of a discharged one (§3.8). Race and discharge are
+        // ordered by count descending — with no tie-breaker, so equal counts arrive in an arbitrary order —
+        // while age is ordered by a CASE that puts its buckets in age order. Each procedure's ORDER BY is
+        // its chart's axis; nothing re-sorts them afterwards.
+
+        // How many branches are switched on. Calls spDashboard_Branch_CountActive — `COUNT(*) … WHERE
+        // ISNULL(Branch_Status, 0) = 1` over dbo.Branch, which is one row and one column, always.
+        //
+        // It is the only number on the dashboard that is not about patients, and the ISNULL is defensive
+        // rather than load-bearing: Branch_Status is BIT NOT NULL (§3.2).
+        Task<int> GetActiveBranchCountAsync();
+
+        // The race pie: how many patients of each race. Calls spDashboard_Patient_ByRace.
+        //
+        // A LEFT JOIN onto LU_RACE with the name COALESCEd, so a Race_ID matching no lookup row and a race
+        // with a blank name both group together under the literal "Unknown". Ordered by count descending.
+        // See PatientsByRaceItem.
+        Task<List<PatientsByRaceItem>> GetPatientsByRaceAsync();
+
+        // The age pie: how many patients in each of five age bands. Calls spDashboard_Patient_ByAgeGroup.
+        //
+        // The bands — 20 and below / 21-40 / 41-60 / 61-80 / 81 and above — exist ONLY in that procedure's
+        // CASE expression, with no gap and no overlap. A sixth branch, "Unknown", is unreachable while
+        // Patient_Age is INT NOT NULL. Ordered by age, not by count. See PatientsByAgeGroupItem.
+        Task<List<PatientsByAgeGroupItem>> GetPatientsByAgeGroupAsync();
+
+        // The discharge bar chart: how many patients left the programme under each reason. Calls
+        // spDashboard_Patient_ByDischargeType.
+        //
+        // 🔴 THE ONLY ONE OF THE THREE WITH A `WHERE` — `DischargeType_ID IS NOT NULL` — so its total is
+        // the discharged population and not the patient population. Ordered by count descending. See
+        // PatientsByDischargeTypeItem.
+        Task<List<PatientsByDischargeTypeItem>> GetPatientsByDischargeTypeAsync();
+
+        // ----- Staff dashboard (STAFF) -----
+        //
+        // Three reads behind /StaffDashboard, the landing page of a UserType = 3 account. They are the same
+        // nine columns over the same joins three times, differing only in the date window: one day, the
+        // rolling next seven days, and one calendar month. None declares @User_ID; none writes anything.
+        //
+        // 🔴 `staffId` IS THE ACCESS CONTROL, AND IT IS AN ORDINARY ARGUMENT HERE ON PURPOSE.
+        // Every one of the three filters on `pa.Staff_ID = @Staff_ID`, and that predicate is the only thing
+        // standing between a clinician and every other clinician's diary. The value comes from the caller's
+        // own `StaffId` claim, and StaffDashboardController resolves it — refusing the request with a
+        // message when the claim is absent — BEFORE calling any of these. That resolution deliberately does
+        // not live in this layer: `@User_ID`'s actor value is injected here because it is bookkeeping
+        // nobody should have to remember, but a scoping predicate is a business argument, and a data-access
+        // method that reached for the current user's claim to fill one would be doing authorization out of
+        // sight of the endpoint that is accountable for it. See CoreFlow.md §4.13.
+        //
+        // A staff id that matches nothing returns an EMPTY LIST, not an error — including a well-formed id
+        // belonging to somebody else, which is what makes the predicate a filter rather than a check. The
+        // three procedures order by date, then start time, then id; the endpoint then re-sorts by the same
+        // keys in C# (§4.13) — redundant, preserved, and harmless.
+
+        // One staff member's appointments on one date. Calls spStaffDashboard_TodayAppointments; the
+        // endpoint always passes DateTime.Today, but the procedure takes any date.
+        Task<List<StaffDashboardAppointmentItem>> GetStaffTodayAppointmentsAsync(string staffId, DateTime forDate);
+
+        // One staff member's next seven days. Calls spStaffDashboard_ThisWeekAppointments.
+        //
+        // 🔴 A ROLLING WINDOW, NOT A CALENDAR WEEK: `>= @FromDate AND < DATEADD(DAY, 7, @FromDate)`, start
+        // inclusive and end exclusive. It has nothing to do with Monday, and the card's "this week" label
+        // means "the next seven days from today" — today included, the same day next week excluded.
+        Task<List<StaffDashboardAppointmentItem>> GetStaffWeekAppointmentsAsync(string staffId, DateTime fromDate);
+
+        // One staff member's calendar month. Calls spStaffDashboard_ThisMonthAppointments, which builds its
+        // own window with DATEFROMPARTS(@Year, @Month, 1) and DATEADD(MONTH, 1, …) — so month length and
+        // leap years are the database's problem, not the caller's.
+        //
+        // 🔴 DATEFROMPARTS THROWS ON AN OUT-OF-RANGE MONTH rather than returning nothing, which is why the
+        // endpoint validates 1-12 before calling and answers "Invalid month value." itself. The year is not
+        // validated anywhere: DATEFROMPARTS accepts 1 through 9999 and a year outside that raises the same
+        // SQL error, caught as a generic failure message.
+        Task<List<StaffDashboardAppointmentItem>> GetStaffMonthAppointmentsAsync(string staffId, int year, int month);
+
+        // ----- Patient tracker -----
+        //
+        // Five reads behind /PatientTracker, the ADMIN-or-SUPERUSER grid of every patient against the four
+        // journey types. None takes a parameter, none declares @User_ID, and none writes: the page loads the
+        // whole programme in one round of five queries and does all of its filtering in the browser.
+        //
+        // 🔴 "STALLED" IS DEFINED TWICE, IN SQL, AND NOWHERE ELSE. A patient is stalled when they have at
+        // least one appointment AND the status of their most recent one — by date, then start time, then id,
+        // descending — is not 'Scheduled'. A patient with no appointment at all is not stalled.
+        // spPatientTracker_Patients_List computes it per patient as an IsStalled bit over a LEFT JOIN;
+        // spPatientTracker_StalledCount_Get computes the same thing as a COUNT over an INNER JOIN. The two
+        // agree today because the two CTEs are character-for-character the same. Nothing enforces that, no
+        // test covers it, and the failure mode is a badge that disagrees with the rows beneath it. If you
+        // change one, change both — and see CoreFlow.md §5.10, which is where this rule is written down.
+
+        // The four journey types, for the tracker's column headers. Calls
+        // spPatientTracker_AppointmentTypes_List, ordered by id.
+        //
+        // IT IS A SECOND PROCEDURE OVER LU_PJ_APP_TYPE, returning what spLU_PJ_AppType_List already
+        // returns, in the same order. Two procedures, therefore two methods, per the one-method-per-
+        // procedure rule at the top of this file — GetJourneyAppointmentTypesAsync is the lookup one. This
+        // is not a duplicate to collapse; collapsing it would put a call site in one feature's data path on
+        // another feature's procedure, and the .sql files are what would then drift apart unnoticed.
+        Task<List<LookupItem>> GetTrackerAppointmentTypesAsync();
+
+        // Every patient, with the stalled flag. Calls spPatientTracker_Patients_List, ordered by name then
+        // id. Active and discharged alike — the tracker is a whole-programme view. See
+        // PatientTrackerPatientItem for what IsStalled means.
+        Task<List<PatientTrackerPatientItem>> GetTrackerPatientsAsync();
+
+        // The latest booking per patient per journey type. Calls spPatientTracker_Appointments_List.
+        //
+        // ONE ROW PER (Patient_ID, PjAppType_ID) — the newest, by date then start time then id — not one
+        // row per appointment. The result set has no outer ORDER BY because the caller indexes it by the
+        // two ids. See PatientTrackerAppointmentItem.
+        Task<List<PatientTrackerAppointmentItem>> GetTrackerAppointmentsAsync();
+
+        // Every completed journey step. Calls spPatientTracker_Procedures_List — a bare read of
+        // dbo.PatientJourney, ALL rows, ordered by patient then date then id.
+        //
+        // The counterpart of the list above: that one is what was booked, this one is what was done, and
+        // the page shows both because nothing in the schema ties a journey row to an appointment. Note that
+        // this one carries the type's NAME (dbo.PatientJourney stores no PjAppType_ID) where that one
+        // carries its ID.
+        Task<List<PatientTrackerProcedureItem>> GetTrackerProceduresAsync();
+
+        // The stalled badge. Calls spPatientTracker_StalledCount_Get — one row, one column, always.
+        //
+        // The same definition as IsStalled above, computed independently over an INNER JOIN onto
+        // dbo.PatientBasic, so an appointment whose Patient_ID no longer matches a patient is excluded
+        // here. The per-patient list LEFT JOINs from the patient side and cannot see such a row at all, so
+        // the two still agree — for a reason neither procedure states.
+        Task<int> GetTrackerStalledCountAsync();
+
+        // ----- Audit trails (SUPERUSER) -----
+        //
+        // Four reads behind /AuditTrails, the page where the whole plan's `@User_ID` work becomes visible to
+        // a human: dbo.AuditTrails holds the rows nineteen stored procedures write from inside themselves,
+        // and these four are the only things in the portal that read them. Nothing here writes an audit row
+        // — auditing the reading of the audit trail is not a thing this codebase does.
+        //
+        // 🔴 NONE OF THE FOUR DECLARES `@User_ID`, and spAuditTrails_Search's `@UserId INT = NULL` is NOT an
+        // exception to that — different name, different meaning, and the difference is the whole point.
+        // `@User_ID` (with the underscore) is the actor a write procedure records; `@UserId` here is a
+        // FILTER over rows already written, an ordinary argument the SUPERUSER chooses from a dropdown.
+        // Filling it from DatabaseHelper.CurrentUserId would silently narrow every search to the searcher's
+        // own actions. It is the one place in the codebase where the two spellings sit close enough to be
+        // confused, which is why they are named apart here. See CoreFlow.md §0.1 and §9.
+        //
+        // The three lookup procedures read their values back out of dbo.AuditTrails itself with SELECT
+        // DISTINCT rather than from any catalogue, so the filter dropdowns can only ever offer combinations
+        // that have actually happened — and an action or category that has never been recorded is not
+        // offerable, not even to prove it returns nothing.
+
+        // The audit search. Calls spAuditTrails_Search; every one of the five filters is optional and NULL
+        // means "no filter". Ordered by AuditTrail_EventUTC descending — newest first.
+        //
+        // 🔴 THE DATES ARE MALAYSIAN, THE STORAGE IS UTC. The procedure compares
+        // `DATEADD(HOUR, 8, AuditTrail_EventUTC)` against the bounds and returns that same shifted value as
+        // AuditTrail_EventMYT, so what is filtered is what is displayed. `@ToDate` is INCLUSIVE of its whole
+        // day — the predicate is `< DATEADD(DAY, 1, @ToDate)` — so a from/to pair naming one date returns
+        // that entire Malaysian day. Both are DATE parameters: a time of day on either is discarded.
+        //
+        // @Action and @Category are EXACT matches, not LIKE, because both come from the dropdowns below.
+        Task<List<AuditTrailSearchItem>> SearchAuditTrailsAsync(int? userId, DateTime? fromDate,
+            DateTime? toDate, string? action, string? category);
+
+        // The actor filter: every user who appears in dbo.AuditTrails, as (id, name). Calls
+        // spAuditTrails_LookupUsers.
+        //
+        // 🔴 ITS `INNER JOIN dbo.Users` HIDES EXACTLY THE ROWS SOMEBODY LOOKING AT AN AUDIT TRAIL MOST WANTS
+        // TO FIND. An audit row whose actor was never recorded (User_Id = 0 — the silent failure of §0.1) or
+        // whose user has since been deleted joins to nothing and its actor is not offered in the dropdown,
+        // even though the rows themselves are returned by the search above with a blank name. The dropdown
+        // is therefore not a complete list of who is in the table. Query dbo.AuditTrails directly to be
+        // sure — `SELECT DISTINCT User_Id FROM dbo.AuditTrails` is the honest version.
+        //
+        // Comes back as LookupItem: the procedure's User_ID is an INT, and the ordinal-mapping helper
+        // stringifies it, which is exactly what the endpoint's JSON has always carried ("id": "4").
+        Task<List<LookupItem>> GetAuditTrailUsersAsync();
+
+        // The action filter — the distinct AuditTrail_Action values actually present, ordered. Calls
+        // spAuditTrails_LookupActions. In practice INSERT, UPDATE and DELETE, because that is all the
+        // nineteen writing procedures ever record; the column is a VARCHAR(20) with no constraint, so it is
+        // a fact about the data rather than a promise.
+        Task<List<string>> GetAuditTrailActionsAsync();
+
+        // The category filter — the distinct AuditTrail_Category values actually present, ordered. Calls
+        // spAuditTrails_LookupCategories. The categories name the TABLE a write touched (Branch, Staff,
+        // StaffSlots, PatientBasic, PatientAppointment, PatientDocument, StaffDocument), not the screen it
+        // came from, and both lookups drop NULLs and blanks before the DISTINCT.
+        Task<List<string>> GetAuditTrailCategoriesAsync();
     }
 }

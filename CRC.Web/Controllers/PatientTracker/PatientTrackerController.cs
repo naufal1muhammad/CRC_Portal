@@ -1,20 +1,18 @@
 using CRC.Data.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using System.Data;
 
 namespace CRC.Web.Controllers.PatientTracker
 {
     [Authorize(Policy = "AdminOrSuper")]
     public class PatientTrackerController : Controller
     {
-        private readonly DatabaseHelper _db;
+        private readonly IDatabaseData _data;
         private readonly ILogger<PatientTrackerController> _logger;
 
-        public PatientTrackerController(DatabaseHelper db, ILogger<PatientTrackerController> logger)
+        public PatientTrackerController(IDatabaseData data, ILogger<PatientTrackerController> logger)
         {
-            _db = db;
+            _data = data;
             _logger = logger;
         }
 
@@ -31,16 +29,13 @@ namespace CRC.Web.Controllers.PatientTracker
         {
             try
             {
-                var dt = await _db.ExecuteDataTableAsync(
-                    "spPatientTracker_AppointmentTypes_List",
-                    Array.Empty<SqlParameter>()
-                );
+                var types = await _data.GetTrackerAppointmentTypesAsync();
 
-                var list = dt.Rows.Cast<DataRow>()
-                    .Select(r => new
+                var list = types
+                    .Select(t => new
                     {
-                        pjAppTypeId = r["PjAppType_ID"]?.ToString() ?? "",
-                        pjAppTypeName = r["PjAppType_Name"]?.ToString() ?? ""
+                        pjAppTypeId = t.Id,
+                        pjAppTypeName = t.Name
                     })
                     .Where(x => !string.IsNullOrWhiteSpace(x.pjAppTypeId))
                     .ToList();
@@ -59,84 +54,58 @@ namespace CRC.Web.Controllers.PatientTracker
         {
             try
             {
-                var dtTypes = await _db.ExecuteDataTableAsync(
-                    "spPatientTracker_AppointmentTypes_List",
-                    Array.Empty<SqlParameter>()
-                );
+                // Five sequential reads, in the order the page's payload is assembled. Nothing here is a
+                // unit of work: they are independent parameterless selects, and the tracker tolerates the
+                // fact that a row written between the first and the last would be seen by only some of them.
+                var typeRows = await _data.GetTrackerAppointmentTypesAsync();
+                var patientRows = await _data.GetTrackerPatientsAsync();
+                var appointmentRows = await _data.GetTrackerAppointmentsAsync();
+                var procedureRows = await _data.GetTrackerProceduresAsync();
+                var stalledCount = await _data.GetTrackerStalledCountAsync();
 
-                var dtPatients = await _db.ExecuteDataTableAsync(
-                    "spPatientTracker_Patients_List",
-                    Array.Empty<SqlParameter>()
-                );
-
-                var dtAppts = await _db.ExecuteDataTableAsync(
-                    "spPatientTracker_Appointments_List",
-                    Array.Empty<SqlParameter>()
-                );
-
-                var dtProcs = await _db.ExecuteDataTableAsync(
-                    "spPatientTracker_Procedures_List",
-                    Array.Empty<SqlParameter>()
-                );
-
-                var dtStalled = await _db.ExecuteDataTableAsync(
-                    "spPatientTracker_StalledCount_Get",
-                    Array.Empty<SqlParameter>()
-                );
-
-                var appointmentTypes = dtTypes.Rows.Cast<DataRow>()
-                    .Select(r => new
+                var appointmentTypes = typeRows
+                    .Select(t => new
                     {
-                        pjAppTypeId = r["PjAppType_ID"]?.ToString() ?? "",
-                        pjAppTypeName = r["PjAppType_Name"]?.ToString() ?? ""
+                        pjAppTypeId = t.Id,
+                        pjAppTypeName = t.Name
                     })
                     .Where(x => !string.IsNullOrWhiteSpace(x.pjAppTypeId))
                     .ToList();
 
-                var patients = dtPatients.Rows.Cast<DataRow>()
+                var patients = patientRows
                     .Select(r => new
                     {
-                        patientId = r["Patient_ID"]?.ToString() ?? "",
-                        name = r["Patient_Name"]?.ToString() ?? "",
-                        nric = r["Patient_NRIC"]?.ToString() ?? "",
-                        phone = r["Patient_Phone"]?.ToString() ?? "",
-                        age = r["Patient_Age"] == DBNull.Value ? 0 : Convert.ToInt32(r["Patient_Age"]),
-                        gender = r["Patient_Gender"]?.ToString() ?? "",
-                        dischargeDate = r["Patient_DischargeDate"] == DBNull.Value
-                            ? ""
-                            : Convert.ToDateTime(r["Patient_DischargeDate"]).ToString("dd/MM/yyyy"),
-                        isStalled = r["IsStalled"] != DBNull.Value && Convert.ToBoolean(r["IsStalled"])
+                        patientId = r.Patient_ID,
+                        name = r.Patient_Name,
+                        nric = r.Patient_NRIC,
+                        phone = r.Patient_Phone,
+                        age = r.Patient_Age ?? 0,
+                        gender = r.Patient_Gender,
+                        dischargeDate = r.Patient_DischargeDate?.ToString("dd/MM/yyyy") ?? "",
+                        // IsStalled is a BIT the procedure computes; see PatientTrackerPatientItem for what
+                        // "stalled" means and for the fact that the badge below computes it a second time.
+                        isStalled = r.IsStalled ?? false
                     })
                     .ToList();
 
-                var appointments = dtAppts.Rows.Cast<DataRow>()
+                var appointments = appointmentRows
                     .Select(r => new
                     {
-                        patientId = r["Patient_ID"]?.ToString() ?? "",
-                        pjAppTypeId = r["PjAppType_ID"]?.ToString() ?? "",
-                        status = r["PatientAppointment_Status"]?.ToString() ?? "",
-                        date = r["PatientAppointment_Date"] == DBNull.Value
-                            ? ""
-                            : Convert.ToDateTime(r["PatientAppointment_Date"]).ToString("dd/MM/yyyy")
+                        patientId = r.Patient_ID,
+                        pjAppTypeId = r.PjAppType_ID,
+                        status = r.PatientAppointment_Status,
+                        date = r.PatientAppointment_Date?.ToString("dd/MM/yyyy") ?? ""
                     })
                     .ToList();
 
-                var procedures = dtProcs.Rows.Cast<DataRow>()
+                var procedures = procedureRows
                     .Select(r => new
                     {
-                        patientId = r["Patient_ID"]?.ToString() ?? "",
-                        pjAppTypeName = r["PjAppType_Name"]?.ToString() ?? "",
-                        date = r["PatientJourney_Date"] == DBNull.Value
-                            ? ""
-                            : Convert.ToDateTime(r["PatientJourney_Date"]).ToString("dd/MM/yyyy")
+                        patientId = r.Patient_ID,
+                        pjAppTypeName = r.PjAppType_Name,
+                        date = r.PatientJourney_Date?.ToString("dd/MM/yyyy") ?? ""
                     })
                     .ToList();
-
-                int stalledCount = 0;
-                if (dtStalled.Rows.Count > 0 && dtStalled.Rows[0]["StalledCount"] != DBNull.Value)
-                {
-                    stalledCount = Convert.ToInt32(dtStalled.Rows[0]["StalledCount"]);
-                }
 
                 return Ok(new
                 {

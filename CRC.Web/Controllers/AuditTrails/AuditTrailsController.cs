@@ -1,19 +1,17 @@
-﻿using CRC.Data.Data;
+using CRC.Data.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using System.Data;
 
 namespace CRC.Web.Controllers.AuditTrails
 {
     [Authorize(Policy = "SuperUserOnly")]
     public class AuditTrailsController : Controller
     {
-        private readonly DatabaseHelper _db;
+        private readonly IDatabaseData _data;
 
-        public AuditTrailsController(DatabaseHelper db)
+        public AuditTrailsController(IDatabaseData data)
         {
-            _db = db;
+            _data = data;
         }
 
         // GET: /AuditTrails
@@ -29,30 +27,32 @@ namespace CRC.Web.Controllers.AuditTrails
         {
             try
             {
-                var empty = Array.Empty<SqlParameter>();
+                // The three filter dropdowns are built from dbo.AuditTrails itself, not from any catalogue,
+                // so they can only offer values that have actually been recorded. The users lookup INNER
+                // JOINs dbo.Users, which means an actor of 0 — the silent failure of CoreFlow.md §0.1 — or
+                // a since-deleted user is absent here while its rows still come back from Search below.
+                var userRows = await _data.GetAuditTrailUsersAsync();
+                var actionRows = await _data.GetAuditTrailActionsAsync();
+                var categoryRows = await _data.GetAuditTrailCategoriesAsync();
 
-                var dtUsers = await _db.ExecuteDataTableAsync("spAuditTrails_LookupUsers", empty);
-                var dtActions = await _db.ExecuteDataTableAsync("spAuditTrails_LookupActions", empty);
-                var dtCategories = await _db.ExecuteDataTableAsync("spAuditTrails_LookupCategories", empty);
-
-                var users = dtUsers.Rows.Cast<DataRow>()
-                    .Select(r => new
+                var users = userRows
+                    .Select(u => new
                     {
-                        id = r["User_ID"] == DBNull.Value ? null : r["User_ID"]?.ToString(),
-                        name = r["User_Name"]?.ToString()
+                        id = u.Id,
+                        name = u.Name
                     })
                     .Where(x => !string.IsNullOrWhiteSpace(x.id) && !string.IsNullOrWhiteSpace(x.name))
                     .OrderBy(x => x.name)
                     .ToList();
 
-                var actions = dtActions.Rows.Cast<DataRow>()
-                    .Select(r => new { name = r["AuditTrail_Action"]?.ToString() })
+                var actions = actionRows
+                    .Select(a => new { name = a })
                     .Where(x => !string.IsNullOrWhiteSpace(x.name))
                     .OrderBy(x => x.name)
                     .ToList();
 
-                var categories = dtCategories.Rows.Cast<DataRow>()
-                    .Select(r => new { name = r["AuditTrail_Category"]?.ToString() })
+                var categories = categoryRows
+                    .Select(c => new { name = c })
                     .Where(x => !string.IsNullOrWhiteSpace(x.name))
                     .OrderBy(x => x.name)
                     .ToList();
@@ -105,28 +105,27 @@ namespace CRC.Web.Controllers.AuditTrails
 
             try
             {
-                var parameters = new[]
-                {
-                    new SqlParameter("@UserId", model.UserId.HasValue ? (object)model.UserId.Value : DBNull.Value),
-                    new SqlParameter("@FromDate", fromDate.HasValue ? (object)fromDate.Value : DBNull.Value),
-                    new SqlParameter("@ToDate", toDate.HasValue ? (object)toDate.Value : DBNull.Value),
-                    new SqlParameter("@Action", string.IsNullOrWhiteSpace(action) ? (object)DBNull.Value : action),
-                    new SqlParameter("@Category", string.IsNullOrWhiteSpace(category) ? (object)DBNull.Value : category)
-                };
+                // 🔴 model.UserId is A FILTER the SUPERUSER picked, not an actor. The procedure's parameter
+                // is spelled @UserId (no underscore) precisely because it is not the @User_ID of §0.1, and
+                // it is passed straight through: resolving it from the current user's claim would narrow
+                // every search to the searcher's own trail. An unparseable date is dropped to null — "no
+                // filter" — rather than rejected, which is the behaviour the page has always had.
+                var rows = await _data.SearchAuditTrailsAsync(
+                    model.UserId,
+                    fromDate,
+                    toDate,
+                    string.IsNullOrWhiteSpace(action) ? null : action,
+                    string.IsNullOrWhiteSpace(category) ? null : category);
 
-                var dt = await _db.ExecuteDataTableAsync("spAuditTrails_Search", parameters);
-
-                var list = dt.Rows.Cast<DataRow>()
+                var list = rows
                     .Select(r => new
                     {
-                        userId = r["User_ID"] == DBNull.Value ? 0 : Convert.ToInt32(r["User_ID"]),
-                        name = r["User_Name"]?.ToString() ?? string.Empty,
-                        dateTime = r["AuditTrail_EventMYT"] == DBNull.Value
-                            ? string.Empty
-                            : Convert.ToDateTime(r["AuditTrail_EventMYT"]).ToString("dd/MM/yyyy HH:mm"),
-                        action = r["AuditTrail_Action"]?.ToString() ?? string.Empty,
-                        category = r["AuditTrail_Category"]?.ToString() ?? string.Empty,
-                        summary = r["AuditTrail_Summary"]?.ToString() ?? string.Empty
+                        userId = r.User_ID ?? 0,
+                        name = r.User_Name ?? string.Empty,
+                        dateTime = r.AuditTrail_EventMYT?.ToString("dd/MM/yyyy HH:mm") ?? string.Empty,
+                        action = r.AuditTrail_Action ?? string.Empty,
+                        category = r.AuditTrail_Category ?? string.Empty,
+                        summary = r.AuditTrail_Summary ?? string.Empty
                     })
                     .ToList();
 

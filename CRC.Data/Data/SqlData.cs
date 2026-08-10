@@ -2264,5 +2264,245 @@ namespace CRC.Data.Data
 
             return results.ToList();
         }
+
+        // ----- Dashboard (SUPERUSER) -----
+        //
+        // Four parameterless aggregates. No @User_ID on any of them — verified by reading all four
+        // parameter lists, which are empty. Nothing here writes, so nothing here audits.
+
+        public async Task<int> GetActiveBranchCountAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // ExecuteScalarAsync, not QuerySingleAsync, and the difference is only visible in a case that
+            // cannot happen: `COUNT(*)` with no GROUP BY always returns exactly one row, so both are
+            // correct — but ExecuteScalarAsync answers 0 for an empty result set where QuerySingleAsync
+            // throws, which is precisely what the DataTable code this replaces did with its
+            // `if (dt.Rows.Count > 0)` guard. The defensive zero stays defensive.
+            return await connection.ExecuteScalarAsync<int>(
+                "dbo.spDashboard_Branch_CountActive",
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task<List<PatientsByRaceItem>> GetPatientsByRaceAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // Mapped by name: the procedure's COALESCE is aliased back to Race_Name, so the two columns
+            // carry the names the model declares. Ordered by count descending, inside SQL.
+            var results = await connection.QueryAsync<PatientsByRaceItem>(
+                "dbo.spDashboard_Patient_ByRace",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<PatientsByAgeGroupItem>> GetPatientsByAgeGroupAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // The five age bands and their order are both the procedure's, computed in a CASE over
+            // dbo.PatientBasic.Patient_Age and ordered by a second CASE. There is no C# equivalent to keep
+            // in step, and there must not be one.
+            var results = await connection.QueryAsync<PatientsByAgeGroupItem>(
+                "dbo.spDashboard_Patient_ByAgeGroup",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<PatientsByDischargeTypeItem>> GetPatientsByDischargeTypeAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // 🔴 The only one of the three charts with a WHERE: `DischargeType_ID IS NOT NULL`. Its total is
+            // the discharged population, not the patient population, and the other two cannot be read
+            // against it.
+            var results = await connection.QueryAsync<PatientsByDischargeTypeItem>(
+                "dbo.spDashboard_Patient_ByDischargeType",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        // ----- Staff dashboard (STAFF) -----
+        //
+        // 🔴 staffId IS A SCOPING PREDICATE, NOT A CONVENIENCE. All three procedures filter on
+        // `pa.Staff_ID = @Staff_ID`, and that is the only thing that keeps one clinician out of another's
+        // diary. The value arrives as an argument, resolved from the caller's own StaffId claim by
+        // StaffDashboardController. NOTHING IN THIS CLASS MAY FILL IT FROM A CLAIM: the @User_ID actor
+        // injection is bookkeeping, this is authorization, and authorization belongs where the endpoint can
+        // be held to it. None of the three declares @User_ID; none writes an audit row.
+
+        public async Task<List<StaffDashboardAppointmentItem>> GetStaffTodayAppointmentsAsync(string staffId, DateTime forDate)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var results = await connection.QueryAsync<StaffDashboardAppointmentItem>(
+                "dbo.spStaffDashboard_TodayAppointments",
+                new { Staff_ID = staffId, ForDate = forDate },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<StaffDashboardAppointmentItem>> GetStaffWeekAppointmentsAsync(string staffId, DateTime fromDate)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // The seven-day window is the procedure's: @FromDate inclusive to @FromDate + 7 days exclusive.
+            // A rolling week from the date given, not a calendar week.
+            var results = await connection.QueryAsync<StaffDashboardAppointmentItem>(
+                "dbo.spStaffDashboard_ThisWeekAppointments",
+                new { Staff_ID = staffId, FromDate = fromDate },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<StaffDashboardAppointmentItem>> GetStaffMonthAppointmentsAsync(string staffId, int year, int month)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // DATEFROMPARTS(@Year, @Month, 1) inside the procedure THROWS on a month outside 1-12 rather
+            // than returning nothing, which is why the caller validates the range first and answers for
+            // itself. Nothing is validated here.
+            var results = await connection.QueryAsync<StaffDashboardAppointmentItem>(
+                "dbo.spStaffDashboard_ThisMonthAppointments",
+                new { Staff_ID = staffId, Year = year, Month = month },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        // ----- Patient tracker -----
+        //
+        // Five parameterless reads, none declaring @User_ID, loaded together by one endpoint. The page
+        // filters client-side, so everything the tracker can show is fetched on every load.
+
+        // The tracker's own copy of the journey-type list — a different procedure from
+        // spLU_PJ_AppType_List over the same table, and therefore its own method. Same two-column shape, so
+        // the ordinal helper serves it; see the note above QueryLookupAsync.
+        public Task<List<LookupItem>> GetTrackerAppointmentTypesAsync() =>
+            QueryLookupAsync("dbo.spPatientTracker_AppointmentTypes_List");
+
+        public async Task<List<PatientTrackerPatientItem>> GetTrackerPatientsAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // 🔴 IsStalled is computed in SQL — latest appointment per patient, and stalled when its status
+            // is not 'Scheduled'. spPatientTracker_StalledCount_Get repeats the same CTE to produce the
+            // badge. Two copies of one business rule; change one and you must change the other.
+            var results = await connection.QueryAsync<PatientTrackerPatientItem>(
+                "dbo.spPatientTracker_Patients_List",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<PatientTrackerAppointmentItem>> GetTrackerAppointmentsAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // One row per (patient, journey type) — the latest booking only, ranked inside the procedure.
+            // No outer ORDER BY: the caller indexes the result by the two ids rather than reading it in
+            // sequence.
+            var results = await connection.QueryAsync<PatientTrackerAppointmentItem>(
+                "dbo.spPatientTracker_Appointments_List",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<PatientTrackerProcedureItem>> GetTrackerProceduresAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // Every dbo.PatientJourney row, unfiltered — what was DONE, against the list above, which is
+            // what was BOOKED. The type arrives as a name here and as an id there, because the two tables
+            // store it differently.
+            var results = await connection.QueryAsync<PatientTrackerProcedureItem>(
+                "dbo.spPatientTracker_Procedures_List",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<int> GetTrackerStalledCountAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // ExecuteScalarAsync for the same reason as GetActiveBranchCountAsync: one guaranteed row, and
+            // an empty set answers 0 instead of throwing, exactly as the DataTable guard did.
+            return await connection.ExecuteScalarAsync<int>(
+                "dbo.spPatientTracker_StalledCount_Get",
+                commandType: CommandType.StoredProcedure);
+        }
+
+        // ----- Audit trails (SUPERUSER) -----
+        //
+        // The only four procedures in the portal that READ dbo.AuditTrails. Not one of them declares
+        // @User_ID and not one writes a row: looking at the audit trail is not itself audited.
+        //
+        // 🔴 spAuditTrails_Search's `@UserId INT = NULL` IS A FILTER, NOT AN ACTOR. It is spelled without
+        // the underscore, it is chosen by the SUPERUSER from a dropdown, and it must be passed straight
+        // through from the caller. Filling it from _databaseHelper.CurrentUserId — the reflex nineteen
+        // other call sites in this file deliberately have — would quietly restrict every search to the
+        // searcher's own actions and look like an empty audit trail for everybody else.
+
+        public async Task<List<AuditTrailSearchItem>> SearchAuditTrailsAsync(int? userId, DateTime? fromDate,
+            DateTime? toDate, string? action, string? category)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // All five parameters default to NULL in the procedure and NULL means "no filter" for each, so
+            // nulls are passed as nulls rather than being branched on here. The dates are DATE parameters
+            // compared against DATEADD(HOUR, 8, AuditTrail_EventUTC) — Malaysian local time, with @ToDate
+            // inclusive of its whole day.
+            var results = await connection.QueryAsync<AuditTrailSearchItem>(
+                "dbo.spAuditTrails_Search",
+                new
+                {
+                    UserId = userId,
+                    FromDate = fromDate,
+                    ToDate = toDate,
+                    Action = action,
+                    Category = category
+                },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        // (User_ID, User_Name) — the two-column shape the ordinal helper exists for, with an INT id that it
+        // stringifies. That stringification is not incidental: the endpoint's JSON has always carried this
+        // id as a string, because DataRow["User_ID"].ToString() did the same.
+        public Task<List<LookupItem>> GetAuditTrailUsersAsync() =>
+            QueryLookupAsync("dbo.spAuditTrails_LookupUsers");
+
+        public async Task<List<string>> GetAuditTrailActionsAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // ONE column, so the row type is the column type — QueryLookupAsync cannot serve these two,
+            // because it reads ordinal 1 and there is no ordinal 1. The procedure's DISTINCT, its exclusion
+            // of NULL and blank, and its ORDER BY are the whole contract.
+            var results = await connection.QueryAsync<string>(
+                "dbo.spAuditTrails_LookupActions",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<string>> GetAuditTrailCategoriesAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            var results = await connection.QueryAsync<string>(
+                "dbo.spAuditTrails_LookupCategories",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
     }
 }
