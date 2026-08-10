@@ -1166,5 +1166,122 @@ namespace CRC.Data.Data
         // NO CALLER YET. It is wrapped here because Prompt 7 owns the spPatientDocument_* family; Prompt 8
         // wires it to the Documents page. Do not create a second method for it there.
         Task<List<LookupItem>> GetPatientDocumentTypeFiltersAsync();
+
+        // ----- Document settings (Admin > Settings) -----
+        //
+        // The document RULES, not the documents: which document types a discharge reason or a staff type
+        // REQUIRES. Two tiny tables, dbo.PatientDocumentSettings and dbo.StaffDocumentSettings, each a
+        // composite-key row whose EXISTENCE is the rule — there is no "mandatory" flag stored anywhere.
+        // Both are edited by the one SUPERUSER Settings screen. See CoreFlow.md §3.16, §3.17 and §8.
+        //
+        // NONE OF THE FIVE PROCEDURES IN THIS AREA DECLARES @User_ID. Every read and every write here is
+        // outside the dbo.AuditTrails mechanism entirely: changing what the whole programme treats as a
+        // mandatory document writes NO audit row, in either channel. That is the state of the code, not a
+        // recommendation — see §8.
+        //
+        // 🔴 THE TWO FAMILIES SAVE DIFFERENTLY, AND THE ASYMMETRY IS THE THING TO KNOW ABOUT THIS AREA.
+        // The patient side replaces a discharge type's whole set in ONE procedure —
+        // spPatientDocumentSettings_SaveForDischargeType deletes and re-inserts inside a single statement
+        // batch, so it is implicitly atomic. The staff side has NO such procedure: the caller deletes the
+        // staff type's rows and then inserts the new ones ONE AT A TIME, N+1 round trips with no
+        // transaction around them, exactly as SettingsController has always done it. A failure between the
+        // delete and the last insert leaves that staff type with a PARTIAL set of mandatory documents and
+        // reports an error, and nothing rolls it back.
+        //
+        // That is a real difference in safety and it is left ALONE on purpose: adding a transaction would
+        // be a behaviour change, and the Dapper migration does not make behaviour changes. It is written
+        // down here, and in CoreFlow.md §5.9, so that whoever decides to fix it does so deliberately. The
+        // sequencing stays in the controller — these two methods are one procedure each, per the rule at
+        // the top of this file, and neither is a unit of work.
+        //
+        // (spStaffDocumentSettings_GetByStaffType, the staff read, is NOT here: it was wrapped in Prompt 3
+        // as GetStaffDocumentSettingsAsync under `----- Staff documents -----`, because StaffController's
+        // mandatory-document check needs it too. Reuse it; do not add a second method.)
+
+        // The document types a patient must have on file before being discharged under one reason. Calls
+        // spPatientDocumentSettings_GetByDischargeType, ordered by the document type's name.
+        //
+        // 🔴 IT RETURNS ONLY THE MANDATORY TYPES — the opposite of GetStaffDocumentSettingsAsync, which
+        // returns every type with an IsMandatory flag. An empty list means "nothing is required for this
+        // discharge reason", which is also what an UNKNOWN dischargeTypeId returns: the procedure filters
+        // and does not validate. See PatientDocumentSetting.
+        Task<List<PatientDocumentSetting>> GetDischargeDocumentSettingsAsync(string dischargeTypeId);
+
+        // Replaces the WHOLE set of mandatory document types for one discharge reason. Calls
+        // spPatientDocumentSettings_SaveForDischargeType.
+        //
+        // 🔴 THE IDS ARRIVE AS ONE COMMA-SEPARATED STRING, not as a list, because the procedure takes
+        // `@PatientDocumentType_IDs NVARCHAR(MAX)` and splits it with STRING_SPLIT. NULL or blank is not an
+        // error and not a no-op: it CLEARS the discharge reason's settings, which is how the screen saves
+        // an empty checklist. The caller builds the CSV.
+        //
+        // The procedure does the delete and the re-insert itself, in one batch, so the replace cannot be
+        // observed half-done — unlike the staff side above. It RAISERRORs severity 11 on an unrecognised
+        // @DischargeType_ID (the only validation in this area), which surfaces as a SqlException; ids that
+        // do not match LU_PATDOCUMENTTYPE are silently dropped by an INNER JOIN instead.
+        Task SaveDischargeDocumentSettingsAsync(string dischargeTypeId, string? patientDocumentTypeIdsCsv);
+
+        // Clears every mandatory-document row for one staff type. Calls
+        // spStaffDocumentSettings_DeleteByStaffType — a bare DELETE … WHERE StaffType_ID = @StaffType_ID.
+        //
+        // 🔴 STEP ONE OF TWO. This is not a save on its own: the caller follows it with one
+        // AddStaffDocumentSettingAsync per selected type, outside any transaction. See the banner above.
+        // An unknown staff type deletes nothing and does not complain.
+        Task DeleteStaffDocumentSettingsAsync(string staffTypeId);
+
+        // Records ONE document type as mandatory for a staff type. Calls spStaffDocumentSettings_Insert —
+        // a bare INSERT with no upsert and no existence check, so calling it twice for the same
+        // (StaffType_ID, StaffDocumentType_ID) violates the composite primary key and throws.
+        //
+        // 🔴 STEP TWO OF TWO, CALLED N TIMES. It is safe only after DeleteStaffDocumentSettingsAsync has
+        // cleared the staff type, which is why the two are never reordered and why the caller de-duplicates
+        // its list first.
+        //
+        // Both NAMES are denormalized onto the row and neither is validated against its lookup: the staff
+        // type's name is whatever the client posted, and the document type's name is looked up by the
+        // caller from spLU_STAFFDOCUMENTTYPE_List. The patient-side procedure resolves its names in SQL
+        // instead — another face of the same asymmetry.
+        Task AddStaffDocumentSettingAsync(string staffTypeId, string? staffTypeName,
+            string staffDocumentTypeId, string staffDocumentTypeName);
+
+        // ----- Documents (the SUPERUSER search page) -----
+        //
+        // Two procedures behind /Documents, the one page in nucentra that looks across BOTH document
+        // families at once. Neither declares @User_ID; the search is audited by the application instead
+        // (AuditLog.DocumentSearched), because a search over patient records is a read worth recording and
+        // no procedure writes a dbo.AuditTrails row for a read.
+
+        // The document search itself. Calls spDocuments_Search.
+        //
+        // 🔴 ONE PROCEDURE, THREE BRANCHES, AND @Mode CHOOSES THE TABLE. 'PATIENT' reads
+        // dbo.PatientDocument, 'STAFF' reads dbo.StaffDocument, and ANYTHING ELSE — including NULL and a
+        // misspelling — falls through to a `WHERE 1 = 0` branch that returns the same seven columns and no
+        // rows. So an unrecognised mode is EMPTY, NOT AN ERROR, and the mode is matched after
+        // UPPER(LTRIM(RTRIM(…))). The caller normalises to "Patient"/"Staff" before it gets here anyway.
+        //
+        // Both filters are EXACT (equality after UPPER/TRIM), not LIKE: the page's controls are dropdowns
+        // of values the database already holds, so there is nothing to prefix-match. Passing null means
+        // "no filter" — and so does an empty or whitespace string, which the procedure NULLIFs itself.
+        //
+        // documentType matches EITHER the type's NAME or its ID, in the same OR: the page sends whichever
+        // its dropdown had, and the two document families disagree about which one that is. Every
+        // comparison wraps both sides in UPPER(LTRIM(RTRIM(ISNULL(…)))), so no index is usable — fine at
+        // this table size, and the reason to notice before the tables grow.
+        //
+        // The two branches ORDER differently and both orderings are the page's contract: the patient branch
+        // sorts by TRY_CONVERT(DATETIME, UploadedOn, 120) DESC because that column is a VARCHAR (§3.15),
+        // the staff branch by the real DATETIME column DESC.
+        Task<List<DocumentSearchItem>> SearchDocumentsAsync(string mode, string? individualName,
+            string? documentType);
+
+        // The patient filter on the same page: the distinct names of every patient who owns at least one
+        // document, ordered by name. Calls spPatientDocument_PatientNames.
+        //
+        // The exact twin of GetStaffDocumentStaffNamesAsync, down to the reasoning: it returns NAMES, NOT
+        // IDS, because the filter control filters on the displayed name — so two patients sharing a name
+        // collapse into one entry and select the documents of both. Its INNER JOIN onto dbo.PatientBasic
+        // means a document whose Patient_ID no longer matches a patient contributes nothing and its owner
+        // cannot be picked from the filter, though the document still appears in an unfiltered search.
+        Task<List<string>> GetPatientDocumentPatientNamesAsync();
     }
 }

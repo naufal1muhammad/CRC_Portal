@@ -1,18 +1,20 @@
-﻿using CRC.Data.Data;
+using CRC.Data.Data;
 using CRC.Web.Infrastructure;
 using CRC.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using System.Data;
-using static CRC.Web.Controllers.Documents.DocumentsController;
 
 namespace CRC.Web.Controllers.Documents
 {
+    // The one page in nucentra that looks across BOTH document families at once — patient documents and
+    // staff documents, in a single table, filtered by owner name and document type. Everything else in the
+    // portal reaches a document through its owner: patient documents from the patient's journey workspace
+    // (StaffPatientController), staff documents from the staff edit screen (StaffController). See
+    // CoreFlow.md §8.
     [Authorize(Policy = "SuperUserOnly")]
     public class DocumentsController : Controller
     {
-        private readonly DatabaseHelper _db;
+        private readonly IDatabaseData _data;
 
         // IWebHostEnvironment is deliberately gone: its only purpose here was resolving the web root so a
         // document could be read back from wwwroot/uploads. Documents live in a private blob container now
@@ -21,11 +23,11 @@ namespace CRC.Web.Controllers.Documents
         private readonly ILogger<DocumentsController> _logger;
 
         public DocumentsController(
-            DatabaseHelper db,
+            IDatabaseData data,
             IDocumentStorage documentStorage,
             ILogger<DocumentsController> logger)
         {
-            _db = db;
+            _data = data;
             _documentStorage = documentStorage;
             _logger = logger;
         }
@@ -38,62 +40,56 @@ namespace CRC.Web.Controllers.Documents
         }
 
         // GET: /Documents/GetLookups
+        //
+        // Four reads for the page's two dropdowns, which are re-populated client-side whenever the
+        // patient/staff radio changes — hence both sets in one response rather than a round trip per mode.
+        //
+        // 🔴 THE TWO DOCUMENT-TYPE READS ARE THE *_LookupDocuments PROCEDURES, NOT THE LU_* LISTS, and that
+        // is deliberate: they UNION the types actually present on stored documents with the types in the
+        // lookup, so a document uploaded under a type since removed from LU_* is still FINDABLE. An upload
+        // form must not offer such a type; a search filter must. See CoreFlow.md §5.4 and §5.8.
         [HttpGet]
         public async Task<IActionResult> GetLookups()
         {
             try
             {
-                var empty = Array.Empty<SqlParameter>();
-
                 // 1) Patient names
-                var dtPatNames = await _db.ExecuteDataTableAsync(
-                    "spPatientDocument_PatientNames",
-                    empty
-                );
+                var patientNameRows = await _data.GetPatientDocumentPatientNamesAsync();
 
                 // 2) Patient doc types
-                var dtPatTypes = await _db.ExecuteDataTableAsync(
-                    "spPatientDocument_LookupDocuments",
-                    empty
-                );
+                var patientTypeRows = await _data.GetPatientDocumentTypeFiltersAsync();
 
                 // 3) Staff names
-                var dtStaffNames = await _db.ExecuteDataTableAsync(
-                    "spStaffDocument_StaffNames",
-                    empty
-                );
+                var staffNameRows = await _data.GetStaffDocumentStaffNamesAsync();
 
                 // 4) Staff doc types
-                var dtStaffTypes = await _db.ExecuteDataTableAsync(
-                    "spStaffDocument_LookupDocuments",
-                    empty
-                );
+                var staffTypeRows = await _data.GetStaffDocumentTypeFiltersAsync();
 
-                var patientNames = dtPatNames.Rows.Cast<DataRow>()
+                var patientNames = patientNameRows
                     .Select(r => new
                     {
-                        name = r["Patient_Name"]?.ToString() ?? string.Empty
+                        name = r ?? string.Empty
                     })
                     .Where(x => !string.IsNullOrWhiteSpace(x.name))
                     .Distinct()
                     .OrderBy(x => x.name)
                     .ToList();
 
-                var staffNames = dtStaffNames.Rows.Cast<DataRow>()
+                var staffNames = staffNameRows
                     .Select(r => new
                     {
-                        name = r["Staff_Name"]?.ToString() ?? string.Empty
+                        name = r ?? string.Empty
                     })
                     .Where(x => !string.IsNullOrWhiteSpace(x.name))
                     .Distinct()
                     .OrderBy(x => x.name)
                     .ToList();
 
-                var patientDocTypes = dtPatTypes.Rows.Cast<DataRow>()
+                var patientDocTypes = patientTypeRows
                     .Select(r => new
                     {
-                        id = (r["PatientDocumentType_ID"]?.ToString() ?? string.Empty).Trim(),
-                        name = (r["PatientDocumentType_Name"]?.ToString() ?? string.Empty).Trim()
+                        id = (r.Id ?? string.Empty).Trim(),
+                        name = (r.Name ?? string.Empty).Trim()
                     })
                     .Where(x => !(string.IsNullOrWhiteSpace(x.id) && string.IsNullOrWhiteSpace(x.name)))
                     .Select(x => new
@@ -107,11 +103,11 @@ namespace CRC.Web.Controllers.Documents
 
                 // Defensive de-duplication:
                 // If the lookup SP returns both (ID, Name) and (ID, ID), only keep the "real" name.
-                var staffDocTypes = dtStaffTypes.Rows.Cast<DataRow>()
+                var staffDocTypes = staffTypeRows
                     .Select(r => new
                     {
-                        id = (r["StaffDocumentType_ID"]?.ToString() ?? string.Empty).Trim(),
-                        name = (r["StaffDocumentType_Name"]?.ToString() ?? string.Empty).Trim()
+                        id = (r.Id ?? string.Empty).Trim(),
+                        name = (r.Name ?? string.Empty).Trim()
                     })
                     .Where(x => !(string.IsNullOrWhiteSpace(x.id) && string.IsNullOrWhiteSpace(x.name)))
                     .Select(x => new
@@ -183,14 +179,12 @@ namespace CRC.Web.Controllers.Documents
 
             try
             {
-                var parameters = new[]
-                {
-                    new SqlParameter("@Mode", mode),
-                    new SqlParameter("@IndividualName", string.IsNullOrWhiteSpace(individual) ? DBNull.Value : individual),
-                    new SqlParameter("@DocumentType", string.IsNullOrWhiteSpace(docType) ? DBNull.Value : docType)
-                };
-
-                var dt = await _db.ExecuteDataTableAsync("spDocuments_Search", parameters);
+                // A blank filter is passed as null — "no filter". The procedure NULLIFs a blank string to
+                // the same thing, so this is about saying what is meant, not about what SQL requires.
+                var rows = await _data.SearchDocumentsAsync(
+                    mode,
+                    string.IsNullOrWhiteSpace(individual) ? null : individual,
+                    string.IsNullOrWhiteSpace(docType) ? null : docType);
 
                 // Metadata only — the blob key is deliberately NOT projected. The container is private, so a
                 // storage key is useless to the browser and is exactly the kind of detail that should never
@@ -200,15 +194,15 @@ namespace CRC.Web.Controllers.Documents
                 // `id` is the Patient_ID / Staff_ID the row belongs to — the column the page shows in its ID
                 // column, NOT the document's key. `documentId` is the PatientDocument_ID / StaffDocument_ID
                 // and is the only thing DocumentUrl accepts.
-                var list = dt.Rows.Cast<DataRow>()
+                var list = rows
                     .Select(r => new
                     {
-                        documentId = r["DocumentId"] == DBNull.Value ? 0 : Convert.ToInt32(r["DocumentId"]),
-                        id = r["Id"]?.ToString() ?? "",
-                        name = r["Name"]?.ToString() ?? "",
-                        documentType = r["DocumentType"]?.ToString() ?? "",
-                        fileName = r["FileName"]?.ToString() ?? "",
-                        uploadedOn = r["UploadedOn"]?.ToString() ?? ""
+                        documentId = r.DocumentId ?? 0,
+                        id = r.Id ?? "",
+                        name = r.Name ?? "",
+                        documentType = r.DocumentType ?? "",
+                        fileName = r.FileName ?? "",
+                        uploadedOn = r.UploadedOn ?? ""
                     })
                     .ToList();
 
@@ -259,23 +253,41 @@ namespace CRC.Web.Controllers.Documents
 
             try
             {
-                var dt = isStaff
-                    ? await _db.ExecuteDataTableAsync(
-                        "spStaffDocument_GetById",
-                        new[] { new SqlParameter("@StaffDocument_ID", id) })
-                    : await _db.ExecuteDataTableAsync(
-                        "spPatientDocument_GetById",
-                        new[] { new SqlParameter("@PatientDocument_ID", id) });
+                // The two reads return two different models — StaffDocumentItem and PatientDocumentItem —
+                // because the two tables keep their own column names. Both were wrapped by earlier prompts
+                // (spStaffDocument_GetById in Prompt 3, spPatientDocument_GetById in Prompt 7) and are
+                // reused here rather than duplicated; the three fields this action needs are pulled out of
+                // whichever ran, and the rest of the flow below is common.
+                string? blobName;
+                string fileName;
+                string ownerId;
 
-                if (dt.Rows.Count == 0)
+                if (isStaff)
                 {
-                    return Ok(new { success = false, message = "Document not found." });
-                }
+                    var document = await _data.GetStaffDocumentByIdAsync(id);
 
-                var row = dt.Rows[0];
-                var blobName = row["BlobName"]?.ToString();
-                var fileName = row["FileName"]?.ToString() ?? string.Empty;
-                var ownerId = (isStaff ? row["Staff_ID"]?.ToString() : row["Patient_ID"]?.ToString()) ?? string.Empty;
+                    if (document == null)
+                    {
+                        return Ok(new { success = false, message = "Document not found." });
+                    }
+
+                    blobName = document.BlobName;
+                    fileName = document.FileName ?? string.Empty;
+                    ownerId = document.Staff_ID ?? string.Empty;
+                }
+                else
+                {
+                    var document = await _data.GetPatientDocumentByIdAsync(id);
+
+                    if (document == null)
+                    {
+                        return Ok(new { success = false, message = "Document not found." });
+                    }
+
+                    blobName = document.BlobName;
+                    fileName = document.FileName ?? string.Empty;
+                    ownerId = document.Patient_ID ?? string.Empty;
+                }
 
                 if (string.IsNullOrWhiteSpace(blobName))
                 {

@@ -2143,5 +2143,126 @@ namespace CRC.Data.Data
         // No @User_ID: a read. No caller until Prompt 8's Documents search page.
         public Task<List<LookupItem>> GetPatientDocumentTypeFiltersAsync() =>
             QueryLookupAsync("dbo.spPatientDocument_LookupDocuments");
+
+        // ----- Document settings (Admin > Settings) -----
+        //
+        // Five procedures, and NOT ONE OF THEM DECLARES @User_ID — verified by reading all five parameter
+        // lists, not by grepping. Nothing in this area writes a dbo.AuditTrails row.
+        //
+        // 🔴 THE SAVE ASYMMETRY. The patient side replaces a discharge type's whole set inside ONE
+        // procedure; the staff side has no such procedure and the controller runs a DELETE followed by N
+        // INSERTs with NO TRANSACTION around them — which is what it has always done. It is left that way
+        // deliberately: adding a transaction here would change behaviour, and this migration does not.
+        // The two staff procedures are therefore two methods, and the sequencing stays in
+        // SettingsController where a reader can see it. See IDatabaseData.cs and CoreFlow.md §5.9.
+
+        public async Task<List<PatientDocumentSetting>> GetDischargeDocumentSettingsAsync(string dischargeTypeId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // A plain SELECT over dbo.PatientDocumentSettings — so it returns ONLY the mandatory types,
+            // where the staff read returns every type with a flag. An unknown discharge type is an empty
+            // list, not an error.
+            var results = await connection.QueryAsync<PatientDocumentSetting>(
+                "dbo.spPatientDocumentSettings_GetByDischargeType",
+                new { DischargeType_ID = dischargeTypeId },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task SaveDischargeDocumentSettingsAsync(string dischargeTypeId, string? patientDocumentTypeIdsCsv)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // @PatientDocumentType_IDs is NVARCHAR(MAX) and the procedure splits it with STRING_SPLIT, so
+            // the ids travel as one CSV string rather than as a list. NULL clears the discharge reason's
+            // settings — that is the empty-checklist save, not a no-op.
+            //
+            // ExecuteAsync: the procedure emits no result set. It RAISERRORs on an unknown
+            // @DischargeType_ID, which arrives here as a SqlException for the caller to catch.
+            await connection.ExecuteAsync(
+                "dbo.spPatientDocumentSettings_SaveForDischargeType",
+                new
+                {
+                    DischargeType_ID = dischargeTypeId,
+                    PatientDocumentType_IDs = patientDocumentTypeIdsCsv
+                },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task DeleteStaffDocumentSettingsAsync(string staffTypeId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // Step one of the staff save. On its own it leaves the staff type with NO mandatory documents,
+            // which is exactly what an empty-checklist save wants and exactly what a crashed save leaves
+            // behind. No @User_ID, no audit row.
+            await connection.ExecuteAsync(
+                "dbo.spStaffDocumentSettings_DeleteByStaffType",
+                new { StaffType_ID = staffTypeId },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        public async Task AddStaffDocumentSettingAsync(string staffTypeId, string? staffTypeName,
+            string staffDocumentTypeId, string staffDocumentTypeName)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // Step two, run once per selected document type on its own connection. A bare INSERT with no
+            // upsert: a repeat of the same (StaffType_ID, StaffDocumentType_ID) pair violates the composite
+            // primary key and throws, so the caller de-duplicates and only ever runs this after the delete.
+            await connection.ExecuteAsync(
+                "dbo.spStaffDocumentSettings_Insert",
+                new
+                {
+                    StaffType_ID = staffTypeId,
+                    StaffType_Name = staffTypeName,
+                    StaffDocumentType_ID = staffDocumentTypeId,
+                    StaffDocumentType_Name = staffDocumentTypeName
+                },
+                commandType: CommandType.StoredProcedure);
+        }
+
+        // ----- Documents (the SUPERUSER search page) -----
+
+        public async Task<List<DocumentSearchItem>> SearchDocumentsAsync(string mode, string? individualName,
+            string? documentType)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // 🔴 @Mode PICKS THE TABLE, and an unrecognised value is not an error: the procedure's third
+            // branch returns the same seven columns with `WHERE 1 = 0`. Both filters are optional and the
+            // procedure NULLIFs a blank itself, so passing null and passing "" mean the same thing — null
+            // is passed because that is what "no filter" means, not because the procedure needs it.
+            //
+            // One model for both branches because the procedure aliases both to the same seven column
+            // names. See DocumentSearchItem, and note that BlobName comes back and must not be projected.
+            var results = await connection.QueryAsync<DocumentSearchItem>(
+                "dbo.spDocuments_Search",
+                new
+                {
+                    Mode = mode,
+                    IndividualName = individualName,
+                    DocumentType = documentType
+                },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<string>> GetPatientDocumentPatientNamesAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // One VARCHAR column, so the row type is the column type — the same shape as
+            // GetStaffDocumentStaffNamesAsync. The procedure's own SELECT DISTINCT, its WHERE excluding
+            // blank names and its ORDER BY are the whole contract; nothing here re-sorts.
+            var results = await connection.QueryAsync<string>(
+                "dbo.spPatientDocument_PatientNames",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
     }
 }

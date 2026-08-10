@@ -1287,6 +1287,41 @@ Three consequences, and all three are live:
 **Nothing enforces one document per type**, and the discharge check (§5.6) asks only whether at least one
 row of each required type exists.
 
+### 3.16 `dbo.PatientDocumentSettings`
+
+Which document types a patient must have on file **before being discharged under a given reason**. The
+patient twin of `dbo.StaffDocumentSettings` (§3.6), and structurally the same table with the staff type
+swapped for a discharge type.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `DischargeType_ID` | `VARCHAR(100)` | NOT NULL | PK part 1. A `LU_DISCHARGETYPE.DischargeType_ID` |
+| `DischargeType_Name` | `VARCHAR(100)` | NOT NULL | denormalized copy of the name |
+| `PatientDocumentType_ID` | `VARCHAR(100)` | NOT NULL | PK part 2. A `LU_PATDOCUMENTTYPE.PatientDocumentType_ID` |
+| `PatientDocumentType_Name` | `VARCHAR(100)` | NOT NULL | denormalized copy of the name |
+
+`PK_PatientDocumentSettings` is a **composite key over the two ids** and is the only constraint on the
+table. Neither id is a foreign key; both `_Name` columns are copies that go stale the moment a lookup row
+is renamed.
+
+🔴 **THERE IS NO `IsMandatory` COLUMN HERE EITHER — THE EXISTENCE OF THE ROW IS THE RULE.** A row means "a
+patient discharged as NORMAL must have a DISCHARGE SUMMARY on file"; no row means nothing. **An empty table
+means nothing is mandatory anywhere**, which is the state of a freshly published `CRC_DB`: until somebody
+uses the Settings screen, every discharge passes the check in §5.6.
+
+**But the two tables are read in opposite directions, and that is the difference to hold on to.** The staff
+read (`spStaffDocumentSettings_GetByStaffType`) drives `LU_STAFFDOCUMENTTYPE` and `LEFT JOIN`s the settings,
+so it hands back **every** document type with a computed `IsMandatory` flag — a pre-ticked checklist. The
+patient read (`spPatientDocumentSettings_GetByDischargeType`) selects straight from this table, so it hands
+back **only the configured rows** and no flag at all. Same idea, same shape on disk, two different result
+sets, and `CRC.Data/Models/PatientDocumentSetting.cs` versus `StaffDocumentSetting.cs` are two models
+because of it. The Settings page reconciles the difference client-side. See §5.9.
+
+**Who writes it:** only `spPatientDocumentSettings_SaveForDischargeType`, which deletes and re-inserts the
+whole set for one discharge reason in a single batch, resolving `DischargeType_Name` from `LU_DISCHARGETYPE`
+and `PatientDocumentType_Name` from `LU_PATDOCUMENTTYPE` itself — so nothing outside the procedure has to
+keep the denormalized names honest at write time. The staff table has no such procedure (§5.9).
+
 ---
 
 ## 4. Pages, endpoints, policies
@@ -2606,6 +2641,135 @@ because the download itself happens against storage where the application can no
 Dapper migration swapped one data call inside this action and touched nothing else; `DOCUMENTSTORAGE.md`
 remains authoritative and is unedited.
 
+### 4.10 Settings (Admin > Settings)
+
+`CRC.Web/Controllers/Settings/SettingsController.cs` — **`[Authorize(Policy = "SuperUserOnly")]` on the
+class** (`UserType = 1`), no per-action policy. View `Views/Settings/Index.cshtml`, script
+`wwwroot/js/settings/index.js`. It edits the two mandatory-document tables and nothing else: **there are no
+application settings in nucentra**, and this page's name is broader than its job.
+
+| Verb | Route | Returns |
+|---|---|---|
+| GET | `/Settings/Index` | the page |
+| GET | `/Settings/GetStaffTypes` | 🔴 **a bare JSON array**, not the envelope — `[{ staffTypeId, staffTypeName }]` |
+| GET | `/Settings/GetStaffDocumentSettings?staffTypeId=` | `{ success, data: [{ staffDocumentTypeId, staffDocumentTypeName, isMandatory }] }` — **every** type |
+| POST | `/Settings/SaveStaffDocumentSettings` | `{ success, message }` |
+| GET | `/Settings/GetDischargeTypes` | `{ success, data: [{ dischargeTypeId, dischargeTypeName }] }` |
+| GET | `/Settings/GetDischargeDocumentSettings?dischargeTypeId=` | `{ success, data: [{ dischargeTypeId, dischargeTypeName, documentTypeId, documentTypeName }] }` — **only the configured** types |
+| POST | `/Settings/SaveDischargeDocumentSettings` | `{ success, message }` |
+
+```jsonc
+// GET /Settings/GetStaffDocumentSettings?staffTypeId=END — the full checklist, pre-ticked
+{ "success": true, "data": [
+  { "staffDocumentTypeId": "01", "staffDocumentTypeName": "CV / RESUME", "isMandatory": true },
+  { "staffDocumentTypeId": "02", "staffDocumentTypeName": "BASIC DEGREE CERTIFICATE", "isMandatory": false } ] }
+{ "success": false, "message": "Staff type is required." }        // blank staffTypeId
+
+// GET /Settings/GetDischargeDocumentSettings?dischargeTypeId=01 — only what is required
+{ "success": true, "data": [
+  { "dischargeTypeId": "01", "dischargeTypeName": "NORMAL",
+    "documentTypeId": "09", "documentTypeName": "DISCHARGE SUMMARY" } ] }
+{ "success": true, "data": [] }        // blank dischargeTypeId — success, NOT an error
+
+// POST /Settings/SaveStaffDocumentSettings   { staffTypeId, staffTypeName, documentTypeIds: [] }
+{ "success": true,  "message": "Settings saved successfully." }
+{ "success": true,  "message": "Settings saved (no mandatory documents)." }   // empty list — the CLEAR
+{ "success": false, "message": "Staff type is required." }
+{ "success": false, "message": "Error saving staff document settings." }      // any exception
+
+// POST /Settings/SaveDischargeDocumentSettings   { dischargeTypeId, documentTypeIds: [] }
+{ "success": true,  "message": "Settings saved successfully." }               // including the empty list
+{ "success": false, "message": "Discharge type is required." }                // HTTP 400, not 200
+{ "success": false, "message": "Error saving discharge document settings.", "correlationId": "…" }
+```
+
+**Four inconsistencies between the two halves of one screen**, all measured on the running site and all
+left exactly as found:
+
+- **The two reads disagree about what "settings" means** — full checklist versus configured rows only
+  (§3.16). The page reconciles it in JavaScript.
+- **The two blank-parameter reads disagree.** `GetStaffDocumentSettings` with no id answers
+  `{ success: false, message: "Staff type is required." }`; `GetDischargeDocumentSettings` with no id
+  answers `{ success: true, data: [] }`.
+- **The two saves disagree about the HTTP status of a missing id.** The staff save returns `200 Ok` with
+  `success: false`; the discharge save returns **`400 BadRequest`**. That is the only `BadRequest` on this
+  controller.
+- **The two saves disagree about error reporting.** The staff save has a bare `catch (Exception)` that
+  returns a fixed string and **logs nothing** — no `_logger.LogError`, no correlation id, so a failed staff
+  save cannot be traced to a line in `app-*.log`. The discharge save catches `SqlException` and `Exception`
+  separately, logs both, and answers through `ErrorResponse.ForUser`. Prompt 9 owns the logging sweep.
+
+🔴 **NOTHING ON THIS SCREEN IS AUDITED, IN EITHER CHANNEL.** None of the five procedures declares `@User_ID`,
+so no `dbo.AuditTrails` row is written; and there is no `AuditLog.*` call anywhere in the controller. Adding
+or removing a mandatory document changes what the whole programme refuses to discharge, and it leaves no
+trace of who did it or when. Verified: running the full round trip below produced zero new `AuditTrails`
+rows. That is a statement of the code, not a recommendation.
+
+The save asymmetry — one atomic procedure on the patient side, a delete plus N inserts with no transaction
+on the staff side — is the most consequential thing about this controller and is written up in §5.9.
+
+### 4.11 Documents (the SUPERUSER search page)
+
+`CRC.Web/Controllers/Documents/DocumentsController.cs` — **`[Authorize(Policy = "SuperUserOnly")]` on the
+class**, no per-action policy, which is the right level: this is the only place in the portal that hands out
+**patient and staff documents from one endpoint**. View `Views/Documents/Index.cshtml`, script
+`wwwroot/js/documents/index.js`. Four actions:
+
+| Verb | Route | Returns |
+|---|---|---|
+| GET | `/Documents/Index` | the page |
+| GET | `/Documents/GetLookups` | `{ success, patientNames, patientDocTypes, staffNames, staffDocTypes }` |
+| POST | `/Documents/Search` | `{ success, data: [{ documentId, id, name, documentType, fileName, uploadedOn }] }` |
+| GET | `/Documents/DocumentUrl?mode=&id=` | `{ success, url, fileName }` — a five-minute read SAS |
+
+```jsonc
+// GET /Documents/GetLookups — both modes' filters in one response, because the radio switches client-side
+{ "success": true,
+  "patientNames":   [ { "name": "P8 PATIENT ALPHA" } ],
+  "patientDocTypes":[ { "id": "03", "name": "iFOBT RESULTS" } ],
+  "staffNames":     [ { "name": "P7 DOCTOR ALPHA" } ],
+  "staffDocTypes":  [ { "id": "01", "name": "CV / RESUME" } ] }
+
+// POST /Documents/Search   { mode: "Patient" | "Staff", individualName?, documentType? }
+{ "success": true, "data": [
+  { "documentId": 8, "id": "PAT-000001", "name": "P8 PATIENT ALPHA",
+    "documentType": "iFOBT RESULTS", "fileName": "alpha-ifobt.pdf",
+    "uploadedOn": "2026-08-10 12:38:35 +08:00" } ] }
+{ "success": false, "message": "Invalid request." }          // HTTP 400, null body only
+
+// GET /Documents/DocumentUrl?mode=Patient&id=8
+{ "success": true,  "url": "https://…?sv=…&sig=…", "fileName": "alpha-ifobt.pdf" }
+{ "success": false, "message": "Invalid document mode." }    // HTTP 400 — anything but Patient/Staff
+{ "success": false, "message": "Invalid document ID." }      // id <= 0
+{ "success": false, "message": "Document not found." }       // unknown id, or a row with a blank BlobName
+```
+
+**`id` is the OWNER's id and `documentId` is the document's.** `id` is the `Patient_ID` / `Staff_ID` the row
+belongs to — what the page shows in its ID column — and `documentId` is the `PatientDocument_ID` /
+`StaffDocument_ID`, the only value `DocumentUrl` accepts. Swapping them returns the wrong file or none.
+
+**`BlobName` is returned by the procedure and deliberately not projected.** The container is private, the key
+is useless to a browser, and it is exactly the kind of detail that should never leave the server.
+
+🔴 **`Search` AND `DocumentUrl` TREAT AN UNRECOGNISED `mode` DIFFERENTLY, ON PURPOSE.** `Search` folds
+anything that is not `"Staff"` into `"Patient"` — a search with no hits is harmless. `DocumentUrl` rejects
+it with `400`, because there an unrecognised mode would mean reading the wrong table. Both matches are
+case-insensitive after a `Trim()`, so `?mode=staff` works.
+
+**`GetLookups` uses the `*_LookupDocuments` procedures, not the `LU_*` lists**, so a document uploaded under
+a type since removed from the lookup is still findable, with its raw id standing in for the missing name
+(§5.4, §5.8). It then de-duplicates the staff types in C#, preferring a label that is not just the id — a
+defensive pass over a procedure that can return both `(ID, Name)` and `(ID, ID)`. The patient types get a
+plain `Distinct()` instead. Both filter lists are sorted **by name in C#**, after the procedure's own
+ordering, and both name lists are `Distinct()`ed again even though the procedures already `SELECT DISTINCT`.
+
+**The search is the one read in the portal audited by the application rather than by a procedure.**
+`AuditLog.DocumentSearched(HttpContext, mode, individual, docType, list.Count)` records the filters and the
+hit count on every call, including the ones with no filters at all — a SUPERUSER listing every patient
+document in the system is precisely the read worth having on the security channel. `DocumentUrl` writes
+`AuditLog.StaffDocumentDownloaded` or `AuditLog.PatientDocumentDownloaded` **before** the URL leaves the
+server, because the download itself happens against storage where the application can no longer see it.
+
 ---
 
 ## 5. Stored procedures
@@ -3584,6 +3748,108 @@ OUTER APPLY (SELECT TOP 1 …  WHERE a.Audit_Action IN ('UPDATED','EDITED') ORDE
   **It has no caller until Prompt 8**; it is wrapped here because Prompt 7 owns the `spPatientDocument_*`
   family.
 
+### 5.9 Document settings and the Documents search — `Stored Procedures/{PatientDocumentSettings,StaffDocumentSettings,PatientDocument}/` (7)
+
+**Not one of the seven declares `@User_ID`** — verified by reading all seven parameter lists, not by
+grepping — and not one writes a `dbo.AuditTrails` row. Confirmed empirically: a full save-and-clear round
+trip over both settings families produced **zero** new `AuditTrails` rows. Everything here is either a plain
+read or a write that nothing records (§4.10).
+
+Six of the seven were wrapped in Prompt 8. The seventh, `spStaffDocumentSettings_GetByStaffType`, was
+wrapped in Prompt 3 for `StaffController`'s mandatory-document check and is **reused, not duplicated** — it
+is documented in §5.4 and repeated in the table below only so that the area reads as a whole.
+
+| Procedure | Parameters | Returns | `IDatabaseData` method | `@User_ID` |
+|---|---|---|---|---|
+| `spPatientDocumentSettings_GetByDischargeType` | `@DischargeType_ID VARCHAR(100)` | the 4 columns of `dbo.PatientDocumentSettings` for that reason — **only the configured rows** — ordered by `PatientDocumentType_Name` | `GetDischargeDocumentSettingsAsync` → `List<PatientDocumentSetting>` | no |
+| `spPatientDocumentSettings_SaveForDischargeType` | `@DischargeType_ID VARCHAR(100)`, `@PatientDocumentType_IDs NVARCHAR(MAX)` — **a CSV** | nothing. Deletes and re-inserts the whole set in one batch | `SaveDischargeDocumentSettingsAsync` | no |
+| `spStaffDocumentSettings_GetByStaffType` *(P3)* | `@StaffType_ID VARCHAR(100)` | **every** `LU_STAFFDOCUMENTTYPE` row plus a computed `IsMandatory INT` | `GetStaffDocumentSettingsAsync` → `List<StaffDocumentSetting>` | no |
+| `spStaffDocumentSettings_DeleteByStaffType` | `@StaffType_ID VARCHAR(100)` | nothing. A bare `DELETE … WHERE StaffType_ID = @StaffType_ID` | `DeleteStaffDocumentSettingsAsync` | no |
+| `spStaffDocumentSettings_Insert` | `@StaffType_ID`, `@StaffType_Name`, `@StaffDocumentType_ID`, `@StaffDocumentType_Name` | nothing. A bare `INSERT`, **one row per call** | `AddStaffDocumentSettingAsync` | no |
+| `spDocuments_Search` | `@Mode VARCHAR(10)`, `@IndividualName VARCHAR(200) = NULL`, `@DocumentType VARCHAR(200) = NULL` | 7 columns — `DocumentId, Id, Name, DocumentType, FileName, BlobName, UploadedOn` — from **one of three branches** | `SearchDocumentsAsync` → `List<DocumentSearchItem>` | no |
+| `spPatientDocument_PatientNames` | — | `Patient_Name`, `SELECT DISTINCT`, ordered | `GetPatientDocumentPatientNamesAsync` → `List<string>` | no |
+
+#### 🔴 THE SAVE ASYMMETRY — one atomic procedure on the patient side, three round trips on the staff side
+
+This is the thing to know about this area, and it is not visible from either half on its own.
+
+| | Patient (discharge types) | Staff (staff types) |
+|---|---|---|
+| Procedures involved in a save | **1** | **2** |
+| Round trips for a set of N types | 1 | **1 + N** |
+| Who sequences the delete and the inserts | the procedure | `SettingsController.SaveStaffDocumentSettings` |
+| Transaction | implicit — one statement batch | **none** |
+| A failure part-way through | impossible to observe: the whole batch commits or none of it does | **leaves a partial set of mandatory documents**, and reports an error |
+| Names on the stored row | resolved in SQL from `LU_DISCHARGETYPE` / `LU_PATDOCUMENTTYPE` | the client-posted staff type name, and a document type name the **controller** looked up |
+
+**`spPatientDocumentSettings_SaveForDischargeType` is the safer of the two, and it is not close.** It
+validates `@DischargeType_ID` against `LU_DISCHARGETYPE` and `RAISERROR`s severity 11 before touching
+anything — the only server-side validation anywhere in this area — then `DELETE`s the discharge reason's
+rows and re-inserts from `STRING_SPLIT(@PatientDocumentType_IDs, ',')` joined to `LU_PATDOCUMENTTYPE`. Both
+statements run in one implicit transaction, so **the replace cannot be observed half-done and cannot be left
+half-done**. Ids that match no lookup row are dropped silently by the `INNER JOIN` rather than failing the
+save.
+
+**The staff side has no equivalent procedure at all.** `SettingsController` calls
+`spStaffDocumentSettings_DeleteByStaffType` once and then `spStaffDocumentSettings_Insert` once per selected
+document type, each on its own connection, with **nothing wrapped around them**. If the process dies, the
+database goes away, or an insert throws between the delete and the last insert, that staff type is left with
+**some** of its mandatory documents — a state no user asked for and no error message describes, since the
+controller's bare `catch` reports `"Error saving staff document settings."` and logs nothing (§4.10). The
+window is small and the failure mode is real.
+
+Two things keep it from misfiring in ordinary use, and both are load-bearing rather than incidental:
+`spStaffDocumentSettings_Insert` is a bare `INSERT` against a composite primary key, so the controller's
+`Distinct(StringComparer.OrdinalIgnoreCase)` is what stops a duplicated posted id from throwing **after the
+delete has already run**; and the controller skips any id that is not in `spLU_STAFFDOCUMENTTYPE_List`
+rather than letting the insert fail on it.
+
+**The Dapper migration left all of this exactly as it was.** The two staff procedures are two methods, per
+the one-method-per-procedure rule, and the sequencing stays in the controller where a reader can see it.
+Moving it into a `SqlData` unit of work — the shape §6.6 uses for `SaveStaffWithDocumentsAsync` — would fix
+the atomicity gap and would be a **behaviour change**, which this migration does not make. It is written
+down here so that whoever closes the gap does it deliberately.
+
+#### `spDocuments_Search` — one procedure, three branches, and `@Mode` picks the table
+
+`UPPER(LTRIM(RTRIM(ISNULL(@Mode, ''))))` selects between `dbo.PatientDocument` and `dbo.StaffDocument`, and
+**anything else falls through to a third branch that returns the same seven columns with `WHERE 1 = 0`**. An
+unrecognised mode is therefore **empty, not an error** — the controller never sends one, because it folds
+everything that is not `"Staff"` into `"Patient"` first (§4.11).
+
+- **The two branches alias their columns to the SAME seven names**, which is why one model,
+  `DocumentSearchItem`, serves both — the opposite call to `PatientDocumentItem` / `StaffDocumentItem`,
+  which keep their tables' native names and must stay two types.
+- 🔴 **`UploadedOn` is a string in both branches for two different reasons.** The patient branch selects
+  `dbo.PatientDocument.UploadedOn` as-is because that column is already a `VARCHAR(100)` holding
+  `"2026-08-10 12:38:35 +08:00"` (§3.15); the staff branch `CONVERT`s a real `DATETIME` with style 120,
+  producing `"2026-08-10 12:38:36"` — **no offset**. Measured on the running site, side by side. The two
+  modes' strings are not the same format and the page prints whichever it is given. **Do not parse it.**
+- **Both filters are EXACT, not `LIKE`** — equality after `UPPER(LTRIM(RTRIM(ISNULL(…, ''))))` on both
+  sides. The page's controls are dropdowns of values the database already holds, so there is nothing to
+  prefix-match. `@DocumentType` matches the type's **name OR its id OR the raw id on the document row**, in
+  one `OR`, because the two families disagree about which one the dropdown carries.
+- **Every comparison and every join wraps both sides in `UPPER(LTRIM(RTRIM(ISNULL(…))))`, so no index is
+  usable.** Fine at this table size; the thing to notice before the tables grow.
+- **The two branches order differently and both orderings are the page's contract.** Patient:
+  `TRY_CONVERT(DATETIME, UploadedOn, 120) DESC, Patient_Name, PatientDocumentType_Name` — the `TRY_CONVERT`
+  is there precisely because the column is text. Staff: the real `DATETIME` column `DESC`, then the two
+  names.
+- **Both branches `LEFT JOIN` the owner and the type lookup**, so a document whose `Patient_ID` /
+  `Staff_ID` matches nothing still appears, with a null `Name`. The `DocumentType` column is a `COALESCE`
+  back to the raw type id, and can still be null because the underlying column is nullable.
+
+#### `spPatientDocument_PatientNames` — the filter, and what it quietly excludes
+
+The exact twin of `spStaffDocument_StaffNames` (§5.4), down to the reasoning: `SELECT DISTINCT
+pb.Patient_Name … INNER JOIN dbo.PatientBasic`, `WHERE ISNULL(pb.Patient_Name, '') <> ''`, ordered by name.
+
+**It returns NAMES, NOT IDS**, because the filter control filters on the displayed name — so two patients
+who share a name collapse into one entry and selecting it returns the documents of both. And the **`INNER
+JOIN` is the exclusion**: a document whose `Patient_ID` no longer matches a patient row contributes nothing,
+so its owner cannot be picked from the filter, even though the document still appears in an unfiltered
+search (that read `LEFT JOIN`s). Given §7's orphaning bug, that case is reachable.
+
 ---
 
 ## 6. The data access layer
@@ -4259,7 +4525,78 @@ fields server-side, add a purpose-named model for that read and leave the pass-t
 
 ## 8. Documents
 
-> *Written in Prompt 8 — not yet filled in. Until then, `DOCUMENTSTORAGE.md` is authoritative.*
+> **`DOCUMENTSTORAGE.md` owns the operator picture and is not repeated here** — where the blobs live, the
+> SAS flow, the accepted file types and sizes, the two `DocumentStorage` settings, Azurite, and the stranded
+> `wwwroot/uploads` files on old deployments. **This section is the code-level map**: the two families, the
+> settings layer that makes a document *mandatory*, and the endpoints. When the two disagree about storage,
+> `DOCUMENTSTORAGE.md` is right.
+
+### 8.1 Two families, mirrored but not identical
+
+| | Patient | Staff |
+|---|---|---|
+| Catalogue table | `dbo.PatientDocument` (§3.15) | `dbo.StaffDocument` (§3.5) |
+| Type lookup | `LU_PATDOCUMENTTYPE` (13 rows) | `LU_STAFFDOCUMENTTYPE` (8 rows) |
+| Blob key prefix | `patients/{Patient_ID}/` | `staff/{Staff_ID}/` |
+| Procedures | 7 in `Stored Procedures/PatientDocument/` (§5.8, §5.9) | 6 in `Stored Procedures/StaffDocument/` (§5.4) |
+| Model | `PatientDocumentItem` | `StaffDocumentItem` |
+| Owning controller | `StaffPatientController` | `StaffController` |
+
+The two are close enough to look interchangeable and differ in four places that have bitten already:
+**`PatientDocument.UploadedOn` is a `VARCHAR(100)` and `StaffDocument.UploadedOn` is a `DATETIME`** (§3.15);
+`spPatientDocument_List` **requires** its `@Patient_ID` while `spStaffDocument_List`'s is optional and
+returns everything when omitted; the staff save is **transactional** and the patient upload loop is not
+(§4.9); and only the staff side has a mandatory-document check at save time.
+
+### 8.2 The settings layer — what makes a document *mandatory*
+
+Neither settings table has an `IsMandatory` column. **A row's existence is the rule**, and an empty table
+means nothing is mandatory anywhere — which is the state of a freshly published `CRC_DB`.
+
+| Table | Keyed by | The rule | Enforced by | What it blocks |
+|---|---|---|---|---|
+| `dbo.StaffDocumentSettings` (§3.6) | staff type | an ENDOSCOPIST must have a CV | `StaffController.GetMandatoryDocsByStaffType` and `GetMissingMandatoryDocuments`, both in C# over `spStaffDocumentSettings_GetByStaffType` | **saving a staff member** — `SaveStaffWithDocuments` writes nothing at all; `SaveStaff` only reports, after committing (§4.4) |
+| `dbo.PatientDocumentSettings` (§3.16) | discharge reason | a patient discharged as NORMAL must have a DISCHARGE SUMMARY | `spPatient_Discharge_CheckMissingDocuments`, in SQL (§5.6) | **discharging a patient** — `PatientController.SaveBasic` returns `"Please upload the following mandatory documents before discharging this patient: …"` and writes nothing |
+
+Both are edited by the one SUPERUSER Settings screen (§4.10), whose two halves save through different
+mechanisms — see the asymmetry in §5.9. **Neither check counts documents**: one row of each required type is
+enough. **The patient check returns what is MISSING**, so an empty result is the pass condition; reading it
+the other way round lets every discharge through.
+
+### 8.3 The endpoints — three controllers, one search page
+
+| Verb | Route | Policy | What it does |
+|---|---|---|---|
+| POST | `/StaffPatient/UploadPatientDocuments` | `AdminOrSuperOrStaff` | validates the whole batch, then uploads + inserts per file. **No transaction, no compensation** (§4.9) |
+| GET | `/StaffPatient/GetPatientDocumentUrl?id=` | `AdminOrSuperOrStaff` | mints a 5-minute read SAS for one patient document |
+| POST | `/StaffPatient/DeletePatientDocument` | `AdminOrSuperOrStaff` | deletes the row, then the blob, best-effort |
+| POST | `/Staff/UploadStaffDocuments` | `AdminOrSuper` | the staff twin of the upload |
+| GET | `/Staff/GetStaffDocumentUrl?id=` | `AdminOrSuper` | the staff twin of the SAS mint |
+| POST | `/Staff/DeleteStaffDocument` | `AdminOrSuper` | the staff twin of the delete |
+| POST | `/Staff/SaveStaffWithDocuments` | `AdminOrSuper` | staff row + documents in **one transaction** (§6.6) |
+| POST | `/Documents/Search` | `SuperUserOnly` | the only read across **both** families (§4.11) |
+| GET | `/Documents/DocumentUrl?mode=&id=` | `SuperUserOnly` | the SAS mint for either family, dispatched on `mode` |
+
+**A patient document is one policy level more reachable than a staff document** — `AdminOrSuperOrStaff`
+versus `AdminOrSuper` — because clinicians work in the patient journey and never in the staff register.
+`/Documents/*` sits above both at `SuperUserOnly`, which is the right level for a page that lists everything.
+
+**Deleting a whole patient or a whole staff member deletes their documents too**: `spPatient_DeleteCascade`
+and `spStaff_Delete` each return the blob keys they orphaned so the controller can remove the objects
+afterwards (§5.6, §5.4). Storage cannot join a database transaction, so the row goes first and the object
+second; a failed removal is logged as a warning, not raised, because from the user's side the document is
+gone and what is left is an orphaned blob for an operator.
+
+### 8.4 Validation and storage
+
+- **`CRC.Web/Infrastructure/DocumentValidation.cs`** — the *only* place the rules live, shared by all three
+  upload endpoints: allowed extensions **and** content types (both must pass), a 20 MB cap, `SafeFileName`
+  bounded to 255 because both `FileName` columns are `VARCHAR(255)`, and `BuildBlobName`.
+- **`CRC.Web/Services/AzureBlobDocumentStorage.cs`** — the only place that talks to Blob storage, behind
+  `IDocumentStorage` (`UploadAsync`, `GetReadSasUrl`, `DeleteAsync`), registered as a singleton.
+
+**See [`DOCUMENTSTORAGE.md`](DOCUMENTSTORAGE.md)** for the container, the key layout, the SAS trade-off, the
+configuration, and local development with Azurite.
 
 ---
 
