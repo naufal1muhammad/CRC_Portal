@@ -4,7 +4,7 @@ A beginner-friendly, click-by-click guide to hosting the **whole** nucentra port
 the web app, the data access layer, **and** the SQL database — using the **Visual Studio Publish**
 wizards, **alongside your existing HEART deployment in the same subscription**.
 
-> Written for the current codebase: `CRC.Web` (ASP.NET Core MVC, **.NET 8**),
+> Written for the current codebase: `CRC.Web` (ASP.NET Core MVC, **.NET 10**),
 > `CRC.Data` (ADO.NET / `DatabaseHelper`), and `CRC.Database` (SSDT / DACPAC).
 > nucentra stores uploaded patient and staff documents in a **private Azure Blob container**,
 > so this deployment includes a **storage account**.
@@ -327,13 +327,15 @@ SQL always uses a valid, publicly-trusted certificate, so you encrypt properly r
      `heart-web-prod-fdd5f6cgehh2fnba.malaysiawest-01.azurewebsites.net`. Yours will differ; copy the
      real URL from the portal after creation.)
    - **Publish**: **Code**.
-   - **Runtime stack**: **.NET 8 (LTS)**.
+   - **Runtime stack**: **.NET 10 (LTS)**.
 
-     > **⚠️ Differs from HEART #3 — runtime version.** HEART is on **.NET 10**; `CRC.Web.csproj`
-     > targets **`net8.0`**. Pick **.NET 8**, not .NET 10 — the platform must match what you built.
-     > .NET 8 is a fully supported, generally-available stack on App Service, so unlike HEART's guide
-     > there is **no "preview tag" caveat and no self-contained fallback needed here.**
-     > See §13 for the .NET 8 support-end date and the upgrade plan.
+     > **✅ This now matches HEART.** `CRC.Web.csproj` and `CRC.Data.csproj` both target **`net10.0`**,
+     > the same runtime HEART is on. Pick **.NET 10** — the platform must match what you built.
+     > This used to be a "differs from HEART" warning telling you to pick .NET 8; it no longer is, and
+     > **the .NET 8 option in that dropdown is now the wrong answer.** If you are updating an App
+     > Service that was created before this upgrade, change its runtime stack in
+     > **Configuration → General settings** *before* you publish — a `net10.0` build will not start on
+     > a .NET 8 stack.
    - **Operating System**: **Windows** (simplest with the Visual Studio publish flow, and what HEART uses).
    - **Region**: **Malaysia West**.
    - **Pricing plan (App Service Plan)**: click **Create new** → name it **`asp-nucentra-prod`** →
@@ -903,12 +905,11 @@ Do these once the basics work, roughly in this order of value:
   - **Set a retention policy on the container.** Storage account → **Data management → Lifecycle
     management**. Decide how long a discharged patient's documents should be kept, and let Azure
     enforce it instead of nobody enforcing it.
-- **⚠️ .NET 8 support ends 10 November 2026.** You are deploying on it deliberately and it is the right
-  call for going live now — but it is roughly three months of support away as of this writing. After
-  that date App Service keeps *running* .NET 8, but Microsoft stops shipping security patches for it.
-  Plan to retarget `CRC.Web` and `CRC.Data` to **`net10.0`** (matching HEART) before then; it is
-  normally a `TargetFramework` change plus a package bump and a regression pass. Put a reminder in your
-  calendar for **September 2026** so it happens on your schedule rather than under pressure.
+- **✅ The .NET 10 upgrade is done.** This used to be a dated warning that .NET 8 support ends
+  **10 November 2026** and that `CRC.Web` and `CRC.Data` had to be retargeted before then. Both now
+  target **`net10.0`** (matching HEART), so the deadline no longer applies and there is nothing to
+  diarise. The one thing that outlived the item: **the App Service runtime stack must say .NET 10**
+  (§6) — an existing site created on the .NET 8 stack needs that changed before the next publish.
 - **Secrets in Key Vault.** Instead of pasting the SQL password as a plain connection string, create an
   **Azure Key Vault**, store it there, and reference it from App Service with
   `@Microsoft.KeyVault(SecretUri=...)` (needs the app's managed identity + a Key Vault access role).
@@ -994,7 +995,7 @@ resource later without redeploying.
 2. In VS, set `CRC.Database` **target platform = Microsoft Azure SQL Database**, rebuild with MSBuild,
    **Publish** the DACPAC. Verify the seed: 3,242 locations, 1 SUPERUSER. — §5
 3. Create **App Service `nucentra-web-prod`** on a **NEW plan `asp-nucentra-prod`** (Basic B1,
-   **.NET 8**, Windows). **Do not reuse HEART's plan.** — §6
+   **.NET 10**, Windows). **Do not reuse HEART's plan.** — §6
 4. Create **storage account `nucentrastorprod`** + **private container `nucentra-documents`**; copy the
    connection string. — §10.1–§10.3
 5. In App Service **Environment variables**, set the connection string named exactly **`CRC_DB`**, the
@@ -1007,8 +1008,7 @@ resource later without redeploying.
 8. Run the two verification tests in **§10.7** before sharing the URL. Add IP access restrictions if the
    portal is internal-only.
 9. Turn on **Application Insights**; confirm HEART still works and pin both to a dashboard. — §11–12
-10. Later: plan the **.NET 10** upgrade before **10 Nov 2026**, harden with Key Vault and Managed
-    Identity (for **both** SQL and Blob). — §13
+10. Later: harden with Key Vault and Managed Identity (for **both** SQL and Blob). — §13
 
 **B. Retrofitting the document storage onto a site that is already live** — this is the path you are on
 if the site went up before this change. Interleaved with `DocumentStoragePlan.md`:
@@ -1022,15 +1022,16 @@ if the site went up before this change. Interleaved with `DocumentStoragePlan.md
 | 5 | 🔴 Check for and delete the old `wwwroot/uploads` files on the App Service | **§10.6** |
 | 6 | 🔴 Verify on the live site — both URL tests | **§10.7** |
 
-**Connection string is `CRC_DB` (not `DefaultConnection`); the container is `nucentra-documents` (not
-`patient-documents`); runtime is .NET 8 (not .NET 10).** Those three are where this differs most from
-the HEART guide, and where a habit from that deployment will bite you here.
+**Connection string is `CRC_DB` (not `DefaultConnection`) and the container is `nucentra-documents`
+(not `patient-documents`).** Those two are where this differs most from the HEART guide, and where a
+habit from that deployment will bite you here. **The runtime is no longer one of them** — nucentra is
+on **.NET 10**, the same as HEART.
 
 ---
 
 ### Sources
 - [Azure App Service — .NET version support and platform updates](https://learn.microsoft.com/en-us/azure/app-service/configure-language-dotnetcore)
-- [.NET support policy — .NET 8 LTS end of support 10 Nov 2026](https://dotnet.microsoft.com/platform/support/policy/dotnet-core)
+- [.NET support policy — release lifecycles and LTS end-of-support dates](https://dotnet.microsoft.com/platform/support/policy/dotnet-core)
 - [Deploy a DACPAC to Azure SQL Database using Visual Studio — SQLServerCentral](https://www.sqlservercentral.com/articles/deploy-dacpac-to-azure-sql-database-using-visual-studio)
 - [SSDT target platform / Azure SQL Database schema provider — Microsoft Learn](https://learn.microsoft.com/en-us/sql/ssdt/how-to-specify-a-target-platform-for-a-database-project)
 - [Securely connect .NET apps to Azure SQL using Managed Identity — Microsoft Learn](https://learn.microsoft.com/en-us/azure/app-service/tutorial-connect-msi-sql-database)

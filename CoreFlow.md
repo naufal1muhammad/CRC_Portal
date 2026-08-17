@@ -5438,7 +5438,7 @@ CRC_Portal/
   Export-NucentraPortal.ps1         packages the repo for hand-off.
   CRC_Portal.slnx                   the solution.
 
-CRC.Data/            net8.0 · Dapper 2.1.79 · Microsoft.Data.SqlClient 6.1.3 · Nullable + ImplicitUsings on
+CRC.Data/            net10.0 · Dapper 2.1.79 · Microsoft.Data.SqlClient 6.1.3 · Nullable + ImplicitUsings on
   Data/
     DatabaseHelper.cs               connection factory + CurrentUserId. TWO MEMBERS (§6.5). Its class
                                     comment records the sys.parameters auto-injection that was deleted.
@@ -5477,7 +5477,7 @@ CRC.Database/        classic SSDT .sqlproj — MSBuild only, `dotnet build` CANN
                                     unregistered file builds locally and is SILENTLY ABSENT from the
                                     .dacpac — the page then fails only against a freshly published DB.
 
-CRC.Web/             net8.0 MVC · Serilog · Azure.Storage.Blobs
+CRC.Web/             net10.0 MVC · Serilog · Azure.Storage.Blobs
   Program.cs                        the whole composition root, top to bottom: Serilog's two-sink split,
                                     the options binding, global AuthorizeFilter +
                                     AutoValidateAntiforgeryToken, DI (DatabaseHelper, IDatabaseData →
