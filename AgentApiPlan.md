@@ -382,7 +382,7 @@ in place — §2.2's is the only one that does.
 
 - [x] **Prompt 0** — The database: five procedures, the `.sqlproj`, the `AGENT_SERVICE` seed, `SEEDING.md`, and the `CoreFlow.md` §13 skeleton
 - [x] **Prompt 1** — The project and the guard: `CRC.Api`, the application part, `AgentApiKeyFilter`, the service account, and endpoint 5
-- [ ] **Prompt 2** — The six remaining reads: four new data-layer methods, four models, endpoints 1, 2, 3, 4, 6, 7
+- [x] **Prompt 2** — The six remaining reads: four new data-layer methods, four models, endpoints 1, 2, 3, 4, 6, 7
 - [ ] **Prompt 3** — The write: endpoint 8, `SaveAppointmentAsync` reused, the typed failure reasons, and the audit assertion
 - [ ] **Prompt 4** — Harden and hand off: `CoreFlow.md` §2.2 / §10 / §11 / §12, §13 finished, the smoke script, the Azure settings sheet
 
@@ -994,7 +994,7 @@ endpoint that returns nothing sensitive.
 
 ## Prompt 2 — The six remaining reads
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** Prompts 0–1
 
 > **The guard is already proven, so this prompt is mechanical — with one exception.** Endpoint 3 reads a row

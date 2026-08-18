@@ -2527,5 +2527,89 @@ namespace CRC.Data.Data
                 "dbo.spAgentUsers_GetServiceAccount",
                 commandType: CommandType.StoredProcedure);
         }
+
+        // 🔴 NO @User_ID, AND NOT BECAUSE IT WAS FORGOTTEN — the same statement as above, and it is true
+        // of this method and the three below it for the simpler of the two reasons. All four are PURE
+        // READS: no INSERT, no UPDATE, no DELETE, therefore no dbo.AuditTrails row, therefore no ACTOR to
+        // record; and none of the four procedures operates on a dbo.Users row, so none is the TARGET kind
+        // either (§0.1). Checked in the four .sql files rather than inferred from the pattern: not one of
+        // them declares the parameter.
+        //
+        // QueryAsync, not QuerySingle*: every one returns a set, and an EMPTY set is a legitimate answer
+        // in all four cases — no active patients, no phone match, an unknown branch, a fully-booked week.
+
+        public async Task<List<AgentScreeningQueueItem>> GetAgentScreeningQueueAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // No parameters at all: the procedure's own WHERE is DischargeType_ID IS NULL, which is the
+            // whole of the "active patient" definition (§3.8). Three of the ten columns are computed in
+            // SQL and exist in no table — NricLast4, ScreeningState and OpenAppointmentCount.
+            var results = await connection.QueryAsync<AgentScreeningQueueItem>(
+                "dbo.spAgentPatient_ListScreeningQueue",
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<AgentPatientMatch>> FindAgentPatientsByPhoneAsync(string phone)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // ZERO, ONE OR MANY rows, and all three are normal (§3.8 — nothing on dbo.PatientBasic is
+            // unique except the primary key). A phone with fewer than nine digits takes the procedure's
+            // early return, which emits the SAME SEVEN COLUMNS with no rows — so this call maps nothing
+            // and hands back an empty list rather than failing.
+            var results = await connection.QueryAsync<AgentPatientMatch>(
+                "dbo.spAgentPatient_FindByPhone",
+                new { Phone = phone },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<AgentStaffItem>> GetAgentStaffByBranchAsync(string branchId)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // Staff_Base = @Branch_ID, by convention only — no foreign key, so an unknown branch id is
+            // not an error and simply matches nothing. StaffType_Name arrives NULL for any clinician
+            // whose Staff_Type is no longer in dbo.LU_STAFFTYPE (LEFT JOIN — §3.4).
+            var results = await connection.QueryAsync<AgentStaffItem>(
+                "dbo.spAgentStaff_ListByBranch",
+                new { Branch_ID = branchId },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
+
+        public async Task<List<AgentOpenSlotItem>> FindAgentOpenSlotsByBranchAsync(string branchId,
+            DateTime fromDate, DateTime toDate, string? staffType)
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            // @Staff_Type is the only optional parameter and NULL MEANS "DO NOT FILTER"
+            // (`@Staff_Type IS NULL OR s.Staff_Type = @Staff_Type`). A blank string is NOT the same thing
+            // — it would match no staff type at all — and the caller is the one that converts blank to
+            // null, exactly as the appointment search's filters require (§5.7).
+            //
+            // The date range is inclusive on both ends (`BETWEEN @FromDate AND @ToDate`) over a DATE
+            // column, so the two DateTime arguments' time components are irrelevant.
+            //
+            // 🔴 ADVISORY ONLY: no transaction, no lock. SaveAppointmentAsync re-reads inside its own
+            // transaction and answers SlotTaken when a slot listed here has since been consumed (§6.7).
+            var results = await connection.QueryAsync<AgentOpenSlotItem>(
+                "dbo.spAgentSlots_FindOpenByBranch",
+                new
+                {
+                    Branch_ID = branchId,
+                    FromDate = fromDate,
+                    ToDate = toDate,
+                    Staff_Type = staffType
+                },
+                commandType: CommandType.StoredProcedure);
+
+            return results.ToList();
+        }
     }
 }

@@ -5787,15 +5787,16 @@ saying so, is not. Update the section in the same commit.
 
 ## 13. The Agent API
 
-> **What exists as of Prompt 1: the database half, the project, and the guard.** Five procedures under
-> `CRC.Database/Stored Procedures/Agent/`, all five registered in `CRC.Database.sqlproj` and published to
-> `CRC_DB`; one seeded `dbo.Users` row, `AGENT_SERVICE`; and the `CRC.Api` class library, loaded into
-> `CRC.Web` as an application part, carrying `AgentApiKeyFilter`, `AgentApiController` and **one endpoint —
-> `GET /api/agent/branches`**. One of the five procedures is wired to C# (`spAgentUsers_GetServiceAccount`,
-> via `GetAgentServiceAccountAsync`); the other four are called by nothing yet. §13.0 to §13.3 describe what
-> is built. §13.4 to §13.7 are placeholders, each filled in by the prompt that builds that piece. Where a
-> sentence here is about code that is not written, it names the prompt that writes it rather than describing
-> it as though it were already there.
+> **What exists as of Prompt 2: the database half, the project, the guard, and all seven reads.** Five
+> procedures under `CRC.Database/Stored Procedures/Agent/`, all five registered in `CRC.Database.sqlproj` and
+> published to `CRC_DB`; one seeded `dbo.Users` row, `AGENT_SERVICE`; and the `CRC.Api` class library, loaded
+> into `CRC.Web` as an application part, carrying `AgentApiKeyFilter` and `AgentApiController`. **All five
+> procedures are now wired to C#** — `spAgentUsers_GetServiceAccount` by Prompt 1, the other four by
+> Prompt 2 — and the controller carries **seven of the eight endpoints**, all of them reads. The eighth,
+> `POST /api/agent/appointments`, is Prompt 3's and does not exist. §13.0 to §13.4 describe what is built.
+> §13.5 to §13.7 are placeholders, each filled in by the prompt that builds that piece. Where a sentence here
+> is about code that is not written, it names the prompt that writes it rather than describing it as though
+> it were already there.
 
 ### 13.0 What the Agent API is, and what it is not
 
@@ -5858,10 +5859,10 @@ applied to a caller rather than to a table.
 
 | Procedure | Parameters | Returns | `IDatabaseData` method | `@User_ID` |
 |---|---|---|---|---|
-| `spAgentPatient_ListScreeningQueue` | — | Per **active** patient (`DischargeType_ID IS NULL`): `Patient_ID, Patient_Name, Patient_Phone, Patient_iFOBTStatus, Patient_iFOBTCompletionDate, Patient_iFOBTResults, NricLast4, ScreeningState, OpenAppointmentCount, HasAssessment` — `Patient_ID DESC` | Prompt 2 | **no** |
-| `spAgentPatient_FindByPhone` | `@Phone VARCHAR(100)` | Zero, one or **many** patients: `Patient_ID, Patient_Name, Patient_Phone, NricLast4, Patient_iFOBTStatus, Patient_iFOBTResults, DischargeType_ID` — `Patient_ID DESC`. A `@Phone` with fewer than 9 digits returns **the same seven columns with no rows** | Prompt 2 | **no** |
-| `spAgentStaff_ListByBranch` | `@Branch_ID VARCHAR(100)` | `Staff_ID, Staff_Name, Staff_Phone, Staff_Type, StaffType_Name, Staff_Base` for `Staff_Base = @Branch_ID` — `Staff_Name`. `StaffType_Name` is **nullable** (`LEFT JOIN`) | Prompt 2 | **no** |
-| `spAgentSlots_FindOpenByBranch` | `@Branch_ID VARCHAR(100)`, `@FromDate DATE`, `@ToDate DATE`, `@Staff_Type VARCHAR(100) = NULL` | One row per **open hour**: `StaffSlot_ID, Staff_ID, Staff_Name, Staff_Phone, Staff_Type, SlotDate, SlotStartTime, SlotEndTime` — the two times as **`VARCHAR(5)` `'HH:mm'`** via `CONVERT(…, 108)`. `SlotDate, SlotStartTime, Staff_Name` | Prompt 2 | **no** |
+| `spAgentPatient_ListScreeningQueue` | — | Per **active** patient (`DischargeType_ID IS NULL`): `Patient_ID, Patient_Name, Patient_Phone, Patient_iFOBTStatus, Patient_iFOBTCompletionDate, Patient_iFOBTResults, NricLast4, ScreeningState, OpenAppointmentCount, HasAssessment` — `Patient_ID DESC` | `GetAgentScreeningQueueAsync()` → `List<AgentScreeningQueueItem>` | **no** |
+| `spAgentPatient_FindByPhone` | `@Phone VARCHAR(100)` | Zero, one or **many** patients: `Patient_ID, Patient_Name, Patient_Phone, NricLast4, Patient_iFOBTStatus, Patient_iFOBTResults, DischargeType_ID` — `Patient_ID DESC`. A `@Phone` with fewer than 9 digits returns **the same seven columns with no rows** | `FindAgentPatientsByPhoneAsync(phone)` → `List<AgentPatientMatch>` | **no** |
+| `spAgentStaff_ListByBranch` | `@Branch_ID VARCHAR(100)` | `Staff_ID, Staff_Name, Staff_Phone, Staff_Type, StaffType_Name, Staff_Base` for `Staff_Base = @Branch_ID` — `Staff_Name`. `StaffType_Name` is **nullable** (`LEFT JOIN`) | `GetAgentStaffByBranchAsync(branchId)` → `List<AgentStaffItem>` | **no** |
+| `spAgentSlots_FindOpenByBranch` | `@Branch_ID VARCHAR(100)`, `@FromDate DATE`, `@ToDate DATE`, `@Staff_Type VARCHAR(100) = NULL` | One row per **open hour**: `StaffSlot_ID, Staff_ID, Staff_Name, Staff_Phone, Staff_Type, SlotDate, SlotStartTime, SlotEndTime` — the two times as **`VARCHAR(5)` `'HH:mm'`** via `CONVERT(…, 108)`. `SlotDate, SlotStartTime, Staff_Name` | `FindAgentOpenSlotsByBranchAsync(branchId, fromDate, toDate, staffType)` → `List<AgentOpenSlotItem>` | **no** |
 | `spAgentUsers_GetServiceAccount` | — | `TOP 1 User_ID, Username, User_Name, User_Type` from `dbo.Users` where `Username = 'AGENT_SERVICE'`. **Not `Password_Hash`, not `User_Email`** | Prompt 1 | **no** |
 
 #### 🔴 None of the five declares `@User_ID`, and that is correct for each of them separately
@@ -6276,7 +6277,260 @@ it was `AGENT_SERVICE` and that the resolved id was `9`.
 
 ### 13.4 The seven read endpoints, and their exact JSON
 
-> *Written in Prompt 2 — not yet filled in.*
+**All seven live on the one `AgentApiController`, and there is no second controller.** Endpoint 5 was built
+in Prompt 1; the other six in Prompt 2. Every one is a `GET`, every one is guarded by the single
+class-level `[ServiceFilter(typeof(AgentApiKeyFilter))]` (§13.3), and every one follows the house style
+unchanged: a hand-built camelCase anonymous object mapped out of the model, never the model itself (§12 #4);
+`catch (SqlException)` then `catch (Exception)`, both `_logger.LogError`, both
+`Ok(AgentErrorResponse.ForUser(HttpContext, …))`.
+
+| # | Verb | Route | `IDatabaseData` method | Procedure |
+|---|---|---|---|---|
+| 1 | GET | `/api/agent/patients/queue` | `GetAgentScreeningQueueAsync()` | `spAgentPatient_ListScreeningQueue` |
+| 2 | GET | `/api/agent/patients/by-phone?phone=` | `FindAgentPatientsByPhoneAsync(phone)` | `spAgentPatient_FindByPhone` |
+| 3 | GET | `/api/agent/patients/{patientId}` | `GetPatientByIdAsync(patientId)` **(existing)** | `spPatientBasic_GetById` |
+| 4 | GET | `/api/agent/patients/{patientId}/appointments` | `GetAppointmentsByPatientAsync(patientId)` **(existing)** | `spPatientAppointment_ListByPatient` |
+| 5 | GET | `/api/agent/branches` | `GetActiveBranchesAsync()` **(existing)** | `spBranch_ListActive` |
+| 6 | GET | `/api/agent/staff?branchId=` | `GetAgentStaffByBranchAsync(branchId)` | `spAgentStaff_ListByBranch` |
+| 7 | GET | `/api/agent/slots/open?branchId=&fromDate=&toDate=&staffType=` | `FindAgentOpenSlotsByBranchAsync(…)` | `spAgentSlots_FindOpenByBranch` |
+
+**Three of the seven reuse a method that already existed**, and none of them got a second one. §12 #1's rule
+— one `SqlData` method per procedure, whoever calls it — is why endpoint 3 reads through the same
+`GetPatientByIdAsync` the Patient Edit form uses, and endpoint 4 through the same
+`GetAppointmentsByPatientAsync` behind the Appointment tab.
+
+#### 🔴 The exact JSON, as driven against `CRC_DB`
+
+Every payload below is a real response, copied from the wire. The property names are a **published
+contract**: an n8n workflow outside this repository reads them by name, so renaming one is a breaking change
+to something no compiler here can see.
+
+**1 — `GET /api/agent/patients/queue`**
+
+```jsonc
+{ "success": true,
+  "data": [
+    { "patientId": "PAT-000011", "name": "HUSSEIN AKMAL", "phone": "0166542542",
+      "nricLast4": "5805", "screeningState": "POSITIVE",
+      "iFobtStatus": true, "iFobtResult": true, "iFobtCompletionDate": "2026-08-06",
+      "openAppointmentCount": 1, "hasAssessment": false },
+    { "patientId": "PAT-000010", "name": "P9 PATIENT JULIET", "phone": "0199000010",
+      "nricLast4": "5900", "screeningState": "UNRECORDED",
+      "iFobtStatus": null, "iFobtResult": null, "iFobtCompletionDate": null,
+      "openAppointmentCount": 0, "hasAssessment": false }
+  ] }
+```
+
+🔴 **`screeningState` and `openAppointmentCount` are named exactly that because the daily sweep branches on
+both.** `screeningState` selects the message (`NO_PHONE` / `UNRECORDED` / `INCOMPLETE` / `POSITIVE` /
+`NEGATIVE`); `openAppointmentCount` is **the only duplicate-booking guard in nucentra** (§3.9), and non-zero
+means the sweep skips that patient. `iFobtStatus` and `iFobtResult` stay **nullable on the wire** — a JSON
+`null` is "never recorded", which is a different fact from `false`, and the agent has to tell them apart.
+
+**2 — `GET /api/agent/patients/by-phone?phone=60166542542`**
+
+```jsonc
+{ "success": true, "matchCount": 1,
+  "data": [
+    { "patientId": "PAT-000011", "name": "HUSSEIN AKMAL", "phone": "0166542542",
+      "nricLast4": "5805", "iFobtStatus": true, "iFobtResult": true,
+      "dischargeTypeId": null, "isActive": true }
+  ] }
+```
+
+🔴 **`matchCount` is the third envelope property and it is not decoration.** The procedure returns zero, one
+or many rows and **all three are normal answers**: nothing on `dbo.PatientBasic` is unique except the primary
+key (§3.8), and the match is on the last nine digits, which collide across `01X` and `011` prefixes (§13.1,
+finding 2). **The agent is required to ask a disambiguating question when `matchCount > 1` and must never
+take the first row.** Handing back a count rather than making the caller measure the array is what makes
+that branch impossible to overlook in an n8n expression. `matchCount: 0` is a **successful** answer.
+
+A missing or blank `phone` is refused **before the procedure is called**, in the house envelope:
+
+```jsonc
+{ "success": false,
+  "message": "A phone number is required. Supply it as ?phone=, in any format — digits, dashes, spaces and a leading + or 60 are all accepted.",
+  "correlationId": "ffca0fff7d9a462a9c552fc843b5136f" }
+```
+
+**3 — `GET /api/agent/patients/PAT-000011`** — hit, then miss:
+
+```jsonc
+{ "success": true,
+  "data": { "patientId": "PAT-000011", "name": "HUSSEIN AKMAL", "phone": "0166542542",
+            "nricLast4": "5805",
+            "iFobtStatus": true, "iFobtResult": true, "iFobtCompletionDate": "2026-08-06",
+            "dischargeTypeId": null, "dischargeTypeName": null, "isActive": true } }
+
+{ "success": false, "message": "Patient not found." }
+```
+
+The not-found sentence is **`PatientController.GetBasic`'s, verbatim**, rather than a new one invented here.
+
+**4 — `GET /api/agent/patients/PAT-000011/appointments`**
+
+```jsonc
+{ "success": true,
+  "data": [
+    { "appointmentId": 20, "appointmentDate": "2026-09-01",
+      "startTime": "09:00", "endTime": "10:00", "status": "Scheduled",
+      "staffId": "END-00001", "staffName": "P7 DOCTOR ALPHA",
+      "branchId": "022367001", "branchName": "P7 SMOKE BRANCH",
+      "appointmentTypeId": "01", "appointmentType": "PATIENT ASSESSMENT" }
+  ] }
+```
+
+🔴 **The order is the contract: date DESC, start time DESC, id DESC — newest first, and the caller must not
+re-sort.** `.Select` preserves it and there is deliberately no `OrderBy` in the action. **An unknown patient
+id returns an empty list, not an error** — the procedure is a plain `WHERE Patient_ID = @Patient_ID` with no
+existence check, confirmed by driving it with `PAT-999999`. So an empty array must not be read as "this
+patient is not registered"; endpoint 3 answers that.
+
+**5 — `GET /api/agent/branches`**
+
+```jsonc
+{ "success": true,
+  "data": [ { "branchId": "022367001", "name": "P7 SMOKE BRANCH", "state": "SELANGOR" } ] }
+```
+
+**6 — `GET /api/agent/staff?branchId=022367001`**
+
+```jsonc
+{ "success": true,
+  "data": [
+    { "staffId": "END-00001", "name": "P7 DOCTOR ALPHA", "phone": "0123456789",
+      "staffType": "END", "staffTypeName": "ENDOSCOPIST", "branchId": "022367001" }
+  ] }
+```
+
+`staffTypeName` is **left null, not coerced to `""`**, when a clinician's `Staff_Type` is no longer in
+`dbo.LU_STAFFTYPE` — the `LEFT JOIN` of §13.1 finding 6. An unknown `branchId` returns an empty list; a
+missing one is refused in the house envelope.
+
+**7 — `GET /api/agent/slots/open?branchId=022367001&fromDate=2026-09-01&toDate=2026-09-02&staffType=END`**
+
+```jsonc
+{ "success": true,
+  "data": [
+    { "slotId": 34, "staffId": "END-00001", "staffName": "P7 DOCTOR ALPHA",
+      "staffPhone": "0123456789", "staffType": "END",
+      "slotDate": "2026-09-01", "startTime": "10:00", "endTime": "11:00" }
+  ] }
+```
+
+**One row is one hour** (§3.7), so a clinician free 09:00–12:00 is three rows and the caller groups them.
+`slotId` is the value the booking write takes back as `slotIds`. 🔴 **This read is advisory** — a slot listed
+here can be consumed a second later, and `SaveAppointmentAsync` answers `SlotTaken`, which is a normal
+outcome rather than an error (§6.7, §13.1 finding 3).
+
+`fromDate` and `toDate` are parsed with **`DateTime.TryParseExact("yyyy-MM-dd", CultureInfo.InvariantCulture)`**
+and a failure is a refusal that names the format, never an exception and never a 500:
+
+```jsonc
+{ "success": false,
+  "message": "fromDate is required and must be yyyy-MM-dd (for example 2026-09-01).",
+  "correlationId": "3ad8a42e3b524d0cbb6726ce354bdfbe" }
+```
+
+🔴 **A plain `DateTime.Parse` here would be a real defect rather than a style slip.** It accepts a
+locale-dependent string, so `01/09/2026` would read as 1 September on one server and 9 January on another —
+the same request producing a different month depending on where it landed, with nothing logged anywhere.
+Driven deliberately: `fromDate=01/09/2026` is refused. `staffType` is genuinely optional and **blank is
+converted to `null` before the call**, because `null` means "do not filter" while `''` would match no staff
+type at all and answer "no availability" to a caller that meant "any clinician".
+
+#### 🔴 The three privacy rules this API enforces, and what each protects against
+
+**1. `nricLast4`, and never the full NRIC.** Endpoints 1 and 2 read procedures that reduce the value in SQL
+and never select `Patient_NRIC` at all. **Endpoint 3 is the only place in the entire Agent API where the full
+twelve digits are even in memory** — `PatientBasicDetail` carries them because `spPatientBasic_GetById` is
+the Patient Edit form's read — and the action reduces them in C# to the last four characters of the trimmed
+value. *What it protects against:* the agent confirms identity by asking a patient for four digits and
+comparing what it is told with what it holds. An agent that **can** state twelve digits is one that
+eventually states them to whoever is holding the other phone — a wrong number, a relative, or somebody who
+asked it nicely in a WhatsApp message. The defence is that the value is not in the payload to be repeated.
+Verified by searching every one of the eleven stored NRICs against all seven response bodies: none appears.
+
+**2. The patient projection is deliberately narrow.** `PatientBasicDetail` has 27 columns plus six joined
+lookup names; endpoint 3 returns ten fields. Absent on purpose, and present on the model: the full NRIC, the
+e-mail, the residential address, the emergency contact, the birth date and age, and race / religion /
+marital status / occupation. *What it protects against:* a conversational agent will repeat anything it is
+handed if the conversation goes that way, and an integration that has a field will eventually display it.
+**Widening this projection is a privacy decision, not a convenience** — the comment above it says so, so the
+next person to add a field has to make that decision on purpose.
+
+**3. `Staff_Phone` is for the clinician-confirmation step.** Endpoints 6 and 7 return it because the agent
+must ask a clinician to confirm an hour before a patient is told anything. 🔴 **The API is not what stops it
+reaching a patient — the agent's own system prompt is**, and that is stated at the projection, on both
+models and in both procedures' headers, so nobody reads the field's presence as permission. *What it
+protects against:* the realistic failure is not malice but reuse — somebody points a patient-facing surface
+at `/api/agent/staff` because it is the convenient list, and ships a clinician's mobile number to every
+patient who asks who their doctor is. **Anyone reusing these two endpoints for a patient-facing surface must
+strip the field themselves.**
+
+#### What was actually found while building these
+
+**1. 🔴 `openAppointmentCount` and `hasAssessment` both read `0`/`false` on every row of a real database, and
+that is exactly what a Dapper name mismatch looks like.** A mapping mistake compiles, throws nothing, logs
+nothing and returns the property's default — so two derived columns that are legitimately zero are
+indistinguishable from two that are misspelled. Neither was: `sqlcmd EXEC` returns `0` and `0` for the same
+five rows, for two separate real reasons. Every appointment in `CRC_DB` was **past-dated or not
+`'Scheduled'`**, and the count is over future `'Scheduled'` rows only; and the only patient holding a
+`'PATIENT ASSESSMENT'` journey is `PAT-000003`, who is **discharged and therefore filtered out of the queue
+by `DischargeType_ID IS NULL`**. `openAppointmentCount` was then proven non-default by booking a future
+appointment through the portal's own screen — it went `0 → 1`. **`hasAssessment` has never been observed
+`true` on this database**, and that is stated rather than glossed: its column alias and its property name
+match by inspection, and the three other SQL-derived aliases on the same model (`NricLast4`,
+`ScreeningState`, `OpenAppointmentCount`) all map non-default values, but the boolean itself is untested
+against a `true`.
+
+**2. `COUNT(*)` is the exception to §11.2's "aggregate over a possibly empty set" rule.** That rule exists
+because Dapper *throws* mapping a `NULL` onto a non-nullable value type, and `SUM`/`MAX`/`AVG` return `NULL`
+over no rows. `COUNT(*)` returns **`0`**, so `OpenAppointmentCount` is a plain `int` rather than an `int?`.
+Typing it nullable would have put a `?? 0` in front of the one guard that stops a patient being booked twice.
+
+**3. There is no branch on a patient, and its absence reads like an oversight.** The prompt for this work
+asked for "branch if present" on endpoint 3; `dbo.PatientBasic` has **no `Branch_ID` and no branch column of
+any kind** (§3.8). A patient is not attached to a facility — only their *appointments* are, which is
+endpoint 4. Checked against the table's DDL and against `PatientBasicDetail` rather than concluded from the
+model, because a missing property is the kind of thing a reader assumes was forgotten.
+
+**4. Route precedence resolves `patients/queue` against `patients/{patientId}` with no help needed.**
+Attribute routing scores a literal segment above a parameter segment, so `patients/queue` and
+`patients/by-phone` win regardless of the order the actions appear in the file, and no route constraint or
+reordering was required. Proven by driving all three, not assumed: `/patients/queue` returns the queue and
+`/patients/PAT-000011` returns the patient.
+
+**5. The two negative tests are worth more on a controller than on a filter.** Prompt 1 proved
+`AgentApiKeyFilter` against `/branches`, whose worst-case leak is a list of hospital names. The six endpoints
+added here return patient names, phone numbers and screening results, and a class-level attribute that
+failed to apply to a new action would look **exactly like a working endpoint** from the happy path. So both
+tests were re-run against `/api/agent/patients/queue` — the widest patient payload — before anything else:
+no key → `401`, wrong key → `401`, both `{"success":false,"message":"Unauthorized."}`, with the reason
+(`missing key` / `invalid key`) distinguished only in `audit-*.log` and never on the wire (§13.3).
+
+**6. Dates cross this boundary as ISO strings, not as `DateTime`, and that is a deliberate departure from
+the portal's own endpoints.** `/Patient/GetAppointments` returns the same column **twice** — `dd/MM/yyyy` for
+a table cell and `yyyy-MM-dd` for a date input (§4.7) — and the first is culture-formatted with the
+*server's* culture. A machine caller needs one format and it must be the unambiguous one, so every date on
+this API is `yyyy-MM-dd` with `InvariantCulture`, or `null` when the column is null. The `null` is kept
+rather than coerced to `""` for the reason `iFobtStatus` stays nullable: "not recorded" is a fact.
+
+**7. `dbo.StaffSlots` was empty on the development database, and an endpoint that has only ever returned `[]`
+is an endpoint whose model mapping has never been tested.** `/slots/open` answered `{"success":true,
+"data":[]}` — a passing-looking response that proves nothing at all about `AgentOpenSlotItem`. Thirteen hours
+were opened through the portal's own **Staff > Edit > Schedule** screen (`spStaffSlots_CreateRange`, two
+clinicians, three days) before the endpoint was believed. Booking one of those hours then removed it from the
+next response, which is the `PatientAppointment_ID IS NULL` predicate of §3.7 demonstrated end to end rather
+than asserted.
+
+**8. The portal's own `SaveBasic` refuses several of the seeded fixture patients, and the NRIC is why.**
+`PAT-000003`'s NRIC is `000003145900`, whose first six digits `000003` are not a date — so
+`PatientController.SaveBasic` answers *"Invalid NRIC (unable to derive Birth Date)."* and the row cannot be
+re-saved through the portal at all (§3.8's derivation rule). The fixture rows were inserted by a smoke test
+that did not go through that validation. It costs nothing today — the Agent API only reads — but it means
+**those patients cannot be edited, discharged or un-discharged through the UI**, and anyone who tries will
+get a message about an NRIC they did not type.
 
 ### 13.5 The write endpoint, and the typed failure reasons
 

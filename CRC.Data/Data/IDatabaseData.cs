@@ -1515,5 +1515,91 @@ namespace CRC.Data.Data
         // AuditTrails.User_Id = 0 — nobody — with no error, no failed request and no way to reconstruct
         // afterwards who did what (§0.1). This repository has already shipped that bug once.
         Task<AgentServiceAccount?> GetAgentServiceAccountAsync();
+
+        // The daily screening sweep: every ACTIVE patient (DischargeType_ID IS NULL — the whole of the
+        // "active" definition, §3.8) with the three iFOBT columns, the last four digits of the NRIC, and
+        // three values computed in SQL that exist in no table. Calls spAgentPatient_ListScreeningQueue.
+        // Ordered Patient_ID DESC; an empty list is a legitimate answer, not an error.
+        //
+        // 🔴 NO @User_ID, OF EITHER KIND, AND THE PROCEDURE DECLARES NONE. It is a pure read: no INSERT,
+        // no UPDATE, no DELETE, therefore no dbo.AuditTrails row and no actor to record (§0.1). It is not
+        // an spUsers_* procedure and does not operate on a user row, so it is not the TARGET kind either.
+        // Adding @User_ID INT = NULL would declare an audit intent it does not have. The same is true of
+        // the three methods below it.
+        //
+        // The three derived columns, because two of them are what the caller branches on:
+        //   • ScreeningState — NO_PHONE / UNRECORDED / INCOMPLETE / POSITIVE / NEGATIVE, one definition of
+        //     "positive" computed in one place. NO_PHONE is tested FIRST, ahead of every clinical branch.
+        //   • OpenAppointmentCount — future 'Scheduled' appointments for this patient. 🔴 IT IS THE ONLY
+        //     DUPLICATE-BOOKING GUARD THERE IS: dbo.PatientAppointment has nothing unique except its
+        //     primary key (§3.9), so nothing else would notice a re-run of the sweep booking a patient
+        //     twice. Non-zero means "leave this patient alone".
+        //   • HasAssessment — matched on dbo.PatientJourney's DENORMALIZED PjAppType_Name, because that
+        //     table does not store the LU_PJ_APP_TYPE code at all (§3.10).
+        //
+        // 🔴 THE FULL NRIC IS NOT SELECTED. Only its last four digits, and the model has no property for
+        // more. The agent confirms identity by asking for four digits and comparing.
+        Task<List<AgentScreeningQueueItem>> GetAgentScreeningQueueAsync();
+
+        // Resolves an inbound WhatsApp number to ZERO, ONE OR MANY patients. Calls
+        // spAgentPatient_FindByPhone; ordered Patient_ID DESC.
+        //
+        // No @User_ID of either kind — a pure read, no audit row, no actor (see above).
+        //
+        // 🔴 ALL THREE COUNTS ARE NORMAL AND THE CALLER MUST HANDLE THE MANY CASE BY ASKING. Nothing on
+        // dbo.PatientBasic is unique except the primary key (§3.8), so a shared household phone already
+        // makes two rows possible; and the match is on the LAST NINE DIGITS rather than on equality,
+        // because Meta delivers 60123456789 while the portal stores whatever an administrator typed. Nine
+        // digits is not unique either — 012-345 6789 and 011-2345 6789 reduce to the same tail. NEVER
+        // TAKE THE FIRST ROW.
+        //
+        // Two quiet behaviours worth knowing before you debug a "missing" patient:
+        //   • A phone with fewer than nine digits returns the SAME SEVEN COLUMNS WITH NO ROWS, not an
+        //     error — a SELECT TOP 0 placeholder grid, for the reason spStaff_Delete has one (§5.4).
+        //   • The column-side digit strip removes exactly + - ( ) space and dot. A stored number holding
+        //     any other character survives the strip, fails the comparison, and THE PATIENT IS SIMPLY NOT
+        //     FOUND — no error and no warning. The audit query that finds every such row is in the
+        //     procedure's header comment.
+        Task<List<AgentPatientMatch>> FindAgentPatientsByPhoneAsync(string phone);
+
+        // The clinicians BASED at one branch — Staff_Base = @Branch_ID — with the phone number the agent
+        // needs to confirm an hour, and the staff type as both its stored code and its display name. Calls
+        // spAgentStaff_ListByBranch; ordered by Staff_Name. An unknown branch id is not an error: it
+        // returns an empty list.
+        //
+        // No @User_ID of either kind — a pure read, no audit row, no actor.
+        //
+        // StaffType_Name is NULLABLE because the join is a LEFT JOIN: Staff.Staff_Type is not a foreign
+        // key (§3.4), so a clinician holding a retired code is a state the schema permits and an INNER
+        // JOIN would drop them from the branch's list silently.
+        //
+        // 🔴 Staff_Phone is returned for the CLINICIAN-CONFIRMATION step, not for relaying to a patient.
+        // Neither this layer nor the API enforces that — the agent's system prompt does.
+        Task<List<AgentStaffItem>> GetAgentStaffByBranchAsync(string branchId);
+
+        // Every OPEN HOUR at one branch between two dates, optionally narrowed to one staff type. Calls
+        // spAgentSlots_FindOpenByBranch; ordered SlotDate, SlotStartTime, Staff_Name.
+        //
+        // No @User_ID of either kind — a pure read, no audit row, no actor.
+        //
+        // ONE ROW IS ONE HOUR — dbo.StaffSlots holds exactly one on-the-hour hour per row by check
+        // constraint (§3.7), so a three-hour gap is three rows and the caller groups them. "Open" is the
+        // predicate PatientAppointment_ID IS NULL, which IS availability: there is no IsBooked column and
+        // no status to disagree with it.
+        //
+        // 🔴 THIS READ IS ADVISORY. It holds no lock, so a slot it returns can be taken a second later and
+        // nothing in the schema would catch the double-claim. The only defence is SaveAppointmentAsync's
+        // re-read inside its own transaction, which answers SlotTaken — a NORMAL outcome that the caller
+        // handles by re-running discovery, not an error (§6.7). Do not move this read into a transaction
+        // to "fix" that: it is the picker, not the check.
+        //
+        // staffType is genuinely optional — NULL means "do not filter", and a BLANK STRING IS NOT THE SAME
+        // THING: it would match no staff type at all. Callers convert blank to null themselves, the same
+        // rule SearchAppointmentsAsync's filters follow.
+        //
+        // The two times come back as VARCHAR(5) 'HH:mm' STRINGS, not TimeSpan — see AgentOpenSlotItem for
+        // why that is deliberate.
+        Task<List<AgentOpenSlotItem>> FindAgentOpenSlotsByBranchAsync(string branchId, DateTime fromDate,
+            DateTime toDate, string? staffType);
     }
 }
