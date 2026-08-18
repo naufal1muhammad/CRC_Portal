@@ -5428,6 +5428,20 @@ CRC_Portal/
   DapperLayerPlan.md                the finished 11-prompt plan that produced the Dapper layer. HISTORY:
                                     it records how the layer was built and in what order. Where it and
                                     CoreFlow.md disagree, CoreFlow.md is right (it was written last).
+  AgentApiPlan.md                   🔴 AN UNFINISHED PLAN, NOT HISTORY — the only document at this root
+                                    that describes code which does not exist yet. Five prompts that add
+                                    CRC.Api (a class library of API-key-authenticated endpoints an
+                                    external agent calls), five stored procedures under
+                                    Stored Procedures/Agent/, and a seeded AGENT_SERVICE dbo.Users row.
+                                    §13 IS RESERVED FOR IT and is written by its prompts as they ship —
+                                    do not claim §13 for anything else. Until its Progress Tracker is
+                                    fully ticked, NOTHING IT DESCRIBES IS IN THIS REPO, and this file
+                                    still describes the portal as built without it: §2.2's AllowAnonymous
+                                    count is two, there are three projects, and there are 104 procedures.
+  Nucentra_WhatsApp_Agent_Plan.md   the n8n build specification for the WhatsApp agent that will call the
+                                    API above. Nothing in this repo knows it exists and nothing here
+                                    implements any of it; its §4 is the source AgentApiPlan.md was cut
+                                    from, and where the two disagree AgentApiPlan.md is the later word.
   DOCUMENTSTORAGE.md                AUTHORITATIVE on blob storage — container, key layout, SAS, Azurite,
                                     the two DocumentStorage settings. §8 defers to it.
   DocumentStoragePlan.md            the finished plan that moved documents off wwwroot/uploads into Blob.
