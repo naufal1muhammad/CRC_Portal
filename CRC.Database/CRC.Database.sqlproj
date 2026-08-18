@@ -89,6 +89,7 @@
     <Folder Include="Stored Procedures\StaffSlots" />
     <Folder Include="Stored Procedures\AuditTrails" />
     <Folder Include="Stored Procedures\PatientTracker" />
+    <Folder Include="Stored Procedures\Agent" />
     <Folder Include="Scripts" />
     <Folder Include="Scripts\Tools" />
   </ItemGroup>
@@ -225,6 +226,11 @@
     <Build Include="Stored Procedures\PatientTracker\spPatientTracker_Appointments_List.sql" />
     <Build Include="Stored Procedures\PatientTracker\spPatientTracker_Procedures_List.sql" />
     <Build Include="Stored Procedures\PatientTracker\spPatientTracker_StalledCount_Get.sql" />
+    <Build Include="Stored Procedures\Agent\spAgentPatient_ListScreeningQueue.sql" />
+    <Build Include="Stored Procedures\Agent\spAgentPatient_FindByPhone.sql" />
+    <Build Include="Stored Procedures\Agent\spAgentStaff_ListByBranch.sql" />
+    <Build Include="Stored Procedures\Agent\spAgentSlots_FindOpenByBranch.sql" />
+    <Build Include="Stored Procedures\Agent\spAgentUsers_GetServiceAccount.sql" />
   </ItemGroup>
   <ItemGroup>
     <!-- SSDT allows only one PostDeploy script (Script.PostDeployment.sql); it :r-includes the

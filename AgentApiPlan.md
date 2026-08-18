@@ -380,7 +380,7 @@ in place — §2.2's is the only one that does.
 
 ## Progress Tracker
 
-- [ ] **Prompt 0** — The database: five procedures, the `.sqlproj`, the `AGENT_SERVICE` seed, `SEEDING.md`, and the `CoreFlow.md` §13 skeleton
+- [x] **Prompt 0** — The database: five procedures, the `.sqlproj`, the `AGENT_SERVICE` seed, `SEEDING.md`, and the `CoreFlow.md` §13 skeleton
 - [ ] **Prompt 1** — The project and the guard: `CRC.Api`, the application part, `AgentApiKeyFilter`, the service account, and endpoint 5
 - [ ] **Prompt 2** — The six remaining reads: four new data-layer methods, four models, endpoints 1, 2, 3, 4, 6, 7
 - [ ] **Prompt 3** — The write: endpoint 8, `SaveAppointmentAsync` reused, the typed failure reasons, and the audit assertion
@@ -465,7 +465,7 @@ Every copy block tells the AI to:
 
 ## Prompt 0 — The database, the service account, and the `CoreFlow.md` §13 skeleton
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** the existing project only
 
 > **What exists before this prompt:** 104 stored procedures in 30 per-feature folders under

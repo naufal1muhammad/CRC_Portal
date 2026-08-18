@@ -47,6 +47,7 @@ today** — not as it was, and not as it might be.
 | **10** | Folder structure / file map — where everything lives and why |
 | **11** | End-of-feature checklist — the ordered steps for adding a feature, with the traps named |
 | **12** | Decisions locked — settled deliberately, not to be re-opened without a reason |
+| **13** | The Agent API — the machine-callable surface, its five procedures, and **the service actor that replaces a cookie's claim** |
 
 ---
 
@@ -5781,3 +5782,207 @@ non-transactional staff-settings save and §9.2's forty unlogged catches are **r
 precisely, deliberately not repaired here** — every one of them is a behaviour change, and a behaviour
 change is the owner's call. Fixing one is welcome; fixing one *on the way past something else*, without
 saying so, is not. Update the section in the same commit.
+
+---
+
+## 13. The Agent API
+
+> **What exists as this section is created: the database half, and nothing else.** Five procedures under
+> `CRC.Database/Stored Procedures/Agent/`, all five registered in `CRC.Database.sqlproj`, all five published
+> to `CRC_DB` and driven by hand; and one seeded `dbo.Users` row, `AGENT_SERVICE`. **No C# exists yet** —
+> there is no `CRC.Api` project, no controller, no filter and no `IDatabaseData` method. §13.0 and §13.1
+> below describe what is built. §13.2 to §13.7 are placeholders, each filled in by the prompt that builds
+> that piece. Where a sentence here is about code that is not written, it names the prompt that writes it
+> rather than describing it as though it were already there.
+
+### 13.0 What the Agent API is, and what it is not
+
+**Eight endpoints under `/api/agent` — seven reads and one write — authenticated by a single shared secret
+in an `X-Agent-Key` header, with exactly one intended caller.** That caller is an n8n workflow that speaks
+to patients over WhatsApp: it sweeps the screening queue once a day, resolves an inbound phone number to a
+patient, reads branches, staff and open hours, and books one assessment appointment after a human has
+approved it. Prompt 1 builds the project, the filter and endpoint 5; Prompt 2 builds the six remaining
+reads; Prompt 3 builds the write.
+
+**It is not the agent.** The agent is n8n plus the WhatsApp Cloud API, built separately and living outside
+this repository. This API answers questions and performs one write; it holds no conversation, no state
+machine, no schedule and no prompt. **Nothing in nucentra knows that WhatsApp exists**, and nothing here
+should learn.
+
+**It is not a public API.** One caller, one key, no versioning, no published documentation, no CORS, no rate
+plan, no self-service anything. It is a private integration surface that happens to speak HTTP, and the
+shared key is the whole of its access control.
+
+**It is not a second host.** `CRC.Api` is a class library — `Microsoft.NET.Sdk`, not `Microsoft.NET.Sdk.Web`
+— loaded into `CRC.Web` as an MVC application part (Prompt 1). One process, one deployment, one
+`appsettings.json`, one Serilog pipeline, one connection string. There is no second App Service, no second
+`Program.cs` and no second port. The dependency runs `CRC.Web → CRC.Api → CRC.Data`, and **`CRC.Api` never
+references `CRC.Web`** — which is why it carries its own two small infrastructure files rather than reusing
+`AuditLog.cs` and `ErrorResponse.cs`.
+
+**It is not a second data path.** The five procedures are called the way every other procedure in nucentra
+is called: one `IDatabaseData` method each, implemented in `SqlData` with
+`commandType: CommandType.StoredProcedure`. `SqlData` stays the only file in the solution that names a
+stored procedure (§12 #2), and the booking write reuses `SaveAppointmentAsync` **whole and unchanged**
+(§6.7) rather than reimplementing a "simpler" one.
+
+#### 🔴 The one sentence that matters most
+
+> **This is the first surface in nucentra authenticated by something other than a cookie, and the only
+> reason it can exist safely is that ONE FILTER REPLACES THE GLOBAL `AuthorizeFilter` FOR EXACTLY ONE
+> CONTROLLER.**
+
+§2.2 is the context: `AddControllersWithViews` installs a global `AuthorizeFilter`, so **every** action in
+the portal requires authentication unless it carries `[AllowAnonymous]`, and a `grep` for `AllowAnonymous`
+is today a complete two-line audit of the portal's public surface. The agent controller adds a third line —
+to a controller that reads patient names, phone numbers, screening results and clinician schedules. That is
+a deliberate, documented widening of the attack surface, and `AgentApiKeyFilter` is the only thing standing
+in the gap: if it is removed, mis-registered, or ever fails open, `/api/agent/patients/queue` becomes an
+unauthenticated dump of every active patient in the programme. Prompt 1 builds and proves that filter
+**before any patient-shaped endpoint exists**, and Prompt 4 rewrites §2.2 rather than leaving its "two
+lines" sentence quietly false.
+
+The same absence of a cookie has a second consequence, and it is the one that fails silently rather than
+loudly: **no cookie means no `ClaimsPrincipal`, which means `DatabaseHelper.CurrentUserId` is `null`, which
+means every actor procedure writes `AuditTrails.User_Id = 0`** (§0.1). That is what the seeded
+`AGENT_SERVICE` row and `spAgentUsers_GetServiceAccount` exist to prevent. §13.3 carries the mechanism.
+
+### 13.1 The five procedures
+
+All five live in `CRC.Database/Stored Procedures/Agent/`, all five are registered in
+`CRC.Database.sqlproj`, and all five are **reads**. The folder is what makes "these exist for one caller"
+visible at a glance; the names are `sp{Agent…}_{What}`, which is nucentra's `sp{Table}_{What}` convention
+applied to a caller rather than to a table.
+
+| Procedure | Parameters | Returns | `IDatabaseData` method | `@User_ID` |
+|---|---|---|---|---|
+| `spAgentPatient_ListScreeningQueue` | — | Per **active** patient (`DischargeType_ID IS NULL`): `Patient_ID, Patient_Name, Patient_Phone, Patient_iFOBTStatus, Patient_iFOBTCompletionDate, Patient_iFOBTResults, NricLast4, ScreeningState, OpenAppointmentCount, HasAssessment` — `Patient_ID DESC` | Prompt 2 | **no** |
+| `spAgentPatient_FindByPhone` | `@Phone VARCHAR(100)` | Zero, one or **many** patients: `Patient_ID, Patient_Name, Patient_Phone, NricLast4, Patient_iFOBTStatus, Patient_iFOBTResults, DischargeType_ID` — `Patient_ID DESC`. A `@Phone` with fewer than 9 digits returns **the same seven columns with no rows** | Prompt 2 | **no** |
+| `spAgentStaff_ListByBranch` | `@Branch_ID VARCHAR(100)` | `Staff_ID, Staff_Name, Staff_Phone, Staff_Type, StaffType_Name, Staff_Base` for `Staff_Base = @Branch_ID` — `Staff_Name`. `StaffType_Name` is **nullable** (`LEFT JOIN`) | Prompt 2 | **no** |
+| `spAgentSlots_FindOpenByBranch` | `@Branch_ID VARCHAR(100)`, `@FromDate DATE`, `@ToDate DATE`, `@Staff_Type VARCHAR(100) = NULL` | One row per **open hour**: `StaffSlot_ID, Staff_ID, Staff_Name, Staff_Phone, Staff_Type, SlotDate, SlotStartTime, SlotEndTime` — the two times as **`VARCHAR(5)` `'HH:mm'`** via `CONVERT(…, 108)`. `SlotDate, SlotStartTime, Staff_Name` | Prompt 2 | **no** |
+| `spAgentUsers_GetServiceAccount` | — | `TOP 1 User_ID, Username, User_Name, User_Type` from `dbo.Users` where `Username = 'AGENT_SERVICE'`. **Not `Password_Hash`, not `User_Email`** | Prompt 1 | **no** |
+
+#### 🔴 None of the five declares `@User_ID`, and that is correct for each of them separately
+
+The rule is §0.1's: a `@User_ID` with a default is the **ACTOR** for a `dbo.AuditTrails` row the procedure
+inserts; a `@User_ID` without one is a **TARGET** user row the procedure operates on. These five are neither
+kind, for two different reasons:
+
+- **The four data reads write nothing.** No `INSERT`, no `UPDATE`, no `DELETE`, therefore no
+  `dbo.AuditTrails` row, therefore no actor to record. They are not `spUsers_*` procedures and they do not
+  operate on a user row, so they are not the TARGET kind either. Adding `@User_ID INT = NULL` to any of them
+  would declare an audit intent the procedure does not have.
+- **`spAgentUsers_GetServiceAccount` could not have an actor even if it wanted one.** It runs *before the
+  principal exists* — the request arrives with no cookie, `CurrentUserId` is `null`, and **this procedure is
+  what creates the identity the rest of the request runs as**. Asking it for an actor is asking it for the
+  answer it is being called to produce.
+
+The write these reads feed — endpoint 8, Prompt 3 — goes through `SaveAppointmentAsync` and
+`spPatientAppointment_Insert`, which **is** the actor kind, and the actor it is given is the `User_ID` this
+fifth procedure returned. That is the whole chain, and §13.3 documents it.
+
+#### What was actually found while writing them
+
+**1. 🔴 `PatientAppointment_ID IS NULL` *is* availability, and it is the most misreadable line in
+`spAgentSlots_FindOpenByBranch`.** `dbo.StaffSlots` has no `IsBooked` column, no status and no "released"
+state (§3.7); a null appointment id is open and a non-null one is consumed. The predicate reads like an
+incidental null check and is in fact the entire filter, so the procedure carries a comment saying so
+directly above it. The second half of the same fact is that **this read is advisory only** — see 3 below.
+
+**2. The phone match is on the LAST NINE DIGITS, and it can neither match everything nor match uniquely.**
+Meta delivers `60123456789`; the portal stores whatever an administrator typed — `0123456789`,
+`012-345 6789`, `+60 12-345 6789`. Equality matches none of those against each other, so both sides are
+stripped to digits and the last nine compared. Two consequences, both real:
+
+- **What it cannot match.** The column-side strip is a `TRANSLATE` over a *named* separator set — `+ - ( )`
+  space `.` **and nothing else**. A stored number containing any other character (a slash, an `x` for an
+  extension, a non-breaking space out of a spreadsheet) survives the strip, fails the comparison, and the
+  patient is **simply not found** — no error, no warning, the agent just says it does not recognise the
+  number. The audit query that finds every such row is in the procedure's own header comment; run against
+  `CRC_DB`'s eleven patients it returns **zero rows**, which is the pass condition and is not a promise
+  about tomorrow's data.
+- 🔴 **Nine digits is not unique, and the collision is structural rather than theoretical.** Malaysian
+  `01X` mobiles are ten digits and `011` mobiles are eleven, so `012-345 6789` and `011-2345 6789` — two
+  entirely different people — reduce to the same tail. Measured:
+  ```
+  012-345 6789   →  123456789
+  011-2345 6789  →  123456789
+  60123456789    →  123456789
+  ```
+  This sits on top of the fact that **nothing on `dbo.PatientBasic` is unique except the primary key**
+  (§3.8), so a shared household phone already made "many" a normal answer. The caller must handle the many
+  case by asking a disambiguating question, and **must never pick the first row**.
+
+  The strip also costs an index: the expression is not sargable, so the lookup is a table scan. That is
+  acceptable at this size and against one lookup per conversation; on a large table the answer is a
+  persisted computed column with its own index, not a cleverer predicate.
+
+**3. `spAgentSlots_FindOpenByBranch` is advisory, and `SlotTaken` is a normal outcome.** The read runs
+outside any transaction and holds no lock, so a slot it returns can be consumed by an administrator working
+in the portal a second later — and nothing in the schema would catch the double-claim, because
+`dbo.PatientAppointment` has no unique constraint beyond its identity and `dbo.StaffSlots` has nothing
+unique on `PatientAppointment_ID` (§3.9). The only defence is the read **inside** `SaveAppointmentAsync`'s
+transaction (§6.7). So a booking that comes back `SlotTaken` is a correct system behaving correctly; the
+caller re-runs slot discovery. This is the same two-reads-of-one-thing distinction §6.7 draws between
+`/Patient/GetAppointmentSlots` and the transactional read — one paints a picture, one decides — and the
+agent's read is firmly the first kind.
+
+**4. `ScreeningState` has a sixth case that reports as one of the five, and it is worth knowing.** The
+`CASE` tests `NO_PHONE` first — deliberately, because a patient with no number is one the agent can do
+nothing with whatever their result says, and ranking it below `POSITIVE` would put them in the "message
+them" bucket that no message can reach. But the fall-through `ELSE 'UNRECORDED'` catches a genuinely
+different state: **`Patient_iFOBTStatus = 1` with `Patient_iFOBTResults` still `NULL`** — the test is
+complete and the result has not been entered — and reports it identically to "nothing recorded at all".
+That is the sketch's behaviour and it is kept, because both states mean "do not message this patient about
+a result"; it is written down here so nobody reads `UNRECORDED` as proof that no test was done.
+
+**5. `Patient_Phone` is `NOT NULL`, so `NO_PHONE` is about an empty string.** `NOT NULL` rejects a `NULL`
+and accepts `''` (§3.8), and the portal's sixteen "mandatory field" checks live in C#, not in the schema.
+The `ISNULL` in the `CASE` is a belt-and-braces guard over a column that cannot currently be null — said in
+the comment so a reader does not go hunting for a null case that the DDL forbids.
+
+**6. `Staff.Staff_Type` is not a foreign key, so `spAgentStaff_ListByBranch` must `LEFT JOIN`.** Confirmed
+against `dbo/Tables/Staff.sql`, not assumed: `PK_Staff` is the table's only constraint (§3.4). A staff
+member holding a code that has since left `dbo.LU_STAFFTYPE` is a state the schema permits, and an
+`INNER JOIN` would drop that person from the branch's list **silently** — the agent would be told a
+clinician standing in the branch does not work there. `StaffType_Name` is therefore nullable on the wire,
+exactly as it already is on `StaffListItem` and `StaffDetail`.
+
+**7. The early return in `spAgentPatient_FindByPhone` emits the same seven columns as the success path, and
+has to.** A `@Phone` with fewer than nine digits is answered with `SELECT TOP 0` over the identical column
+list and types, not a one-column placeholder. Dapper maps by name and the caller reads the grid
+unconditionally; a differently-shaped grid on one path is a mapping failure that compiles, returns `200` and
+logs nothing — the same reasoning that makes `spStaff_Delete` `SELECT TOP 0` a placeholder grid on its early
+returns (§5.4). Driven by hand with `@Phone = '123'`: seven headers, zero rows.
+
+**8. No row generator, and the warning count is still two.** The sketch this work started from used
+`master.dbo.spt_values` to split the phone string; `sys.all_objects` would have done the same job. Either
+would have added a **third** `SQL71502` to a build whose pass condition is exactly two (§3.7, §12 #8), and
+that count is worth more as a tripwire than the strip is as a one-liner. The parameter is cleaned with a
+`PATINDEX`/`STUFF` loop over a scalar instead — at most one pass per character of a `VARCHAR(100)`, once per
+call. A `/t:Rebuild` after all five procedures reports `Build succeeded`, `0 Error(s)` and the two baseline
+warnings at lines 46 and 52 of `spStaffSlots_CreateRange.sql`, unchanged.
+
+### 13.2 `CRC.Api` — the project, and why it is a library
+
+> *Written in Prompt 1 — not yet filled in.*
+
+### 13.3 🔴 Authentication and the service actor
+
+> *Written in Prompt 1 — not yet filled in.*
+
+### 13.4 The seven read endpoints, and their exact JSON
+
+> *Written in Prompt 2 — not yet filled in.*
+
+### 13.5 The write endpoint, and the typed failure reasons
+
+> *Written in Prompt 3 — not yet filled in.*
+
+### 13.6 Configuration, deployment and the platform lock-down
+
+> *Written in Prompt 4 — not yet filled in.*
+
+### 13.7 What is deliberately not here
+
+> *Written in Prompt 4 — not yet filled in.*

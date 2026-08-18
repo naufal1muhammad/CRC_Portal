@@ -32,7 +32,7 @@ Right-click **CRC.Database → Publish** in Visual Studio, or run SqlPackage dir
 ```
 
 Either route deploys the schema and then runs the post-deployment script, which seeds the lookup tables, the
-location tree and the bootstrap SUPERUSER.
+location tree, the bootstrap SUPERUSER and the `AGENT_SERVICE` account.
 
 The post-deployment script runs on **every** publish, not just the first. Every seed is idempotent, so a
 second publish over a populated database inserts nothing and fails nothing. SSDT inlines the `:r` includes
@@ -45,7 +45,7 @@ into the `.dacpac` at **build** time, so the deployed server never needs the see
 | `CRC.Database/Scripts/Script.PostDeployment.sql` | The one `<PostDeploy>` item SSDT allows; `:r`-includes the three seeds in order |
 | `CRC.Database/Scripts/Seed_Lookups.sql` | The eleven small `LU_*` tables, guarded per row |
 | `CRC.Database/Scripts/Seed_Location.sql` | `dbo.LU_LOCATION`, generated, guarded whole-table |
-| `CRC.Database/Scripts/Seed_Users.sql` | The bootstrap SUPERUSER, guarded on `Username` |
+| `CRC.Database/Scripts/Seed_Users.sql` | Two accounts — the bootstrap SUPERUSER and the `AGENT_SERVICE` actor — each guarded on `Username` |
 | `CRC.Database/Scripts/Tools/New-SeedLocation.ps1` | Regenerates `Seed_Location.sql` from the CSV; never runs during a publish |
 
 ## What is seeded
@@ -65,10 +65,27 @@ into the `.dacpac` at **build** time, so the deployed server never needs the see
 | `LU_STAFFTYPE` | 5 | Staff types (three-letter ids) |
 | **Eleven lookups total** | **77** | |
 | `LU_LOCATION` | 3,242 | 16 states + 442 cities + 2,784 postcodes |
-| `Users` | 1 | The SUPERUSER above (`User_Type = 1`, `Staff_ID` NULL) |
+| `Users` | 2 | The SUPERUSER above (`User_Type = 1`, `Staff_ID` NULL) and `AGENT_SERVICE` (`User_Type = 2`, `Staff_ID` NULL) |
 
 After a publish, `IDENT_CURRENT('dbo.LU_LOCATION')` sits at 3242, so the next location created through the
 UI gets 3243 and does not collide.
+
+### The `AGENT_SERVICE` account
+
+The second `dbo.Users` row is a **machine account, not a person**: it is the audit actor every write the
+Agent API makes is attributed to, and it has no other purpose. An API-key request arrives with no cookie and
+therefore no principal, so without this row every appointment the agent books would be audited as
+`AuditTrails.User_Id = 0` — silently, with no error.
+
+**It has no usable password.** The hash in `Seed_Users.sql` covers a random secret that was generated once
+and thrown away, so unlike the SUPERUSER row a few lines above it cannot be logged into by anyone, and the
+plaintext is not recoverable. The account is resolved **by username**, never by id — `User_ID` is
+`INT IDENTITY` and differs between a local `CRC_DB` and Azure SQL, so nothing stores the number.
+
+**Deleting the row breaks every agent API call with a `503`, by design** — the alternative is a corrupt audit
+trail. The guard on `[Username]` means a re-publish never re-seeds it; if it is deleted, the next publish
+recreates it with a new random password nobody knows, which is fine, because nothing depends on its password
+or its id. See [`CoreFlow.md`](CoreFlow.md) §13.3.
 
 ## What is deliberately NOT seeded
 
