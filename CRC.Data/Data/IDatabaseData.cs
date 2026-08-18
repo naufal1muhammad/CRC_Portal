@@ -1481,5 +1481,39 @@ namespace CRC.Data.Data
         // StaffSlots, PatientBasic, PatientAppointment, PatientDocument, StaffDocument), not the screen it
         // came from, and both lookups drop NULLs and blanks before the DISTINCT.
         Task<List<string>> GetAuditTrailCategoriesAsync();
+
+        // ----- Agent API (machine-callable surface — CoreFlow.md §13) -----
+        //
+        // The endpoints under /api/agent are called by an external n8n workflow over HTTP with a shared
+        // key, not by a browser with a cookie. Everything they read they read through this interface like
+        // every other caller; the only thing that is different about them is who is asking, and the one
+        // method below is how the portal answers that question.
+
+        // The dbo.Users row the Agent API performs its work as — Username = 'AGENT_SERVICE', seeded by
+        // CRC.Database/Scripts/Seed_Users.sql and resolved once per agent request by AgentApiKeyFilter,
+        // before any action runs. Calls spAgentUsers_GetServiceAccount, which returns four columns and
+        // deliberately not Password_Hash or User_Email: the caller wants an identity to build a principal
+        // from, not a credential to check.
+        //
+        // No @User_ID, of either kind, and the procedure declares none. It writes nothing, so there is no
+        // dbo.AuditTrails row and no actor to record; and it runs BEFORE ANY PRINCIPAL EXISTS — an
+        // API-key request arrives with no cookie, DatabaseHelper.CurrentUserId is null, and this call is
+        // what creates the identity the rest of the request runs as. Asking it for an actor would be
+        // asking it for the answer it is being called to produce.
+        //
+        // The lookup is by USERNAME, not by a configured id, and that is not a style choice:
+        // dbo.Users.User_ID is INT IDENTITY, so this account's id on a local CRC_DB and its id on Azure
+        // SQL are different numbers, and a stale setting would not throw — it would write a different,
+        // real user's id into dbo.AuditTrails and report success. IX_Users_Username is UNIQUE, so the
+        // lookup is an index seek and the answer cannot be ambiguous.
+        //
+        // 🔴 NULL IS NOT A NORMAL OUTCOME AND THE CALLER IS REQUIRED TO FAIL ON IT. It means the database
+        // was published without the seed. The caller answers 503, logs an error and executes no action —
+        // it must NOT fall through to a null actor, a zero, or any other default. Name the failure that
+        // rule prevents, because it is silent and permanent: spPatientAppointment_Insert writes
+        // ISNULL(@User_ID, 0), so every appointment the agent booked would be audited as
+        // AuditTrails.User_Id = 0 — nobody — with no error, no failed request and no way to reconstruct
+        // afterwards who did what (§0.1). This repository has already shipped that bug once.
+        Task<AgentServiceAccount?> GetAgentServiceAccountAsync();
     }
 }

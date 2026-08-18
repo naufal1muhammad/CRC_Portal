@@ -71,7 +71,13 @@ builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add(new AuthorizeFilter());
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
-});
+})
+    // The Agent API's controller lives in the CRC.Api class library, not in this project. MVC only scans
+    // the entry assembly and the ones it is told about, so WITHOUT THIS LINE AgentApiController is never
+    // discovered and every /api/agent route answers 404 — with no error, no warning and nothing in a log.
+    // Its attribute routes then ride along with the existing app.MapControllerRoute(...) below, which is
+    // what creates the controller endpoint data source. See CoreFlow.md §13.2.
+    .AddApplicationPart(typeof(CRC.Api.Controllers.AgentApiController).Assembly);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CRC.Data.Data.DatabaseHelper>();
 
@@ -87,6 +93,22 @@ builder.Services.AddScoped<CRC.Data.Data.IDatabaseData, CRC.Data.Data.SqlData>()
 builder.Services.Configure<DocumentStorageOptions>(
     builder.Configuration.GetSection(DocumentStorageOptions.SectionName));
 builder.Services.AddSingleton<IDocumentStorage, AzureBlobDocumentStorage>();
+
+// The Agent API's shared key, bound from the "Agent" section exactly as DocumentStorage above is bound
+// from its own. appsettings.json carries an empty placeholder and appsettings.Development.json a
+// development-only value; the real key is the App Service app setting Agent__ApiKey (TWO underscores),
+// set by hand and never in source control. An empty key is treated as a misconfiguration by the filter
+// and refuses every request — it never means "no key required". See CoreFlow.md §13.6.
+builder.Services.Configure<CRC.Api.AgentApiOptions>(
+    builder.Configuration.GetSection(CRC.Api.AgentApiOptions.SectionName));
+
+// 🔴 The only thing standing between /api/agent and an unauthenticated caller: AgentApiController turns
+// off the global AuthorizeFilter with [AllowAnonymous] and reaches this filter through [ServiceFilter],
+// which resolves it from the container — so a missing registration is a request-time failure, not a
+// silent one. SCOPED, because it constructor-injects IDatabaseData (itself scoped) to resolve the
+// AGENT_SERVICE actor once per request; a singleton would capture a scoped dependency and a transient
+// would build a second one per request for no gain. See CoreFlow.md §13.3.
+builder.Services.AddScoped<CRC.Api.Infrastructure.AgentApiKeyFilter>();
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>

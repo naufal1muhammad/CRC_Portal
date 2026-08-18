@@ -5787,13 +5787,15 @@ saying so, is not. Update the section in the same commit.
 
 ## 13. The Agent API
 
-> **What exists as this section is created: the database half, and nothing else.** Five procedures under
-> `CRC.Database/Stored Procedures/Agent/`, all five registered in `CRC.Database.sqlproj`, all five published
-> to `CRC_DB` and driven by hand; and one seeded `dbo.Users` row, `AGENT_SERVICE`. **No C# exists yet** —
-> there is no `CRC.Api` project, no controller, no filter and no `IDatabaseData` method. §13.0 and §13.1
-> below describe what is built. §13.2 to §13.7 are placeholders, each filled in by the prompt that builds
-> that piece. Where a sentence here is about code that is not written, it names the prompt that writes it
-> rather than describing it as though it were already there.
+> **What exists as of Prompt 1: the database half, the project, and the guard.** Five procedures under
+> `CRC.Database/Stored Procedures/Agent/`, all five registered in `CRC.Database.sqlproj` and published to
+> `CRC_DB`; one seeded `dbo.Users` row, `AGENT_SERVICE`; and the `CRC.Api` class library, loaded into
+> `CRC.Web` as an application part, carrying `AgentApiKeyFilter`, `AgentApiController` and **one endpoint —
+> `GET /api/agent/branches`**. One of the five procedures is wired to C# (`spAgentUsers_GetServiceAccount`,
+> via `GetAgentServiceAccountAsync`); the other four are called by nothing yet. §13.0 to §13.3 describe what
+> is built. §13.4 to §13.7 are placeholders, each filled in by the prompt that builds that piece. Where a
+> sentence here is about code that is not written, it names the prompt that writes it rather than describing
+> it as though it were already there.
 
 ### 13.0 What the Agent API is, and what it is not
 
@@ -5965,11 +5967,312 @@ warnings at lines 46 and 52 of `spStaffSlots_CreateRange.sql`, unchanged.
 
 ### 13.2 `CRC.Api` — the project, and why it is a library
 
-> *Written in Prompt 1 — not yet filled in.*
+**`CRC.Api` is `Microsoft.NET.Sdk` — a class library that happens to contain a controller.** Not
+`Microsoft.NET.Sdk.Web`. There is no `Program.cs`, no `appsettings.json`, no `launchSettings.json`, no
+`WebApplication`, no port and no second process. It is compiled into `CRC.Api.dll`, `CRC.Web` references it,
+and `CRC.Web` loads its controllers as an **MVC application part**. One host, one deployment, one config
+file, one Serilog pipeline, one connection string.
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="4.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CRC.Data\CRC.Data.csproj" />
+  </ItemGroup>
+</Project>
+```
+
+**The `FrameworkReference` is what gives a plain library the ASP.NET Core types** — `HttpContext`,
+`ControllerBase`, `IAsyncAuthorizationFilter`, `[ApiController]` — without turning it into a web
+application. There is precedent in this repository and this project follows it rather than inventing
+anything: **`CRC.Data` already carries the identical line**, because `DatabaseHelper` needs
+`IHttpContextAccessor` (§6.5).
+
+**The `Serilog` package reference is the one thing the plan did not predict, and it is required.**
+`AgentAuditLog` writes to Serilog's static logger, and the Serilog assembly reaches `CRC.Web` through
+`Serilog.AspNetCore` — a package `CRC.Data` does not have and this project does not inherit. The version is
+pinned to **the one `CRC.Web` already resolves (4.3.0)**, so nothing is upgraded, downgraded or
+double-loaded; a different version here would be a `NU1605`-shaped argument between two projects in one
+process.
+
+#### The dependency arrow, and 🔴 why it points that way
+
+```
+CRC.Web  ──▶  CRC.Api  ──▶  CRC.Data
+   │                            ▲
+   └────────────────────────────┘
+```
+
+**`CRC.Api` must never reference `CRC.Web`.** `CRC.Web` references `CRC.Api` so that MVC can find
+`AgentApiController`; a reference back is a cycle, and the build refuses it. That is not a
+tidiness rule to be worked around — it is the reason two small files in `CRC.Api/Infrastructure/` are
+**deliberate copies of shapes that already exist in `CRC.Web/Infrastructure/`**:
+
+| Copy in `CRC.Api` | Original in `CRC.Web` | What is duplicated |
+|---|---|---|
+| `Infrastructure/AgentAuditLog.cs` | `Infrastructure/AuditLog.cs` | The class, and one line: `Log.ForContext("AuditChannel", true)`. Three methods, not 24. |
+| `Infrastructure/AgentErrorResponse.cs` | `Infrastructure/ErrorResponse.cs` | `ForUser` only — the `{ success = false, message, correlationId }` shape and the same `GenericUserMessage`. `ForView` is not copied: this project has no views. |
+
+**The duplication is a class, not a mechanism.** `AgentAuditLog` does not configure a logger, own a file or
+set a retention policy; it attaches the one property that the process-wide pipeline in `CRC.Web/Program.cs`
+routes on, so its lines land in the same `Logs/audit-*.log` as everything `AuditLog` writes, interleaved by
+timestamp (§9.2). The same is true of `AgentErrorResponse`: the correlation id it returns is the id
+`CorrelationIdMiddleware` already stamped.
+
+🔴 **One string literal is duplicated and nothing checks that the two agree.**
+`AgentErrorResponse` reads the correlation id from `HttpContext.Items["CorrelationId"]` **by the literal**,
+because the constant that names it — `CorrelationIdMiddleware.HttpContextItemKey` — lives in `CRC.Web` and
+is unreachable from here. **If the middleware's key is ever renamed, this literal must be renamed in the
+same commit.** The failure mode if it is not is quiet and diagnostic rather than functional: this file falls
+through to `HttpContext.TraceIdentifier`, the agent is handed a correlation id that matches nothing in
+`Logs/app-*.log`, and no build breaks and no exception is thrown. The file says so where the literal is
+declared; this is the second place, because a rename starts in `CRC.Web` and a reader there has no reason
+to look in `CRC.Api`.
+
+#### What sharing the host gives, and what it does not
+
+| Concern | Status | Why |
+|---|---|---|
+| **Serilog, both channels** | ✅ **Free** | One pipeline for the process, configured in `CRC.Web/Program.cs`. `AgentAuditLog` writes the audit channel; `ILogger<AgentApiKeyFilter>` and `ILogger<AgentApiController>` write `app-*.log`. Verified: agent lines appear in both files. |
+| **`CorrelationIdMiddleware`** | ✅ **Free** | It is a pipeline stage, not an MVC filter, so it runs for `/api/agent` exactly as for a page. The id is in `HttpContext.Items` and echoed on `X-Correlation-ID`. **With one caveat that is not free — see §13.3's last finding.** |
+| **Connection string, DI, `IDatabaseData`** | ✅ **Free** | Same container, same `appsettings.json`, same scoped `SqlData`. `CRC.Api` injects `IDatabaseData` and knows nothing below it. |
+| **The global `AuthorizeFilter`** | ❌ **Escaped** | `[AllowAnonymous]` on the controller, replaced by `AgentApiKeyFilter`. §2.2's two-line audit becomes three. |
+| **The global `AutoValidateAntiforgeryTokenAttribute`** | ❌ **Escaped** | `[IgnoreAntiforgeryToken]` on the controller. An external caller has no `__Host-CSRF` cookie and cannot obtain an `X-CSRF-TOKEN`, so without it every POST here would return `400` (§2.4). |
+| **`ErrorResponse.ForUser`** | ❌ **Copied** | Lives in `CRC.Web`. See the table above. |
+
+#### The three lines in `CRC.Web/Program.cs`
+
+Nothing else in that file changed — not the pipeline order, not the `/uploads` branch, not the rate
+limiter, the cookie options, the five policies or the antiforgery configuration.
+
+```csharp
+// 1. On the existing AddControllersWithViews(…) call:
+    .AddApplicationPart(typeof(CRC.Api.Controllers.AgentApiController).Assembly);
+
+// 2. Beside the DocumentStorageOptions binding, which is its model:
+builder.Services.Configure<CRC.Api.AgentApiOptions>(
+    builder.Configuration.GetSection(CRC.Api.AgentApiOptions.SectionName));
+
+// 3. Required by [ServiceFilter] — SCOPED, because the filter resolves IDatabaseData per request:
+builder.Services.AddScoped<CRC.Api.Infrastructure.AgentApiKeyFilter>();
+```
+
+**`AddApplicationPart` is the one that fails silently.** MVC scans the entry assembly and the ones it is
+told about; without that line `AgentApiController` is never discovered and every `/api/agent` route answers
+**404** — no error, no warning, nothing in a log. The registration in (3) fails the other way and loudly:
+`[ServiceFilter]` resolves from the container, so a missing registration throws at request time rather than
+letting an unguarded controller answer.
+
+**No `app.MapControllers()` was needed, and this was proven rather than assumed.** The existing
+`app.MapControllerRoute(…)` creates the controller endpoint data source, and attribute-routed actions are
+always part of it. The evidence is the negative tests in §13.3: `/api/agent/branches` answers **401**, not
+404, which means the route was matched and the filter ran. Had both answered 404, the fix would have been
+`app.MapControllers();` immediately above the existing `MapControllerRoute` — it was not required.
+
+**Solution and reference wiring.** `CRC_Portal.slnx` gains `<Project Path="CRC.Api/CRC.Api.csproj" />`
+alongside the other three (no `<Build>`/`<Deploy>` children — those belong to the `.sqlproj`), and
+`CRC.Web.csproj` gains a `ProjectReference` to `CRC.Api` in the `ItemGroup` that already held `CRC.Data`.
+`dotnet build CRC.Web/CRC.Web.csproj` builds all three in order and reports **0 warnings, 0 errors**.
+
+> A deleted `CRC.Api` (commit `291ab458`, removed in `a6c9d16e`) was a **standalone `Microsoft.NET.Sdk.Web`
+> host** with its own `Program.cs`, port, Swagger and authentication handler. This project is not that, and
+> the difference is deliberate (§12). A stray `CRC.Api/CRC.Api.csproj.user` from that attempt is still on
+> disk; it is matched by `.gitignore:14` (`*.csproj.user`) and is not part of this project.
 
 ### 13.3 🔴 Authentication and the service actor
 
-> *Written in Prompt 1 — not yet filled in.*
+`CRC.Api/Infrastructure/AgentApiKeyFilter.cs` is **the only thing guarding the Agent API**. The controller
+carries `[AllowAnonymous]`, which switches off the global `AuthorizeFilter` every other action in nucentra
+relies on (§2.2); this class is what replaces it. Remove it, drop its registration, or edit it to continue
+past a bad key, and the endpoints behind it become an unauthenticated read of patient data.
+
+**It is an `IAsyncAuthorizationFilter`, not an action filter, and that is a security property rather than a
+style.** Authorization filters run in MVC's first filter stage — **before model binding, before every
+action filter and before a line of the action**. So a request with a bad key never reaches business code,
+never binds a parameter and (step 4) never causes a query. It is reached with
+`[ServiceFilter(typeof(AgentApiKeyFilter))]` because it constructor-injects `IOptions<AgentApiOptions>`,
+`IDatabaseData` and `ILogger<AgentApiKeyFilter>`, and a plain filter attribute cannot take a scoped service.
+
+#### The path, in the order the filter actually runs it
+
+🔴 **The order is the security property. Do not rearrange these.**
+
+| # | Condition | Answer | Logged |
+|---|---|---|---|
+| 1 | `Agent:ApiKey` is null or whitespace | **401** | `AgentRequestRejected(…, "not configured")` **and `_logger.LogError`** |
+| 2 | `X-Agent-Key` absent, or present and empty | **401** | `AgentRequestRejected(…, "missing key")` |
+| 3 | The two keys do not match | **401** | `AgentRequestRejected(…, "invalid key")` |
+| 4 | — *only now is the database touched* — | | |
+| 5 | `GetAgentServiceAccountAsync()` returned `null` | **503** | `AgentServiceAccountMissing(…)` **and `_logger.LogError`** |
+| 6 | Build the `ClaimsPrincipal`, assign `HttpContext.User` | *continues* | |
+| 7 | — | *action runs* | `AgentRequestAuthenticated(…, endpoint, serviceUserId)` |
+
+**Step 1 fails closed, and it is the misconfiguration case, not a caller error.** An empty key never means
+"no key required"; it means the app setting is missing or misspelled — `Agent__ApiKey` needs **two**
+underscores (§13.6) — and an API whose key is the empty string is an open API. The caller correctly gets an
+undifferentiated 401, but this also writes an **error** to `app-*.log` naming the setting, because
+otherwise a mistyped deployment setting looks exactly like an agent using a stale key.
+
+**Step 2 treats an empty header value as a missing one.** Verified: a request sending `X-Agent-Key` with no
+value is logged `Reason=missing key`, not `invalid key`.
+
+**Step 4 is placed where it is on purpose.** 🔴 **An unauthenticated caller must never be able to make
+nucentra run a query.** Every step above it answers out of the request headers and the options object
+alone, so a request with no key or a wrong key costs a header read and a hash — no connection, no round
+trip, and nothing an attacker can turn into database load by sending a great many of them. The lookup would
+read more naturally at the top of the method; that is why the code says so where it sits.
+
+**The three 401 paths answer identically on the wire.** `{ "success": false, "message": "Unauthorized." }`,
+for all three. Telling an unauthenticated caller whether the key they hold is wrong or the server is
+misconfigured is free reconnaissance; the distinction is written to `audit-*.log`, where an operator can
+read it, and never returned. **The response body never carries the configured key, the supplied key, any
+fragment or length of either, or an exception message** — and neither does any log line, including on
+rejection, because a rejected key is very often a correct key with a typo and the log file is read by more
+people than the app setting is.
+
+#### The fixed-time comparison, and why it hashes first
+
+```csharp
+Span<byte> configuredHash = stackalloc byte[32];
+Span<byte> suppliedHash   = stackalloc byte[32];
+SHA256.HashData(Encoding.UTF8.GetBytes(configured), configuredHash);
+SHA256.HashData(Encoding.UTF8.GetBytes(supplied),   suppliedHash);
+return CryptographicOperations.FixedTimeEquals(configuredHash, suppliedHash);
+```
+
+**`==` returns as soon as it finds a differing character**, so how long a rejection takes depends on how
+many leading characters were right. Over enough requests that is a measurable oracle and a key can be
+walked out of it one character at a time. `FixedTimeEquals` always reads both operands to the end.
+
+🔴 **The SHA-256 is not paranoia about the key's contents — it is what makes the fixed-time comparison
+honest.** `FixedTimeEquals` requires two spans of **equal length** and returns `false` immediately when
+they differ, so handing it the raw UTF-8 bytes would leak the configured key's **length** through exactly
+the timing channel the call was chosen to close — and would need an explicit length check first, which
+leaks it outright. Hashing maps both values onto 32 bytes whatever they were, so every comparison does
+identical work and the answer depends on nothing but equality. **This is the kind of line a later reader
+simplifies**, which is why the reasoning is written above the method as well as here.
+
+---
+
+#### 🔴 The service actor — the whole point of the filter
+
+Everything above is ordinary API-key plumbing. **This part is the one that fails silently, and it is why
+Prompt 0 seeded a database row before any C# existed.**
+
+**The problem.** `SqlData` passes `@User_ID` explicitly to the 19 audit-actor procedures, taking it from
+`DatabaseHelper.CurrentUserId`, which reads `ClaimTypes.NameIdentifier` off `HttpContext.User` (§0.1,
+§6.5). **An API-key request arrives with no cookie and therefore no principal.** `CurrentUserId` returns
+`null`, `spPatientAppointment_Insert` writes `ISNULL(@User_ID, 0)`, and every appointment the agent books
+is audited as user `0` — nobody. **No error. No failed request. A corrupt audit trail on a clinical
+system**, discovered whenever somebody first needs it.
+
+**The fix, as built.** A real `dbo.Users` row — `Username = 'AGENT_SERVICE'`, `User_Type = 2`,
+`Staff_ID NULL`, a random password generated once and thrown away so the account cannot be logged into —
+seeded by `CRC.Database/Scripts/Seed_Users.sql` guarded on `Username`, and resolved **per request** by
+`spAgentUsers_GetServiceAccount` through `IDatabaseData.GetAgentServiceAccountAsync()`. The filter builds a
+`ClaimsPrincipal` from what comes back:
+
+```csharp
+new Claim(ClaimTypes.NameIdentifier, account.User_ID.ToString(CultureInfo.InvariantCulture)),
+new Claim(ClaimTypes.Name,           account.Username),
+new Claim("UserType",                account.User_Type.ToString(CultureInfo.InvariantCulture))
+```
+
+assigned to `HttpContext.User` on a single `ClaimsIdentity` whose authentication type is the named constant
+`"AgentApiKey"` — **a `ClaimsIdentity` with a null authentication type reports `IsAuthenticated == false`**,
+which would leave the request looking anonymous to anything downstream that asks.
+
+🔴 **`ClaimTypes.NameIdentifier` is the claim the whole audit trail turns on.** It must be a **plain
+integer string**: `CurrentUserId` does an `int.TryParse` and answers `null` on anything else, which puts
+the request straight back into the failure above. Hence `InvariantCulture`. `"UserType"` is the claim the
+five policies check (§2.1) and is taken from the row rather than hard-coded, so changing the seeded
+account's type changes what the agent may reach in one place; no action on this controller uses a policy
+today.
+
+##### Why by-username, and never a configured id
+
+`dbo.Users.User_ID` is `INT IDENTITY`, so **this account's id on a local `CRC_DB` and its id on Azure SQL
+are different numbers** — on the development database used to build this it is **9**, and that number is
+recorded here only to say that nothing anywhere stores it. An `Agent__ServiceUserId` app setting was
+proposed and rejected: nothing would check that it matched the row, and a wrong value **does not throw** —
+it writes a different, *real* user's id into `dbo.AuditTrails` and reports success. A stale setting is a
+silent wrong-actor audit, which is worse than a missing one because it is not merely empty but wrong about
+a named person. `IX_Users_Username` is `UNIQUE`, so the lookup by name is an index seek and the answer
+cannot be ambiguous by construction.
+
+**No cache.** The lookup runs on every agent request — a single-row seek on a table with a handful of rows,
+against a caller whose entire traffic is one daily sweep plus a conversation. A cache here would buy
+nothing and would be a staleness bug waiting for the day somebody edits the row.
+
+##### The 503, and why there is no fall-through
+
+🔴 **If the row is missing, the request fails. 503, an error in `app-*.log` naming
+`CRC.Database/Scripts/Seed_Users.sql`, an audit line, and no action executes.** Not a zero, not a default,
+not "carry on without an actor". A missing row means the database was published without the seed, and the
+only two outcomes available are *fail loudly now* or *corrupt the audit trail quietly forever*. `503` rather
+than `401` because the caller's credentials were fine — the portal is not.
+
+**This path was driven deliberately rather than assumed**, by renaming the row to `AGENT_SERVICE_OFF` and
+calling the endpoint with the correct key: it answered **503** (not 200, not 500), wrote both log lines, and
+answered **200** again once the row was renamed back. **An untested fail-closed path is an assumption, not
+a property.**
+
+##### The mistake this design exists to prevent, in this repository's own history
+
+The deleted `CRC.Api` (commit `291ab458`, removed in `a6c9d16e`) shipped this:
+
+```csharp
+var claims = new List<Claim>
+{
+    // Keeps DatabaseHelper happy (it injects @User_ID if supported; missing claim => defaults to 0)
+    new(ClaimTypes.NameIdentifier, "0"),
+    new("ApiClient", "PublicRegistration")
+};
+```
+
+**The comment is wrong in the way that matters.** `0` keeps nothing happy — it **is** the failure. It is
+precisely the value `ISNULL(@User_ID, 0)` writes when no actor was supplied at all, so that handler did not
+avoid the silent-corruption case, it hard-coded it and then documented it as a fix. That is why this
+section is long, and why the row is resolved from the database rather than typed into a claim.
+
+#### 🔴 The finding: `[User:anonymous]` in the log while `dbo.AuditTrails` says `AGENT_SERVICE`
+
+Confirmed by reading `CorrelationIdMiddleware` and then confirmed empirically in the log:
+
+```
+2026-08-18 23:40:41.413 +08:00 [Cid:4f60b75e…] [User:anonymous] [Ip:::1] AUDIT Agent API request
+authenticated as AGENT_SERVICE. Endpoint=GET /api/agent/branches ServiceUserId=9 RemoteIp=::1
+```
+
+**The `[User:…]` field reads `anonymous` on the very line that names the agent.** The cause is ordering,
+not a bug: `CorrelationIdMiddleware` pushes its Serilog `UserName` property from
+`context.User?.Identity?.Name ?? "anonymous"` **before calling the next middleware** — that is, before the
+endpoint runs, and therefore before `AgentApiKeyFilter` has set the principal. The property is captured for
+the lifetime of the request and does not update when the principal is replaced. **Every line an agent
+request writes, to either file, reads `[User:anonymous]`.**
+
+**Both channels are right, because they answer two different questions.** The Serilog field reports *who
+the request arrived as* — and it arrived as nobody, carrying a header rather than a cookie, which is a true
+and useful thing to record. `dbo.AuditTrails.User_Id` reports *who the write was performed by*, which is
+`AGENT_SERVICE`, and that is the column §0.1 is about.
+
+🔴 **This is not to be "fixed".** Moving the enricher after the filter would mean pushing `UserName` from
+inside MVC, where the middleware does not run; re-pushing it from the filter would put two `UserName`
+properties on the same request. More importantly, **nobody should read `[User:anonymous]` in the log and
+conclude the audit trail is broken** — the check for that is the joined query in §0.1 against
+`dbo.AuditTrails`, not a `grep` of `audit-*.log`. Every `AgentAuditLog` message therefore names the actor
+in its own message text rather than relying on the enricher, which is why the line above still tells you
+it was `AGENT_SERVICE` and that the resolved id was `9`.
 
 ### 13.4 The seven read endpoints, and their exact JSON
 

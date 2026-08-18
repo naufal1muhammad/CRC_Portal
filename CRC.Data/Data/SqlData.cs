@@ -2504,5 +2504,28 @@ namespace CRC.Data.Data
 
             return results.ToList();
         }
+
+        // ----- Agent API (machine-callable surface — CoreFlow.md §13) -----
+
+        // 🔴 NO @User_ID, AND NOT BECAUSE IT WAS FORGOTTEN. spAgentUsers_GetServiceAccount declares none
+        // of either kind: it writes no dbo.AuditTrails row, so there is no ACTOR to record, and it does
+        // not operate on a user row chosen by a caller, so it is not the TARGET kind either. More than
+        // that — it runs BEFORE ANY PRINCIPAL EXISTS. The request arrives with no cookie,
+        // _databaseHelper.CurrentUserId is null, and the row this call returns is what the Agent API's
+        // filter builds that principal FROM. The reflex the other nineteen call sites in this file have
+        // would be asking this one for the answer it is being called to produce (§0.1, §13.3).
+        //
+        // QuerySingleOrDefaultAsync, not QuerySingleAsync: the procedure is `SELECT TOP 1 … WHERE
+        // Username = 'AGENT_SERVICE'` over a UNIQUE index, so it returns at most one row — and NO ROW IS
+        // A MEANINGFUL ANSWER, not an exception. It means the database was published without the seed,
+        // and the caller is required to turn that null into a 503 rather than continue with a null actor.
+        public async Task<AgentServiceAccount?> GetAgentServiceAccountAsync()
+        {
+            using var connection = _databaseHelper.CreateConnection();
+
+            return await connection.QuerySingleOrDefaultAsync<AgentServiceAccount>(
+                "dbo.spAgentUsers_GetServiceAccount",
+                commandType: CommandType.StoredProcedure);
+        }
     }
 }

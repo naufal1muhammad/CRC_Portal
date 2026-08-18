@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="CRC.Api/CRC.Api.csproj" />
   <Project Path="CRC.Data/CRC.Data.csproj" Id="a139d065-1332-48da-9873-5aec5d26835f" />
   <Project Path="CRC.Database/CRC.Database.sqlproj" Id="6e3f1057-5332-47c3-a161-1e4bdf76d155">
     <Build />

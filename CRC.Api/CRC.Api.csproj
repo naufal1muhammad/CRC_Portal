@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    🔴 Microsoft.NET.Sdk, NOT Microsoft.NET.Sdk.Web. This is a CLASS LIBRARY that happens to contain a
+    controller: there is no Program.cs, no appsettings.json, no launchSettings.json and no port. CRC.Web
+    references it and loads its controllers as an MVC application part (see Program.cs), so the Agent API
+    ships inside the one host, with one deployment, one config file and one Serilog pipeline.
+    CoreFlow.md §13.2.
+
+    The FrameworkReference is what gives a plain class library the ASP.NET Core types — HttpContext,
+    ControllerBase, IAsyncAuthorizationFilter — without turning it into a web application. CRC.Data
+    already does exactly this for IHttpContextAccessor; this file copies that pattern rather than
+    inventing one.
+
+    Serilog is referenced directly because Infrastructure/AgentAuditLog.cs writes to Serilog's STATIC
+    logger, the same process-wide pipeline CRC.Web/Program.cs configures. The version matches the one
+    CRC.Web already resolves through Serilog.AspNetCore, so nothing is upgraded or downgraded by it.
+
+    🔴 THERE IS NO ProjectReference TO CRC.Web AND THERE NEVER MAY BE. CRC.Web references this project;
+    the reverse is a cycle the build would reject. That one-way arrow is the whole reason
+    Infrastructure/AgentAuditLog.cs and Infrastructure/AgentErrorResponse.cs exist as copies of shapes
+    that live in CRC.Web — do not "de-duplicate" them by adding a reference.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="4.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CRC.Data\CRC.Data.csproj" />
+  </ItemGroup>
+
+</Project>

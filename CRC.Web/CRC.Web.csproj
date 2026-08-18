@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\CRC.Api\CRC.Api.csproj" />
     <ProjectReference Include="..\CRC.Data\CRC.Data.csproj" />
   </ItemGroup>
 
