@@ -5787,16 +5787,16 @@ saying so, is not. Update the section in the same commit.
 
 ## 13. The Agent API
 
-> **What exists as of Prompt 2: the database half, the project, the guard, and all seven reads.** Five
-> procedures under `CRC.Database/Stored Procedures/Agent/`, all five registered in `CRC.Database.sqlproj` and
-> published to `CRC_DB`; one seeded `dbo.Users` row, `AGENT_SERVICE`; and the `CRC.Api` class library, loaded
-> into `CRC.Web` as an application part, carrying `AgentApiKeyFilter` and `AgentApiController`. **All five
-> procedures are now wired to C#** — `spAgentUsers_GetServiceAccount` by Prompt 1, the other four by
-> Prompt 2 — and the controller carries **seven of the eight endpoints**, all of them reads. The eighth,
-> `POST /api/agent/appointments`, is Prompt 3's and does not exist. §13.0 to §13.4 describe what is built.
-> §13.5 to §13.7 are placeholders, each filled in by the prompt that builds that piece. Where a sentence here
-> is about code that is not written, it names the prompt that writes it rather than describing it as though
-> it were already there.
+> **What exists as of Prompt 3: the database half, the project, the guard, all seven reads, and the one
+> write.** Five procedures under `CRC.Database/Stored Procedures/Agent/`, all five registered in
+> `CRC.Database.sqlproj` and published to `CRC_DB`; one seeded `dbo.Users` row, `AGENT_SERVICE`; and the
+> `CRC.Api` class library, loaded into `CRC.Web` as an application part, carrying `AgentApiKeyFilter` and
+> `AgentApiController`. **All five procedures are wired to C#** — `spAgentUsers_GetServiceAccount` by
+> Prompt 1, the other four by Prompt 2 — and the controller carries **all eight endpoints**: seven reads
+> (§13.4) and `POST /api/agent/appointments` (§13.5), which added **no procedure and no data-layer method**
+> because `SaveAppointmentAsync` already existed. §13.0 to §13.5 describe what is built. §13.6 and §13.7 are
+> placeholders, filled in by Prompt 4. Where a sentence here is about code that is not written, it names the
+> prompt that writes it rather than describing it as though it were already there.
 
 ### 13.0 What the Agent API is, and what it is not
 
@@ -6534,7 +6534,281 @@ get a message about an NRIC they did not type.
 
 ### 13.5 The write endpoint, and the typed failure reasons
 
-> *Written in Prompt 3 — not yet filled in.*
+**One endpoint, no new procedure, no new data-layer method, and no second write path.**
+`POST /api/agent/appointments` is 
+`AgentApiController.BookAppointment`, and everything it does that is hard — the transaction, the
+in-transaction slot read that *is* the concurrency check, the four slot checks, the contiguity check, the
+start/end derivation and the two slot procedures — happens inside `IDatabaseData.SaveAppointmentAsync`,
+which it reuses **whole and unchanged** (§6.7, §12 #1). Prompt 3 added a nested request DTO, an action, two
+`AgentAuditLog` methods, and nothing else.
+
+**It only ever INSERTS.** There is no `appointmentId` in the request and `PatientAppointment_ID` is
+hard-wired to `0`, which is the data layer's insert/update switch. It never updates, never changes a status
+and never deletes.
+
+🔴 **A booking made here cannot be undone from here, and that is the whole reason a human approves it
+first.** There is no cancellation concept in nucentra (§3.9): a status change touches no slots, so marking
+an appointment `"Not Attended"` leaves every hour it holds consumed. The only way to free an hour is
+`POST /Patient/DeleteAppointment` — in the portal, by a person. So this endpoint takes a real clinician
+hour in one call and has no way to give it back, and `AgentApiPlan.md` puts a coordinator's approval in
+front of it for exactly that asymmetry.
+
+#### The request
+
+```jsonc
+POST /api/agent/appointments
+X-Agent-Key: «the shared secret»
+Content-Type: application/json
+
+{ "patientId":       "PAT-000010",
+  "appointmentDate": "2026-09-01",     // yyyy-MM-dd, TryParseExact, InvariantCulture. Nothing else.
+  "staffId":         "END-00001",
+  "slotIds":         [34],             // StaffSlot_IDs from GET /api/agent/slots/open. One id = one hour.
+  "pjAppTypeId":     "01",             // 🔴 THE STRING "01" AND NOTHING ELSE. Not 1, not "1".
+  "branchId":        "022367001",
+  "status":          "Scheduled" }     // exactly that, with that capitalisation
+```
+
+**No `X-CSRF-TOKEN` is sent and none is possible.** `[IgnoreAntiforgeryToken]` on the controller is what
+makes that work; without it the global `AutoValidateAntiforgeryTokenAttribute` answers `400` to every POST
+here (§2.4, §13.2). That attribute has been on the class since Prompt 1 and **this is the first request in
+the project's history that proves it applies** — see the verification below.
+
+**The DTO is a nested class with NO data annotations, deliberately.** `[ApiController]` turns an invalid
+`ModelState` into an automatic `400` carrying a `ProblemDetails` body, which is not the envelope this API
+speaks and not the shape the caller branches on. With no attributes there is nothing for that filter to
+find, `ModelState` stays valid, and every validation answer is the controller's own, worded for a machine
+that has to fix its own payload. What that does *not* buy: a body that is not valid JSON, or a `slotIds`
+that cannot bind to `int[]`, is still a deserialization failure and still answers `400 ProblemDetails`
+before the action runs.
+
+#### The two response shapes
+
+```jsonc
+// success — the transaction committed
+{ "success": true, "appointmentId": 21 }
+
+// refused by the data layer — the transaction ROLLED BACK and nothing was written
+{ "success": false,
+  "reason":  "SlotTaken",
+  "message": "One or more slotIds were taken by another booking after they were read. …" }
+
+// refused before any data call — the request never reached the database
+{ "success": false,
+  "message": "pjAppTypeId must be the string \"01\" (PATIENT ASSESSMENT). …",
+  "correlationId": "3738f76b79d14c6e8fabfccbcd190e8c" }
+```
+
+🔴 **THE PRESENCE OF `reason` IS ITSELF THE SIGNAL, AND A CALLER SHOULD TEST FOR IT.** A response carrying
+`reason` came back from `SaveAppointmentAsync`: the request was well formed, the database was asked, and
+the answer was no. A response carrying `correlationId` instead was refused by the controller's own
+validation and **no connection was opened, no slot was read and no transaction was begun** — that is a
+client bug to fix, not an outcome to branch on, and inventing pseudo-reason names for it would put values
+in the caller's branch table that are not `AppointmentSaveFailure` members. The two are never both present.
+
+#### 🔴 A refusal is `200` with `success:false`, NOT a `4xx`
+
+`SlotTaken` means somebody took that hour **between the agent's slot read and this write**.
+`GET /api/agent/slots/open` runs outside any transaction and holds no lock, so it is **advisory by
+construction** (§13.1 finding 3, §13.4): the only thing that decides whether an hour is still free is the
+read inside `SaveAppointmentAsync`'s transaction, and nothing in the schema would catch the double-claim if
+that read were moved (§3.9, §6.7). An administrator booking that hour in the portal a second earlier is a
+**correct system behaving correctly**, and the caller's response is to re-run slot discovery and offer the
+next hour.
+
+**A `4xx` would file that normal race under "the agent sent something wrong"** — which is untrue, and is
+the kind of untruth that gets a working workflow switched off, or retried identically until it gives up.
+The same argument covers every other reason: each is an outcome the flow is *designed* to produce, from a
+request that was well formed. The line between a reason and a fault is drawn elsewhere and drawn sharply —
+**a genuine fault still throws**, is caught by the `SqlException` / `Exception` pair, is logged with
+`_logger.LogError`, and comes back as `AgentErrorResponse.ForUser`. `reason` means *we asked and the answer
+was no*; the catch blocks mean *we could not ask*.
+
+#### The `reason` values, in full
+
+🔴 **`reason` IS THE ENUM MEMBER'S NAME, VERBATIM, PRODUCED BY `Reason.ToString()`.** Not `slot_taken`, not
+`SLOT_TAKEN`, not `"Slot taken"`. An n8n Switch node branches on this exact string, so lower-casing it,
+prettifying it, or collapsing two reasons onto one shared value is a breaking change to a workflow no
+compiler in this repository can see. Using `ToString()` rather than a hand-written map is what guarantees
+it: rename an `AppointmentSaveFailure` member and the wire follows.
+
+| `reason` | What actually happened | What the caller should do |
+|---|---|---|
+| *(absent, `success: true`)* | The transaction committed. `appointmentId` is the identity `spPatientAppointment_Insert` generated inside it | Store the id, tell the patient, and hand the id to a human if it ever has to be undone |
+| **`SlotNotFound`** | At least one requested `StaffSlot_ID` was not among the rows the in-transaction read returned. 🔴 **The broadest of the six** — it also swallows *another clinician's slot* and *another day's slot*, because the read is narrowed by `@Staff_ID` and by `@FromDate = @ToDate`, so those rows are simply not in the result | Re-run `GET /api/agent/slots/open` and book from the ids it returns. Do not retry the same body |
+| **`SlotTaken`** | A requested slot already carries a **different** appointment's id. The expected outcome of an advisory read | 🔴 **Re-run slot discovery and offer another hour.** This is the one every caller must handle. It is not an error and not a retry-the-same-thing |
+| **`SlotsNotConsecutive`** | Sorted by start time, some hour does not begin exactly one hour after the one before it. An appointment is one unbroken block, which is why only its first start and last end are stored (§3.9) | Send a contiguous run, or book fewer hours |
+| **`SlotWrongStaff`** | A returned slot does not belong to the requested clinician | Same as `SlotNotFound`. 🔴 **Currently unreachable — see below** |
+| **`SlotWrongDate`** | A returned slot is not on the appointment's date | Same as `SlotNotFound`. 🔴 **Currently unreachable — see below** |
+| **`InsertFailed`** | The insert produced no usable identity. Defensive; the procedure has no path that can do it | Treat as a fault and escalate. Nothing was written |
+
+🔴 **`SlotWrongStaff` and `SlotWrongDate` cannot fire today, are mapped anyway, and a caller must still
+handle them.** The slot read is `spStaffSlots_List` narrowed to the chosen clinician and to
+`@FromDate = @ToDate =` the appointment's date, so another clinician's slot and another day's slot never
+reach the validation and are refused as missing ids instead — measured behaviour, before and after the
+Dapper migration, recorded on the enum members themselves. `SlotWrongStaff` is not even *checked* in code,
+because the procedure does not project `Staff_ID`; `SlotWrongDate` is, because `SlotDate` is projected.
+Both are mapped here because **"unreachable today" is not "impossible tomorrow"**: the day that read stops
+being narrowed, these arrive on the wire with no code change anywhere, and a caller with no branch for them
+would fall into its own default.
+
+#### 🔴 The `"01"`-only rule, and the one line that relaxes it
+
+`pjAppTypeId` must equal the string `"01"` — **PATIENT ASSESSMENT** (§7.3) — and the constant is
+`AgentApiController.AllowedAppointmentTypeId`. This is **`AgentApiPlan.md` decision 4: surveillance option
+C, propose-only.** The agent never books a `"04"` SURVEILLANCE appointment; the coordinator opens the range
+and books those by hand. Two independent reasons:
+
+- **There is usually no slot to consume.** A surveillance visit is 12 or 24 months out, and
+  `spStaffSlots_CreateRange` refuses a range longer than 31 days per call (§5.5), so the hours that far
+  ahead have not been opened.
+- 🔴 **A `"04"` appointment could never be clinically recorded even if it were booked.**
+  `GetJourneyTemplate` recognises exactly three strings and `"04"` is not one of them; there is no
+  `dbo.PatientSurveillance`, no `spPatientSurveillance_*`, no view and no `.js` (§7.3). Booking one through
+  an automation would consume a clinician's hour to create a record nobody can complete.
+
+**`"01"` is a string with a leading zero and is not the integer `1`** (§0). Driven deliberately:
+`pjAppTypeId: "1"` is refused, with a message that says so.
+
+> **TO MOVE TO OPTION A** (the agent books surveillance inside a short horizon), change **one thing**:
+> replace the equality test in `BookAppointment` with membership of a set containing `"01"` and `"04"`, and
+> widen the refusal message. Nothing else in this file, in `CRC.Data` or in the database is type-aware —
+> `SaveAppointmentAsync` passes `PjAppType_ID` straight through and `spPatientAppointment_Insert` validates
+> nothing about it (§5.7). That is precisely why the rule has to live in the controller.
+
+#### The validation, in the order it runs
+
+Every check is by hand, first failure wins, and every one of them runs **before** any data call.
+
+| # | Rule | Refused because |
+|---|---|---|
+| 1 | `patientId`, `staffId`, `branchId` non-blank | Nothing downstream checks them at all — see the finding below |
+| 2 | `appointmentDate` parses as `yyyy-MM-dd` with `TryParseExact` + `InvariantCulture` | 🔴 A plain `DateTime.Parse` reads `01/09/2026` as 1 September on one server and 9 January on another — the same request consuming a clinician's hour in a different month depending on where it landed, with nothing logged |
+| 3 | `slotIds` non-empty, every id `> 0`; **de-duplicated before the call** | `AppointmentSaveInput`'s contract: the caller owns the de-duplication, and the **count is load-bearing** — the slot-existence check compares it against how many rows the in-transaction read returned, so `[17, 17]` would ask for two and get one and be refused `SlotNotFound` for a perfectly valid request |
+| 4 | `status` is **exactly** `"Scheduled"`, ordinal | See below |
+| 5 | `pjAppTypeId` is **exactly** `"01"`, ordinal | Decision 4, above |
+
+🔴 **`status` is not case-insensitive here, and it is not normalised — that is a deliberate divergence from
+`PatientController`.** The portal's `HashSet` is `OrdinalIgnoreCase` and the value is then **stored as
+sent** (§3.9), so a row saved as `"attended"` validates fine, appears in the status filter as its own entry
+beside `"Attended"`, and **silently stops counting toward that clinician's hours**, because
+`spStaff_GetPerformance` sums `WHERE PatientAppointment_Status = 'Attended'` — a plain equality (§5.5).
+This endpoint only ever creates new bookings, so it accepts `"Scheduled"` and refuses everything else
+including case variants: **accepting a shape and then rewriting it hides the caller's bug**, and a workflow
+that sends `"scheduled"` here today is one that sends `"attended"` somewhere else tomorrow. De-duplicating
+`slotIds` is *not* the same kind of rewrite — `[17, 17]` and `[17]` request the identical set of hours,
+whereas lower-casing a status changes what is stored.
+
+🔴 **A non-positive slot id is REFUSED here, where `PatientController` silently drops it.** The portal
+filters with `.Where(x => x > 0)` because its slot picker cannot produce a `0` — a checkbox either carries
+a real `StaffSlot_ID` or is not rendered. An n8n expression can very easily produce one, out of an
+unresolved reference or a missing field, and dropping it silently would **book fewer hours than the caller
+asked for and answer `success`**. On a write that consumes a clinician's hour and cannot be cancelled, a
+request that means two hours must never quietly become one. This is the one place the machine-facing twin
+is stricter than the human-facing one, and it is stricter in the direction of refusing rather than
+guessing.
+
+#### The audit trails
+
+Same shape as everywhere else in this area, made honest by opposite means (§6.7, §11.3):
+
+| Trail | Written by | When | Actor |
+|---|---|---|---|
+| `dbo.AuditTrails` | `spPatientAppointment_Insert`, **inside** the transaction | on commit only — a rollback takes the row with it | 🔴 `AGENT_SERVICE`, via the claim `AgentApiKeyFilter` set (§13.3) |
+| `Logs/audit-*.log` | `AgentAuditLog.AgentAppointmentBooked`, **outside** | only **after** `SaveAppointmentAsync` returns `Ok` | named in the message text, because `[User:…]` reads `anonymous` (§13.3) |
+
+**A refusal is logged too, with its reason, and that line is the only record it happened** — the
+transaction rolled back, so `dbo.AuditTrails` holds nothing about the attempt.
+`AgentAuditLog.AgentAppointmentRefused` carries either an enum name or one of the controller's own short
+fixed labels (`"pjAppTypeId not 01"`, `"status not Scheduled"`, `"date not yyyy-MM-dd"`, `"bad slotIds"`,
+`"missing id"`), never caller-supplied text — the same rule `AgentRequestRejected` follows. **A rejected
+`"04"` is the enforcement of decision 4 and is the most interesting thing this endpoint can do short of
+booking**, which is why the pre-flight refusals are audited at all. The key is never logged.
+
+---
+
+#### 🔴 THE HEALTH CHECK — the assertion this whole prompt exists for, and anyone can re-run it
+
+`spPatientAppointment_Insert` declares `@User_ID INT = NULL` — the **ACTOR** — and `SqlData` supplies it
+from `DatabaseHelper.CurrentUserId`, which reads `ClaimTypes.NameIdentifier` off `HttpContext.User`. An
+API-key request has no cookie and therefore no principal, so the only thing standing between this endpoint
+and `AuditTrails.User_Id = 0` is the `ClaimsPrincipal` that `AgentApiKeyFilter` builds from the seeded
+`AGENT_SERVICE` row (§0.1, §13.3). **If that chain breaks, nothing tells you**: the appointment is created,
+the slot is consumed, the response says `success`, and the audit row names nobody.
+
+```bash
+sqlcmd -S localhost -d CRC_DB -E -C -Q "SELECT TOP 5 a.AuditTrail_Id, a.User_Id, u.Username, a.AuditTrail_Action, a.AuditTrail_Category, a.AuditTrail_Summary FROM dbo.AuditTrails a LEFT JOIN dbo.Users u ON u.User_ID = a.User_Id ORDER BY a.AuditTrail_Id DESC"
+```
+
+Driven against `CRC_DB` immediately after the first two bookings this endpoint ever made:
+
+```
+AuditTrail_Id|User_Id|Username     |Action|Category           |Summary
+150          |9      |AGENT_SERVICE|INSERT|PatientAppointment |Created Appointment: PatientAppointment_ID=21; Patient_ID=PAT-000010; Date=2026-09-01; Time=10:00:00-11:00:00; Staff_ID=END-00001; Branch_ID=022367001; Status=Scheduled; Type=01
+149          |9      |AGENT_SERVICE|INSERT|PatientAppointment |Created Appointment: PatientAppointment_ID=20; Patient_ID=PAT-000011; Date=2026-09-01; Time=09:00:00-10:00:00; Staff_ID=END-00001; Branch_ID=022367001; Status=Scheduled; Type=01
+148          |1      |SUPERUSER    |INSERT|StaffSlots         |Created staff slots range: Staff_ID=END-00001; FromDate=2026-09-01; ToDate=2026-09-01; StartTime=14:00:00; EndTime=15:00:00; CreatedCount=1; SkippedExistingCount=0
+147          |1      |SUPERUSER    |INSERT|StaffSlots         |Created staff slots range: Staff_ID=END-00001; FromDate=2026-09-01; ToDate=2026-09-01; StartTime=09:00:00; EndTime=12:00:00; CreatedCount=3; SkippedExistingCount=0
+146          |1      |SUPERUSER    |UPDATE|PatientAppointment |Updated Appointment Status: PatientAppointment_ID=14; Status=Not Attended
+```
+
+**`Username` reads `AGENT_SERVICE` and `User_Id` is `9`, not `0` and not `NULL`.** The two `SUPERUSER` rows
+above them are the same operator opening the slots through **Staff > Edit > Schedule** minutes earlier, in
+the same table, which is what makes the contrast readable: one session, two actors, correctly told apart.
+`9` is this database's identity for that row and **nothing anywhere stores it** — the account is resolved
+by username on every request, because its id on Azure SQL is a different number (§13.3).
+
+**If `User_Id` comes back `0`, `NULL`, or with a blank `Username`, stop.** The principal is not reaching
+`DatabaseHelper.CurrentUserId`, every write the agent has made is unattributed, and no other test in this
+section will tell you.
+
+#### What was actually found while building this
+
+**1. 🔴 THE ENDPOINT BOOKED A REAL CLINICIAN HOUR FOR A PATIENT WHO DOES NOT EXIST, AND NOTHING OBJECTED.**
+The first happy-path call was made with `patientId: "PAT-000011"` — an id copied out of §13.4's own example
+payloads, which were written when the development database had eleven patients and now has ten. It returned
+`{"success":true,"appointmentId":20}`, consumed slot 33, and wrote audit row 149. This is §5.7's
+"`_Insert` validates nothing" demonstrated live rather than quoted: `Patient_ID` is a `VARCHAR(100)` with
+**no foreign key** (§3.9), the procedure has no `RAISERROR` in its body, and neither `SaveAppointmentAsync`
+nor this controller can check an id it has no read for. **The consequence is worse than a stray row**:
+appointment 20 is not reachable from the portal at all, because the Appointment tab is a tab on a *patient's*
+page and that patient has none — so the one human undo this design relies on cannot be performed for it. It
+is still on the development database, deliberately, rather than tidied away.
+
+  🔴 **This is the caller's rule, not the API's, and it now has a reason with a number attached:** the agent
+  must resolve the patient through `GET /api/agent/patients/by-phone` or `/patients/{id}` **and use the id
+  that read returned**, never one it composed, remembered from an earlier conversation, or copied from
+  documentation. The same holds for `staffId` and `branchId`, which are equally unchecked.
+
+**2. The antiforgery test passed on its second run and its first run was worth keeping.** The first POST
+with a valid key answered **500**, not the `400` this test hunts for — the local `CRC_DB` had rolled back to
+the pre-Prompt-0 baseline of 104 procedures, so `spAgentUsers_GetServiceAccount` did not exist and the
+filter's own database lookup threw. **Even that proved the thing the test is for**: a `400` would have come
+from the antiforgery filter, which runs *before* the action, and the request had already reached
+`AgentApiKeyFilter`. After republishing the `.dacpac` — which created exactly the five `Agent/` procedures
+and nothing else — the same request answered `200`. `[IgnoreAntiforgeryToken]` has been on the controller
+since Prompt 1 and **this is the first POST in the project's history, so this is the first time it was
+exercised at all.**
+
+**3. The refusals wrote nothing, and that was measured rather than assumed.** Across all six failure paths —
+`"04"`, `"attended"`, `01/09/2026`, `[999999]`, the same slot twice, and two non-contiguous hours —
+`MAX(AuditTrail_Id)` stayed at 150, `MAX(PatientAppointment_ID)` stayed at 21, and both untouched slots kept
+`PatientAppointment_ID IS NULL`. That is the rollback doing its job for the three that reached the
+transaction, and the ordering doing its job for the three that never did.
+
+**4. The two rolled-back reasons were driven against real hours, which is the only way they mean anything.**
+Four hours were opened for `END-00001` on 2026-09-01 through **Staff > Edit > Schedule** — 09:00–12:00 as
+three contiguous rows, then 14:00–15:00 as a deliberate fourth with a gap in front of it. `SlotsNotConsecutive`
+was produced with slots 35 (11:00) and 36 (14:00); `SlotTaken` by booking slot 34 and immediately booking it
+again. **Both were run before anything was consumed**, precisely because a rolled-back attempt leaves the
+hours free and an order that consumed them first would have had nothing left to fail on.
+
+**5. `dbo.StaffSlots` was empty again, exactly as in Prompt 2, and for a new reason.** Prompt 2 recorded that
+an endpoint which has only ever returned `[]` is an endpoint whose mapping has never been tested. This time
+the whole Agent half of the database was gone — the five procedures, the `AGENT_SERVICE` row and every slot —
+while the patients and appointments remained. `Scripts/Seed_Users.sql` is idempotent and guarded on
+`Username`, so re-running it restored the account and touched nothing else; the row came back as `User_ID = 9`
+again. **The lesson worth keeping is the diagnostic order**: the `503` path (§13.3) and this `500` are the two
+different ways a half-published database announces itself, and both name the file that fixes them.
 
 ### 13.6 Configuration, deployment and the platform lock-down
 

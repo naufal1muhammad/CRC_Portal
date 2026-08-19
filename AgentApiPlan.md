@@ -383,7 +383,7 @@ in place — §2.2's is the only one that does.
 - [x] **Prompt 0** — The database: five procedures, the `.sqlproj`, the `AGENT_SERVICE` seed, `SEEDING.md`, and the `CoreFlow.md` §13 skeleton
 - [x] **Prompt 1** — The project and the guard: `CRC.Api`, the application part, `AgentApiKeyFilter`, the service account, and endpoint 5
 - [x] **Prompt 2** — The six remaining reads: four new data-layer methods, four models, endpoints 1, 2, 3, 4, 6, 7
-- [ ] **Prompt 3** — The write: endpoint 8, `SaveAppointmentAsync` reused, the typed failure reasons, and the audit assertion
+- [x] **Prompt 3** — The write: endpoint 8, `SaveAppointmentAsync` reused, the typed failure reasons, and the audit assertion
 - [ ] **Prompt 4** — Harden and hand off: `CoreFlow.md` §2.2 / §10 / §11 / §12, §13 finished, the smoke script, the Azure settings sheet
 
 ---
@@ -1162,7 +1162,7 @@ write. DO NOT edit CoreFlow.md §2.2; Prompt 4 owns it.
 
 ## Prompt 3 — The write
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** Prompts 0–2
 
 > **This is the prompt §4.1 of the agent plan was written for.** Everything before it reads; this one writes,

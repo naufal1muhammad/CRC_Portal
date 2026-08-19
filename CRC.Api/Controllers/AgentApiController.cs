@@ -1,6 +1,7 @@
 using System.Globalization;
 using CRC.Api.Infrastructure;
 using CRC.Data.Data;
+using CRC.Data.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -9,9 +10,9 @@ using Microsoft.Extensions.Logging;
 namespace CRC.Api.Controllers
 {
     // =================================================================================================
-    // THE AGENT API — nucentra's one machine-callable surface. Eight endpoints are planned under
-    // /api/agent for a single external caller (an n8n WhatsApp workflow); this class currently carries
-    // one of them. CoreFlow.md §13.
+    // THE AGENT API — nucentra's one machine-callable surface. Eight endpoints under /api/agent for a
+    // single external caller (an n8n WhatsApp workflow): SEVEN READS AND, at the bottom of this file,
+    // THE ONE WRITE. CoreFlow.md §13.
     //
     // Four attributes on this class do things that no other controller in nucentra does, and every one of
     // them is a deliberate hole in a global default. Read all four before adding an action.
@@ -636,6 +637,416 @@ namespace CRC.Api.Controllers
                     "Unexpected error finding open slots at branch {BranchId} between {FromDate} and "
                     + "{ToDate} for the Agent API.", branchId, fromDate, toDate);
                 return Ok(AgentErrorResponse.ForUser(HttpContext, "Error retrieving open slots."));
+            }
+        }
+
+        // =============================================================================================
+        // ENDPOINT 8 — THE ONE WRITE. Everything above this line reads; everything below it books a real
+        // clinician's hour on a clinical system. CoreFlow.md §13.5.
+        // =============================================================================================
+
+        // 🔴 THE APPOINTMENT TYPE THIS API IS ALLOWED TO BOOK, AND THE ONLY ONE.
+        //
+        // "01" is PATIENT ASSESSMENT (CoreFlow.md §7.3). It is A STRING WITH A LEADING ZERO and it is not
+        // the integer 1 — PjAppType_ID is VARCHAR(100) like almost every other business key in nucentra
+        // (§0), so a caller that sends 1, or "1", is not sending this value.
+        //
+        // AgentApiPlan.md DECISION 4 — SURVEILLANCE, OPTION C, PROPOSE-ONLY — is why this is a constant
+        // and not a parameter. The agent never books a "04" SURVEILLANCE appointment. The coordinator
+        // opens the slot range and books those by hand, for two reasons that stand independently:
+        //
+        //   • A surveillance visit is scheduled 12 or 24 months out, and spStaffSlots_CreateRange refuses
+        //     a range longer than 31 days per call (§5.5) — so in practice THERE IS NO SLOT THAT FAR OUT
+        //     TO CONSUME, and a booking attempt would fail on the slot check anyway.
+        //   • 🔴 A "04" APPOINTMENT COULD NEVER BE CLINICALLY RECORDED EVEN IF IT WERE BOOKED.
+        //     GetJourneyTemplate recognises exactly three strings — "PATIENT ASSESSMENT", "COLONOSCOPY",
+        //     "PATIENT FOLLOW UP" — and answers 400 "Unsupported journey type." to anything else; there
+        //     is no dbo.PatientSurveillance, no spPatientSurveillance_*, no view and no .js (§7.3). So a
+        //     surveillance visit CAN be booked and can never be written up. Booking one through an
+        //     automation would consume a clinician's hour to create a record nobody can complete.
+        //
+        // TO MOVE TO OPTION A (agent books surveillance inside a short horizon), CHANGE ONE THING: replace
+        // the equality test in BookAppointment with membership of a set containing "01" and "04", and
+        // widen the refusal message. Nothing else in this file, in CRC.Data or in the database is
+        // type-aware — SaveAppointmentAsync passes PjAppType_ID straight through and validates nothing
+        // about it (§5.7), which is exactly why the rule has to live here.
+        private const string AllowedAppointmentTypeId = "01";
+
+        // The request body for POST /api/agent/appointments.
+        //
+        // A NESTED CLASS INSIDE THE CONTROLLER, like every other request DTO in this solution
+        // (CoreFlow.md §10, §11.3) — PatientController.SaveAppointmentRequest is the one this mirrors.
+        //
+        // 🔴 THERE ARE DELIBERATELY NO DATA ANNOTATIONS ON IT — NO [Required], NO [Range], NO
+        // [MinLength]. THIS IS NOT AN OVERSIGHT.
+        //
+        // [ApiController] on this class turns an invalid ModelState into an automatic 400 carrying a
+        // ProblemDetails body: { "type": …, "title": "One or more validation errors occurred.",
+        // "status": 400, "errors": { … } }. That is NOT the envelope this API speaks, and it is not the
+        // envelope the caller branches on — an n8n workflow reading `success` and `reason` off every
+        // other endpoint would get neither, from a response shape it has never seen, for the request that
+        // matters most. With no attributes there is nothing for the automatic filter to find, ModelState
+        // stays valid, and EVERY validation answer below is written here, in the house envelope, in
+        // wording chosen for a machine caller that has to fix its own payload.
+        //
+        // What that does NOT buy: a body that is not valid JSON at all, or a "slotIds": ["x"] that cannot
+        // bind to int[], is still a deserialization failure and still answers 400 ProblemDetails before
+        // this action runs. That case is unreachable from a caller that sends the documented shape, and
+        // closing it would mean binding the body as a string and parsing it by hand.
+        //
+        // Every string is nullable and defaults are absent on purpose: an omitted field must be
+        // distinguishable from a blank one only insofar as both are refused, and coercing to "" in the
+        // DTO would hide which of the two the caller sent from anyone reading this class.
+        public class BookAppointmentRequest
+        {
+            public string? PatientId { get; set; }
+
+            // yyyy-MM-dd. A STRING, not a DateTime: see the TryParseExact in the action for why the
+            // parse is done by hand and refused by hand.
+            public string? AppointmentDate { get; set; }
+
+            public string? StaffId { get; set; }
+
+            // StaffSlot_IDs from GET /api/agent/slots/open, one per hour.
+            public int[]? SlotIds { get; set; }
+
+            // "01", and nothing else — see AllowedAppointmentTypeId above.
+            public string? PjAppTypeId { get; set; }
+
+            public string? BranchId { get; set; }
+
+            // "Scheduled", and nothing else — see the check in the action.
+            public string? Status { get; set; }
+        }
+
+        // POST: /api/agent/appointments
+        //
+        // Endpoint 8 of the eight, and THE ONLY WRITE IN THIS API. It is the machine-facing twin of
+        // PatientController.SaveAppointment: the same data-layer call, the same typed failure reasons,
+        // the same audit deferral — and different wording, because the reader is a workflow rather than a
+        // person, and different rules where a machine caller can send something a form cannot.
+        //
+        // 🔴 THIS ENDPOINT ONLY EVER INSERTS. There is no appointmentId in the request DTO and
+        // PatientAppointment_ID is hard-wired to 0 below (the data layer's insert/update switch —
+        // AppointmentSaveInput). It never updates and never deletes, and it must not learn how:
+        // AgentApiPlan.md puts a coordinator's approval in front of this call precisely because the
+        // consequences of a wrong booking cannot be undone from here.
+        //
+        // 🔴 THERE IS NO CANCELLATION CONCEPT IN NUCENTRA (CoreFlow.md §3.9). A status change touches no
+        // slots — marking an appointment "Not Attended" leaves every hour it holds consumed. The only way
+        // to free an hour is to DELETE the appointment, which is POST /Patient/DeleteAppointment, in the
+        // portal, by a human. So a booking made here consumes a real clinician hour that this API cannot
+        // give back, and that asymmetry — trivially easy to take, impossible to return — is the whole
+        // argument for the human approval gate that sits in front of it.
+        //
+        // 🔴 DO NOT WRITE A SECOND BOOKING PATH HERE. The transaction, the in-transaction slot read that
+        // IS the concurrency check, the four slot checks, the contiguity check, the start/end derivation
+        // and the two slot procedures all live inside SaveAppointmentAsync and are reused WHOLE
+        // (CoreFlow.md §6.7, §12 #1). There is no correct way to reimplement them from a controller: the
+        // availability answer is worth something only while the transaction that asked holds its locks,
+        // so a "simpler" version that reads the slots here and then saves would let two callers both see
+        // an hour as free and both take it — and nothing in the schema would catch it, because
+        // dbo.PatientAppointment has no unique constraint beyond its identity (§3.9). This prompt added
+        // no procedure and no data-layer method for exactly that reason.
+        [HttpPost("appointments")]
+        public async Task<IActionResult> BookAppointment([FromBody] BookAppointmentRequest? request)
+        {
+            if (request == null)
+            {
+                return Ok(AgentErrorResponse.ForUser(HttpContext,
+                    "A JSON body is required: patientId, appointmentDate, staffId, slotIds, pjAppTypeId, "
+                    + "branchId and status."));
+            }
+
+            // Trimmed once, here, and every check below reads these locals rather than the DTO — the same
+            // shape PatientController.SaveAppointment uses. Trimming whitespace is not the kind of
+            // rewrite the status check refuses further down: " PAT-000011 " and "PAT-000011" name the same
+            // patient, whereas "attended" and "Attended" are stored as different values (§3.9).
+            var patientId = request.PatientId?.Trim() ?? "";
+            var staffId = request.StaffId?.Trim() ?? "";
+            var branchId = request.BranchId?.Trim() ?? "";
+            var pjAppTypeId = request.PjAppTypeId?.Trim() ?? "";
+            var status = request.Status?.Trim() ?? "";
+            var dateStr = request.AppointmentDate?.Trim() ?? "";
+            var rawSlotIds = request.SlotIds ?? Array.Empty<int>();
+
+            // Kept for the audit line on a refusal, before the ids have been cleaned up — a refusal is
+            // worth reading later, and reading it against the ids as SENT is the point.
+            var auditSlotIds = (IReadOnlyList<int>)rawSlotIds;
+
+            // ── VALIDATION, BY HAND, IN ORDER, FIRST FAILURE WINS ────────────────────────────────────
+            //
+            // Nucentra_WhatsApp_Agent_Plan.md §3.8 is the list of formats the portal rejects a caller for;
+            // these are the same rules PatientController enforces, not a parallel set.
+
+            // 1. The three ids that are business keys. NONE of them is a foreign key and NOTHING
+            //    downstream checks that any of them resolves: spPatientAppointment_Insert validates
+            //    nothing at all (§5.7), so an appointment can be booked against three ids that mean
+            //    nothing. Blank is the one shape that can be caught here; a well-formed id for a patient
+            //    who does not exist is caught by the agent calling endpoint 3 first, and by the
+            //    coordinator who approves the booking.
+            if (string.IsNullOrWhiteSpace(patientId) ||
+                string.IsNullOrWhiteSpace(staffId) ||
+                string.IsNullOrWhiteSpace(branchId))
+            {
+                AgentAuditLog.AgentAppointmentRefused(HttpContext, "missing id", patientId, staffId,
+                    branchId, dateStr, auditSlotIds);
+
+                return Ok(AgentErrorResponse.ForUser(HttpContext,
+                    "patientId, staffId and branchId are all required. Take patientId from "
+                    + "GET /api/agent/patients/by-phone, staffId from GET /api/agent/slots/open and "
+                    + "branchId from GET /api/agent/branches."));
+            }
+
+            // 2. 🔴 TryParseExact WITH ONE FORMAT AND InvariantCulture, EXACTLY AS PatientController DOES
+            //    AND EXACTLY AS ENDPOINT 7 DOES. A plain DateTime.Parse accepts a locale-dependent string,
+            //    so "01/09/2026" would be read as 1 September on one server and 9 January on another — the
+            //    same request booking a different month depending on where it landed, with nothing logged
+            //    anywhere and a real clinician hour consumed on the wrong day. Refused, naming the format.
+            if (!DateTime.TryParseExact(dateStr, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                    DateTimeStyles.None, out var appointmentDate))
+            {
+                AgentAuditLog.AgentAppointmentRefused(HttpContext, "date not yyyy-MM-dd", patientId,
+                    staffId, branchId, dateStr, auditSlotIds);
+
+                return Ok(AgentErrorResponse.ForUser(HttpContext,
+                    "appointmentDate is required and must be yyyy-MM-dd (for example 2026-09-01)."));
+            }
+
+            // 3. THE SLOT IDS. AppointmentSaveInput's own comment states the contract this satisfies:
+            //    "already de-duplicated and stripped of non-positive values by the caller. Their COUNT is
+            //    load-bearing: the slot-existence check is a comparison against how many of them the
+            //    in-transaction read gave back." So [17, 17] reaching the data layer would ask for two
+            //    slots, get one row back, and be refused SlotNotFound for a request that is perfectly
+            //    valid — which is why the de-duplication happens HERE and cannot be skipped.
+            //
+            //    🔴 DE-DUPLICATING IS NOT THE SAME KIND OF REWRITE THE STATUS CHECK REFUSES. [17, 17] and
+            //    [17] ask for the identical set of hours, so removing the duplicate changes nothing about
+            //    what is booked. Normalising "attended" to "Attended" would change what is STORED.
+            //
+            //    A NON-POSITIVE ID IS REFUSED HERE RATHER THAN FILTERED OUT, AND THIS IS THE ONE PLACE
+            //    THIS ENDPOINT IS DELIBERATELY STRICTER THAN PatientController. The portal drops them
+            //    (`.Where(x => x > 0)`) because its slot picker cannot produce one — a checkbox either
+            //    carries a real StaffSlot_ID or is not there. An n8n expression very much can produce one,
+            //    out of an unresolved reference or a missing field, and silently dropping it would book
+            //    FEWER HOURS THAN THE CALLER ASKED FOR and answer success. On a booking that consumes a
+            //    clinician's hour and cannot be cancelled, a request that means two hours must never
+            //    quietly become one.
+            if (rawSlotIds.Length == 0 || rawSlotIds.Any(id => id <= 0))
+            {
+                AgentAuditLog.AgentAppointmentRefused(HttpContext, "bad slotIds", patientId, staffId,
+                    branchId, dateStr, auditSlotIds);
+
+                return Ok(AgentErrorResponse.ForUser(HttpContext,
+                    "slotIds must contain at least one positive StaffSlot_ID from "
+                    + "GET /api/agent/slots/open. One id is one hour, and several must be consecutive "
+                    + "hours on the same day with the same staff member."));
+            }
+
+            var slotIds = rawSlotIds.Distinct().ToList();
+
+            // 4. 🔴 THE STATUS MUST BE EXACTLY "Scheduled" — NOT CASE-INSENSITIVELY, AND NOT NORMALISED.
+            //    PatientAppointment_Status is a VARCHAR(100) with NO check constraint, NO default and NO
+            //    lookup table; the three real values live in C# in four places and nowhere else
+            //    (CoreFlow.md §3.9). The portal's own HashSet is case-INSENSITIVE on the way in and the
+            //    value is then stored AS SENT — so a booking saved as "attended" satisfies the validation,
+            //    appears in the status filter as its own entry beside "Attended", and 🔴 SILENTLY STOPS
+            //    COUNTING TOWARD THAT CLINICIAN'S HOURS, because spStaff_GetPerformance sums
+            //    `WHERE PatientAppointment_Status = 'Attended'` — a plain equality (§5.5).
+            //
+            //    This endpoint only ever creates NEW bookings, and a new booking is "Scheduled". So the
+            //    other two values are refused because they are meaningless here, and a case variant is
+            //    refused rather than corrected: ACCEPTING A SHAPE AND THEN REWRITING IT HIDES THE
+            //    CALLER'S BUG. A workflow that sends "scheduled" today is a workflow that sends
+            //    "attended" to some other endpoint tomorrow, and the second one nobody catches. Ordinal
+            //    equality, so the refusal is exactly as strict as the column's own collation is not.
+            if (!string.Equals(status, "Scheduled", StringComparison.Ordinal))
+            {
+                AgentAuditLog.AgentAppointmentRefused(HttpContext, "status not Scheduled", patientId,
+                    staffId, branchId, dateStr, auditSlotIds);
+
+                return Ok(AgentErrorResponse.ForUser(HttpContext,
+                    "status must be exactly \"Scheduled\", with that capitalisation. This endpoint only "
+                    + "creates new bookings; the status is stored exactly as sent and is never corrected."));
+            }
+
+            // 5. 🔴 THE APPOINTMENT TYPE MUST BE THE STRING "01". See AllowedAppointmentTypeId above for
+            //    the whole argument — AgentApiPlan.md decision 4, surveillance option C, propose-only —
+            //    and for the one-line change that relaxes it. Refused BEFORE any data call: nothing below
+            //    this line runs, no connection is opened, no slot is read and no transaction is begun.
+            if (!string.Equals(pjAppTypeId, AllowedAppointmentTypeId, StringComparison.Ordinal))
+            {
+                AgentAuditLog.AgentAppointmentRefused(HttpContext, "pjAppTypeId not 01", patientId,
+                    staffId, branchId, dateStr, auditSlotIds);
+
+                return Ok(AgentErrorResponse.ForUser(HttpContext,
+                    "pjAppTypeId must be the string \"01\" (PATIENT ASSESSMENT). This API books "
+                    + "assessment appointments only — a \"04\" SURVEILLANCE visit is opened and booked by "
+                    + "the coordinator in the portal, and a surveillance appointment cannot be clinically "
+                    + "recorded at all. Note that \"01\" is a string with a leading zero, not the number 1."));
+            }
+
+            try
+            {
+                // 🔴 THE EXISTING METHOD, REUSED WHOLE. One SqlData method per procedure, whoever calls
+                // it (§12 #1) — this prompt added no procedure, no IDatabaseData method and no second
+                // write path. Everything that needs rows read under a lock is inside it.
+                //
+                // 🔴 PatientAppointment_ID = 0 IS THE INSERT SWITCH AND IT IS HARD-WIRED. The data layer
+                // reads `<= 0` as "insert"; anything else is the id being updated (AppointmentSaveInput).
+                // 0 is also the value compared against each slot's PatientAppointment_ID for the
+                // SlotTaken check, and no IDENTITY can be 0 — so on this path EVERY already-booked slot
+                // fails, with none of the "a slot carrying this appointment's own id is allowed"
+                // permission that makes the portal's EDIT path work. That is correct here: there is no
+                // edit path here.
+                //
+                // Note what is NOT passed: the start and end times. They are DERIVED inside the
+                // transaction from the slots being consumed — the earliest requested hour's start and the
+                // latest one's end — because the slots are read under the transaction's lock and their
+                // times are not known until then. A caller that computed them itself would be computing
+                // them from a read taken outside the lock, which is the exact race the transaction exists
+                // to prevent (§6.6, §6.7).
+                var result = await _data.SaveAppointmentAsync(new AppointmentSaveInput
+                {
+                    PatientAppointment_ID = 0,
+                    Patient_ID = patientId,
+                    PatientAppointment_Date = appointmentDate,
+                    Staff_ID = staffId,
+                    SlotIds = slotIds,
+                    PjAppType_ID = pjAppTypeId,
+                    Branch_ID = branchId,
+                    PatientAppointment_Status = status
+                });
+
+                if (result.Reason != AppointmentSaveFailure.Ok)
+                {
+                    // 🔴 A 200 CARRYING success:false, NOT A 4xx, AND THAT IS A DELIBERATE CHOICE ABOUT
+                    // WHAT THESE OUTCOMES MEAN.
+                    //
+                    // SlotTaken says somebody booked that hour BETWEEN the agent's slot read and this
+                    // write. GET /api/agent/slots/open runs outside any transaction and holds no lock, so
+                    // it is ADVISORY by construction (§6.7, §13.4): the only thing that decides whether an
+                    // hour is still free is the read inside SaveAppointmentAsync's transaction. An
+                    // administrator taking that hour in the portal a second earlier is a correct system
+                    // behaving correctly, and the caller's response is to re-run slot discovery and try
+                    // the next hour — not to alert anyone, not to retry the same body, and not to log a
+                    // client error. A 4xx would file that normal race under "the agent sent something
+                    // wrong", which is both untrue and the kind of untruth that gets a working workflow
+                    // switched off. The same reasoning covers the rest: every reason here is an outcome
+                    // the flow is DESIGNED to produce, and the request that produced it was well formed.
+                    //
+                    // A genuine fault — a dropped connection, a constraint violation — still throws and
+                    // is caught below. That is the line between the two: `reason` means "we asked and the
+                    // answer was no", the catch blocks mean "we could not ask".
+                    //
+                    // 🔴 `reason` IS THE ENUM NAME, VERBATIM, AND IT IS A PUBLISHED CONTRACT.
+                    // AppointmentSaveFailure.SlotTaken reaches the wire as the string "SlotTaken". Not
+                    // "slot_taken", not "SLOT_TAKEN", not "Slot taken" — an n8n Switch node branches on
+                    // this exact string, so lower-casing it, prettifying it or collapsing two reasons
+                    // onto one shared value is a breaking change to a workflow no compiler here can see.
+                    // ToString() on the enum is what guarantees it: rename a member and the wire follows,
+                    // which is the only rename anybody would want to be automatic.
+                    //
+                    // The MESSAGE is this endpoint's own and deliberately differs from PatientController's
+                    // — that one says "Please reload the slots and try again", which is advice for a
+                    // person looking at a screen. THE DATA LAYER DECIDES WHAT FAILED; THE CONTROLLER
+                    // DECIDES WHAT THE CALLER IS TOLD (AppointmentSaveFailure's own comment makes this
+                    // argument at length, and it is why the enum exists instead of a message string).
+                    // Two callers, two vocabularies, one set of reasons.
+                    var message = result.Reason switch
+                    {
+                        AppointmentSaveFailure.SlotNotFound =>
+                            "One or more slotIds do not exist for that staff member on that date. Re-run "
+                            + "GET /api/agent/slots/open and book from the ids it returns.",
+
+                        // 🔴 THESE TWO ARE CURRENTLY UNREACHABLE, AND A CALLER MUST STILL HANDLE THEM.
+                        // SaveAppointmentAsync's slot read is spStaffSlots_List narrowed to @Staff_ID and
+                        // to @FromDate = @ToDate = the appointment's date, so another clinician's slot and
+                        // another day's slot are NOT IN THE RESULT AT ALL and come back as SlotNotFound
+                        // instead — measured behaviour, before and after the Dapper migration, documented
+                        // on the enum members themselves. SlotWrongStaff is not even checked in code (the
+                        // procedure does not project Staff_ID, so there is nothing to compare);
+                        // SlotWrongDate is checked, because SlotDate IS projected. Both are mapped here
+                        // anyway: "unreachable today" is not "impossible tomorrow", and the day that read
+                        // stops being narrowed these arrive on the wire with no code change anywhere.
+                        AppointmentSaveFailure.SlotWrongStaff =>
+                            "One or more slotIds belong to a different staff member. All slots must belong "
+                            + "to the staffId being booked.",
+                        AppointmentSaveFailure.SlotWrongDate =>
+                            "One or more slotIds are on a different date. All slots must be on "
+                            + "appointmentDate.",
+
+                        AppointmentSaveFailure.SlotTaken =>
+                            "One or more slotIds were taken by another booking after they were read. "
+                            + "This is expected: the open-slots read is advisory. Re-run "
+                            + "GET /api/agent/slots/open and offer the patient another hour.",
+                        AppointmentSaveFailure.SlotsNotConsecutive =>
+                            "slotIds must be consecutive hours on the same day (for example 09:00-10:00 "
+                            + "then 10:00-11:00). An appointment is one unbroken block.",
+
+                        // InsertFailed, and anything a future enum member adds. The procedure SETs its
+                        // identity from SCOPE_IDENTITY() immediately after the INSERT and has no path
+                        // that skips it, so this is defensive — but it rolls back rather than assigning
+                        // slots to appointment 0, and a caller has to be told something.
+                        _ => "The appointment could not be created. Nothing was written."
+                    };
+
+                    // The refusal is audited too, with the reason — the transaction rolled back, so
+                    // dbo.AuditTrails holds NOTHING about this attempt (the procedures write those rows
+                    // inside the transaction) and this line is the only record that it happened.
+                    AgentAuditLog.AgentAppointmentRefused(HttpContext, result.Reason.ToString(), patientId,
+                        staffId, branchId, dateStr, slotIds);
+
+                    return Ok(new
+                    {
+                        success = false,
+                        reason = result.Reason.ToString(),
+                        message
+                    });
+                }
+
+                // 🔴 THE AUDIT LINE IS WRITTEN ONLY NOW — AFTER SaveAppointmentAsync HAS RETURNED Ok,
+                // WHICH MEANS ITS TRANSACTION COMMITTED. Never inside a flow that might roll back
+                // (§11.3, §6.6). The dbo.AuditTrails row for this booking was written the other way
+                // round, by spPatientAppointment_Insert INSIDE the transaction, so a rollback would have
+                // taken it with it — and its actor is the AGENT_SERVICE User_ID that AgentApiKeyFilter
+                // resolved and put on HttpContext.User before this action ran (§13.3). That chain is the
+                // one thing in this endpoint that fails SILENTLY if it is broken: the appointment is
+                // created, the slot is consumed, this response says success, and the audit row names user
+                // 0. The health check for it is the joined query in §0.1 / §13.5, and it is not optional.
+                //
+                // The times come back from the result because the data layer derived them inside the
+                // transaction; everything else is the request, which is all a brand-new row could be
+                // described by. The key is never logged, here or anywhere.
+                AgentAuditLog.AgentAppointmentBooked(HttpContext, result.PatientAppointment_ID, patientId,
+                    staffId, branchId, appointmentDate, slotIds, result.StartTime, result.EndTime,
+                    pjAppTypeId, status);
+
+                // The success shape is two properties and no more. appointmentId is the identity
+                // spPatientAppointment_Insert generated inside the transaction (§3.9) — the caller stores
+                // it, quotes it back to the patient, and hands it to a human if the booking has to be
+                // undone, because POST /Patient/DeleteAppointment is the only way to release those hours.
+                return Ok(new
+                {
+                    success = true,
+                    appointmentId = result.PatientAppointment_ID
+                });
+            }
+            catch (SqlException ex)
+            {
+                _logger.LogError(ex,
+                    "SqlException booking an appointment for the Agent API. PatientId={PatientId} "
+                    + "StaffId={StaffId} BranchId={BranchId} Date={Date}",
+                    patientId, staffId, branchId, dateStr);
+                return Ok(AgentErrorResponse.ForUser(HttpContext, "Error saving appointment."));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Unexpected error booking an appointment for the Agent API. PatientId={PatientId} "
+                    + "StaffId={StaffId} BranchId={BranchId} Date={Date}",
+                    patientId, staffId, branchId, dateStr);
+                return Ok(AgentErrorResponse.ForUser(HttpContext, "Error saving appointment."));
             }
         }
     }
