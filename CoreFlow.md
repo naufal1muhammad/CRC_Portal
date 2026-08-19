@@ -1,7 +1,7 @@
 # nucentra — CoreFlow: the CRC Portal, as built (Specification)
 
 This document is the **single source of truth for what the CRC Portal is**: its domain, its authorization
-model, its 28 tables, its 104 stored procedures, every controller action, the Dapper layer that connects
+model, its 28 tables, its 109 stored procedures, every controller action, the Dapper layer that connects
 them, and the two audit channels that record what they did. It describes the system **as it is built
 today** — not as it was, and not as it might be.
 
@@ -39,7 +39,7 @@ today** — not as it was, and not as it might be.
 | **2** | Who can see what: `UserType` 1/2/3, five policies, antiforgery, lockout |
 | **3** | The 28 tables, grouped, with the columns and the missing constraints that matter |
 | **4** | Every page and every controller action, with its policy and the exact JSON it returns |
-| **5** | All 104 stored procedures: parameters, result sets, which method calls each, `@User_ID` kind |
+| **5** | The stored procedures: parameters, result sets, which method calls each, `@User_ID` kind — **104 of the 109 here; the five `Agent/` ones are catalogued in §13.1** |
 | **6** | The Dapper layer — `IDatabaseData`, `SqlData`, `DatabaseHelper`, Models, and the two transactions |
 | **7** | The patient journey, the core feature — **including, explicitly, that there is no state machine** |
 | **8** | Documents: two families, the settings layer that makes one mandatory, the endpoints |
@@ -230,11 +230,31 @@ The global `AuthorizeFilter` means **an action with no attributes at all still r
 Forgetting `[Authorize]` on a new controller fails closed, which is the right default and the reason the
 codebase can be read without hunting for gaps.
 
-**There are exactly two `[AllowAnonymous]` attributes in the entire web project**, both on
-`AccountController.Login` — the GET that renders the page and the POST that signs you in. Nothing else in
-nucentra is reachable without a cookie: not the access-denied page, not logout, not an error page, not a
-health check (there is none). A `grep` for `AllowAnonymous` is a complete audit of the portal's public
-surface, and it returns two lines.
+**There are exactly three `[AllowAnonymous]` attributes in the solution.** Two are on
+`AccountController.Login` — the GET that renders the page and the POST that signs you in. **The third is on
+`CRC.Api.Controllers.AgentApiController`** (§13), the machine-callable Agent API, where one class-level
+attribute switches the global filter off for all eight of its endpoints at once. Nothing else in nucentra
+is reachable without a cookie: not the access-denied page, not logout, not an error page, not a health
+check (there is none). A `grep` for `AllowAnonymous` is a complete audit of the portal's public surface —
+it is still exactly the right question to ask, and the answer is now **three** lines across **two**
+projects.
+
+**That third one is a deliberate, documented widening of the public surface, and `AgentApiKeyFilter` is the
+only thing closing it** (§13.3). The controller reaches the filter through
+`[ServiceFilter(typeof(AgentApiKeyFilter))]`, and it authenticates on the `X-Agent-Key` header — the only
+non-cookie credential anywhere in nucentra. Remove the attribute, drop the
+`AddScoped<AgentApiKeyFilter>()` registration in `Program.cs`, or edit the filter to continue past a bad
+key, and every endpoint behind it becomes an unauthenticated read.
+
+🔴 **It is not the same kind of exception as the other two, and the difference is the whole reason the guard
+is not optional.** The two login attributes front **a page and a sign-in** — a form and a password check,
+which is all an unauthenticated caller can reach through them. This one fronts **patient names, phone
+numbers, screening results and clinician schedules**, and it books a clinician's hour. Everywhere else in
+the portal a forgotten `[Authorize]` fails **closed**, because the global `AuthorizeFilter` is still there
+underneath; here that filter has been switched off and **there is nothing underneath**.
+`AgentApiKeyFilter` is not belt-and-braces on top of a safe default — for that controller it *is* the
+default, and its two negative tests (no header → 401, wrong key → 401) belong in every verification pass,
+not only the one that built it.
 
 ### 2.3 The five policies, and which controllers use them
 
@@ -3135,17 +3155,21 @@ still returned by the search, with a blank name. The dropdown is not a complete 
 
 ## 5. Stored procedures
 
-> **All 104 procedures under `CRC.Database/Stored Procedures/` are catalogued below**, grouped by feature
-> area into `###` sub-sections, each with a table giving the procedure's parameters, what it returns, the
-> `IDatabaseData` method that calls it, and whether it declares `@User_ID` — and if so, **ACTOR or TARGET**
-> (§0.1). Every one of the 104 is called from `SqlData.cs` and from nowhere else; there are no unused
-> procedures. **100 have exactly one method; the remaining four — `spPatientAppointment_Insert`,
+> **All 109 procedures under `CRC.Database/Stored Procedures/` are catalogued in this document, and 104 of
+> them are catalogued below**, grouped by feature area into `###` sub-sections, each with a table giving
+> the procedure's parameters, what it returns, the `IDatabaseData` method that calls it, and whether it
+> declares `@User_ID` — and if so, **ACTOR or TARGET** (§0.1). 🔴 **The other five live in
+> `Stored Procedures/Agent/` and are catalogued in §13.1, not here** — one folder, one caller, and keeping
+> them beside the rest of the Agent API is what makes "these exist for one caller" visible at a glance.
+> Every one of the 109 is called from `SqlData.cs` and from nowhere else; there are no unused procedures.
+> **105 have exactly one method; the remaining four — `spPatientAppointment_Insert`,
 > `spPatientAppointment_Update`, `spStaffSlots_AssignAppointment` and `spStaffSlots_ClearAppointment` — are
 > reachable only through `SaveAppointmentAsync`** (§5.7, §6.7).
 >
-> The sub-section counts are `14 + 6 + 9 + 12 + 7 + 7 + 12 + 17 + 7 + 16 = 107`, which is **104 plus three
-> procedures deliberately tabled twice**: `spStaffDocumentSettings_GetByStaffType` in §5.4 and §5.9, and
-> the two `spStaffSlots_*Appointment` procedures in §5.5 and §5.7. Each repetition says so where it occurs.
+> The sub-section counts are `14 + 6 + 9 + 12 + 7 + 7 + 12 + 17 + 7 + 16 = 107`, which is **this section's
+> 104 plus three procedures deliberately tabled twice**: `spStaffDocumentSettings_GetByStaffType` in §5.4
+> and §5.9, and the two `spStaffSlots_*Appointment` procedures in §5.5 and §5.7. Each repetition says so
+> where it occurs. §13.1's five are outside that arithmetic.
 >
 > 🔴 **The recurring lesson of this section is: read the `.sql`, never the family resemblance.** Three of
 > nucentra's composed-id inserts return the new id with a trailing `SELECT` and two return it through an
@@ -4396,7 +4420,7 @@ leftover: the repo has a `Data/` folder for code and a `Database/Migrations/` fo
 
 - **One method per stored procedure.** No method calls two — with exactly two named exceptions,
   `SaveStaffWithDocumentsAsync` and `SaveAppointmentAsync` (§6.6), each commented as such where it is
-  declared. 102 methods cover 104 procedures: 100 one-to-one, plus those two.
+  declared. 107 methods cover 109 procedures: 105 one-to-one, plus those two.
 - **Named for what it does, not for the procedure.** `GetActiveBranchesAsync`, not `SpBranchListActiveAsync`.
 - **Anonymous parameter objects**, property names matching the procedure's parameters without the `@`.
 - **`commandType: CommandType.StoredProcedure` on every call.** No inline SQL, ever (§0).
@@ -4411,7 +4435,7 @@ leftover: the repo has a `Data/` folder for code and a `Database/Migrations/` fo
 
 ### 6.3 `CRC.Data/Models/`
 
-**53 files, one type per file** — POCOs for Dapper to map result sets onto: public properties, no logic, no
+**58 files, one type per file** — POCOs for Dapper to map result sets onto: public properties, no logic, no
 attributes, named for the data (`BranchListItem`, `StaffDetail`, `PatientDocumentItem`) and not for the
 procedure. Four kinds live here and the distinction is worth keeping: **row models** (the majority),
 **input models** carrying a write's parameter set (`StaffSaveInput`, `PatientSaveInput`,
@@ -5414,14 +5438,23 @@ database row to the request that produced it means matching on time and actor by
 
 ## 10. Folder structure / file map
 
-**Three projects in one solution (`CRC_Portal.slnx`), and the dependency runs one way only:**
-`CRC.Web → CRC.Data`. `CRC.Database` is referenced by neither — it is a classic SSDT project that produces
-a `.dacpac`, not an assembly, and is deployed by hand.
+**Four projects in one solution (`CRC_Portal.slnx`), and the dependency runs one way only:**
+`CRC.Web → CRC.Api → CRC.Data`. `CRC.Database` is referenced by none of them — it is a classic SSDT project
+that produces a `.dacpac`, not an assembly, and is deployed by hand.
 
 🔴 **`CRC.Data` HAS NO REFERENCE TO `CRC.Web` AND MUST NOT GAIN ONE.** That single rule explains several
 shapes that otherwise look like awkwardness: why `IDocumentStorage` lives in `CRC.Web` and the blob work
 stays in controllers, why `SaveStaffWithDocumentsAsync` takes a `Func<>` callback instead of an uploader,
 and why nothing in `CRC.Data` knows that HTTP or Azure Storage exist (§6.6, §12).
+
+🔴 **`CRC.Api` HAS NO REFERENCE TO `CRC.Web` EITHER — AND FOR THE OPPOSITE REASON: `CRC.Web` REFERENCES
+IT.** `CRC.Data`'s rule is a design choice that one careless `ProjectReference` could break; `CRC.Api`'s is
+arithmetic. The arrow already runs `CRC.Web → CRC.Api`, so that `AddApplicationPart` can find
+`AgentApiController`, and a reference back is a **cycle the build refuses**. The visible cost is that
+`CRC.Api/Infrastructure/` carries **deliberate copies** of two shapes that already exist in
+`CRC.Web/Infrastructure/` — `AgentAuditLog.cs` for `AuditLog.cs`, `AgentErrorResponse.cs` for
+`ErrorResponse.cs` — including one duplicated string literal, `"CorrelationId"`, with nothing checking that
+it still matches `CorrelationIdMiddleware.HttpContextItemKey` (§13.2, §12 #11).
 
 ```
 CRC_Portal/
@@ -5429,16 +5462,14 @@ CRC_Portal/
   DapperLayerPlan.md                the finished 11-prompt plan that produced the Dapper layer. HISTORY:
                                     it records how the layer was built and in what order. Where it and
                                     CoreFlow.md disagree, CoreFlow.md is right (it was written last).
-  AgentApiPlan.md                   🔴 AN UNFINISHED PLAN, NOT HISTORY — the only document at this root
-                                    that describes code which does not exist yet. Five prompts that add
-                                    CRC.Api (a class library of API-key-authenticated endpoints an
-                                    external agent calls), five stored procedures under
-                                    Stored Procedures/Agent/, and a seeded AGENT_SERVICE dbo.Users row.
-                                    §13 IS RESERVED FOR IT and is written by its prompts as they ship —
-                                    do not claim §13 for anything else. Until its Progress Tracker is
-                                    fully ticked, NOTHING IT DESCRIBES IS IN THIS REPO, and this file
-                                    still describes the portal as built without it: §2.2's AllowAnonymous
-                                    count is two, there are three projects, and there are 104 procedures.
+  AgentApiPlan.md                   the finished 5-prompt plan that produced the Agent API. HISTORY: it
+                                    records how CRC.Api, the five Stored Procedures/Agent/ procedures and
+                                    the seeded AGENT_SERVICE dbo.Users row were built and in what order.
+                                    Where it and CoreFlow.md disagree, CoreFlow.md is right (§13 was
+                                    written last). Two things in it are still live rather than historical:
+                                    its "Open items — decide before go-live" list, which holds decisions
+                                    the OWNER still owns (§13.6, §13.7 point at them), and the fact that
+                                    🔴 §13 IS ITS SECTION — do not claim §13 for anything else.
   Nucentra_WhatsApp_Agent_Plan.md   the n8n build specification for the WhatsApp agent that will call the
                                     API above. Nothing in this repo knows it exists and nothing here
                                     implements any of it; its §4 is the source AgentApiPlan.md was cut
@@ -5453,28 +5484,60 @@ CRC_Portal/
   Export-NucentraPortal.ps1         packages the repo for hand-off.
   CRC_Portal.slnx                   the solution.
 
+CRC.Api/             net10.0 CLASS LIBRARY — Microsoft.NET.Sdk, NOT Microsoft.NET.Sdk.Web (§13.2, §12 #11)
+                     FrameworkReference Microsoft.AspNetCore.App (the same line CRC.Data carries) ·
+                     Serilog 4.3.0, pinned to the version CRC.Web already resolves · → CRC.Data
+                     🔴 NO Program.cs, NO appsettings.json, NO launchSettings.json, NO port, NO second
+                     process. CRC.Web loads its controller as an MVC application part. It NEVER
+                     references CRC.Web — see the note above the tree.
+  AgentApiOptions.cs                the ONE setting: Agent:ApiKey, bound from the "Agent" section by
+                                    CRC.Web/Program.cs, exactly as DocumentStorageOptions is bound.
+                                    🔴 In Azure it is Agent__ApiKey — TWO underscores (§13.6).
+  Controllers/
+    AgentApiController.cs           all EIGHT endpoints under /api/agent: seven GETs (§13.4) and the one
+                                    POST (§13.5). Four class-level attributes, each a deliberate hole in
+                                    a global default — [ApiController], [AllowAnonymous] (🔴 this is
+                                    §2.2's THIRD one), [ServiceFilter(AgentApiKeyFilter)] and
+                                    [IgnoreAntiforgeryToken]. No SQL and no procedure name anywhere in
+                                    it; every read goes through IDatabaseData (§12 #2).
+  Infrastructure/
+    AgentApiKeyFilter.cs            🔴 THE ONLY THING GUARDING THE AGENT API (§13.3). An
+                                    IAsyncAuthorizationFilter, so it runs before model binding and
+                                    before the action: X-Agent-Key hashed and fixed-time compared, then
+                                    the AGENT_SERVICE actor resolved per request and put on
+                                    HttpContext.User. 401 / 503 / continue, in that order.
+    AgentAuditLog.cs                the security channel for this project — 5 static methods onto the
+                                    SAME Serilog pipeline, via the one "AuditChannel" property, so its
+                                    lines land in CRC.Web/Logs/audit-*.log interleaved with AuditLog's.
+                                    A deliberate copy of CRC.Web/Infrastructure/AuditLog.cs.
+    AgentErrorResponse.cs           ForUser only — { success=false, message, correlationId }. A
+                                    deliberate copy of CRC.Web/Infrastructure/ErrorResponse.cs, and the
+                                    one place "CorrelationId" is spelled out as a literal.
+
 CRC.Data/            net10.0 · Dapper 2.1.79 · Microsoft.Data.SqlClient 6.1.3 · Nullable + ImplicitUsings on
   Data/
     DatabaseHelper.cs               connection factory + CurrentUserId. TWO MEMBERS (§6.5). Its class
                                     comment records the sys.parameters auto-injection that was deleted.
-    IDatabaseData.cs                THE CONTRACT AND THE DOCUMENTATION. 102 methods, one per procedure
+    IDatabaseData.cs                THE CONTRACT AND THE DOCUMENTATION. 107 methods, one per procedure
                                     (plus the two transactions), each with a // comment naming the
                                     procedure it calls, grouped under `// ----- Area -----` banners.
+                                    The last banner is the Agent API's five (§13.1).
                                     Read this to find out WHAT the layer does.
     SqlData.cs                      THE ONLY PLACE IN THE SOLUTION THAT NAMES A STORED PROCEDURE.
                                     Same banners, same order, so the two files read side by side.
                                     Read this to find out HOW. 3 private helpers (§3.1, §7.8) + the
                                     3 shared staff writers used by the transaction and its non-
                                     transactional twins.
-  Models/                           53 POCOs, one type per file (§6.3): row models, *SaveInput write
-                                    models, *Result models, and the AppointmentSaveFailure enum.
+  Models/                           58 POCOs, one type per file (§6.3): row models, *SaveInput write
+                                    models, *Result models, the AppointmentSaveFailure enum, and the
+                                    five Agent* models the Agent API reads through (§13.1).
   Database/
     Migrations/                     the twelve LU_* seed CSVs + MigrationQuery.txt. DATA, not code —
                                     this folder is why CRC.Data has both a Data/ and a Database/.
 
 CRC.Database/        classic SSDT .sqlproj — MSBuild only, `dotnet build` CANNOT build it (§11)
   dbo/Tables/                       28 .sql files, one per table (§3). FIVE foreign keys in total.
-  Stored Procedures/                104 .sql files in 30 per-feature subfolders:
+  Stored Procedures/                109 .sql files in 31 per-feature subfolders:
     LU_*/                 (14)      the twelve lookup tables' reads; LU_LOCATION has three
     Branch/               (6)   Users/              (9)   Staff/               (6, incl. _GetPerformance)
     StaffDocument/        (6)   StaffDocumentSettings/ (3) StaffSlots/         (6)
@@ -5482,6 +5545,9 @@ CRC.Database/        classic SSDT .sqlproj — MSBuild only, `dotnet build` CANN
     PatientAppointment/   (10)  PatientJourney/     (3)   PatientAssessment/   (3)
     PatientColonoscopy/   (3)   PatientFollowUp/    (3)   PatientTracker/      (5)
     Dashboard/            (4)   StaffDashboard/     (3)   AuditTrails/         (4)
+    Agent/                (5)      the Agent API's own reads — the one folder named for a CALLER rather
+                                   than for a table, which is what makes "these exist for one consumer"
+                                   visible at a glance. Catalogued in §13.1, not §5.
   Scripts/
     Script.PostDeployment.sql       the one <PostDeploy> item; :r-includes the three seeds in order
     Seed_Lookups.sql                the eleven small LU_* tables, guarded per row
@@ -5498,8 +5564,13 @@ CRC.Web/             net10.0 MVC · Serilog · Azure.Storage.Blobs
                                     AutoValidateAntiforgeryToken, DI (DatabaseHelper, IDatabaseData →
                                     SqlData, IDocumentStorage), cookie auth, the login rate limiter, the
                                     five policies (§2.3), the /uploads 404 branch, and the default route
-                                    {controller=Account}/{action=Login}/{id?}.
-  Controllers/                      16 controllers. AccountController.cs sits at the root; every other
+                                    {controller=Account}/{action=Login}/{id?}. Three lines belong to the
+                                    Agent API and nothing else in the file changed for it (§13.2):
+                                    .AddApplicationPart(…AgentApiController.Assembly),
+                                    Configure<AgentApiOptions>, AddScoped<AgentApiKeyFilter>().
+  Controllers/                      16 controllers, all of them CRC.Web's — the seventeenth,
+                                    AgentApiController, is in CRC.Api and is loaded as an application
+                                    part (§13.2). AccountController.cs sits at the root; every other
     {Feature}/                      one lives in a per-feature subfolder — Branch/, Staff/ (three
                                     controllers), Patient/, StaffPatient/, Appointment/, Dashboard/,
                                     AdminDashboard/, StaffDashboard/, PatientTracker/, Documents/,
@@ -5533,9 +5604,11 @@ CRC.Web/             net10.0 MVC · Serilog · Azure.Storage.Blobs
                                     On Azure a publish deliberately does NOT delete them.
   Properties/launchSettings.json    🔴 use the `https` profile (https://localhost:7276). The __Host-CSRF
                                     antiforgery cookie requires HTTPS, so every POST 400s over http.
-  appsettings.json                  ConnectionStrings:CRC_DB, DocumentStorage, Account:{Password,
+  appsettings.json                  ConnectionStrings:CRC_DB, DocumentStorage, Agent, Account:{Password,
                                     SessionTimeout,LoginLockout} — the lockout and password thresholds
-                                    are config, not database policy (§2.6).
+                                    are config, not database policy (§2.6). 🔴 Agent:ApiKey is an EMPTY
+                                    placeholder here, and empty FAILS CLOSED; the real key is the App
+                                    Service app setting Agent__ApiKey (§13.6).
 ```
 
 **Two folder facts that surprise people, both deliberate:**
@@ -5639,6 +5712,16 @@ proved before the next one depends on it.
 - [ ] **Keep business decisions out of `SqlData`.** A scoping predicate such as the `StaffId` claim is
       resolved in the controller and passed as an argument; only the audit actor comes from the data layer
       (§4.13). Moving that boundary is a security change, not a refactor.
+- [ ] 🔴 **If the endpoint is MACHINE-callable, give it a service actor — it has no cookie and therefore no
+      principal.** `DatabaseHelper.CurrentUserId` reads `ClaimTypes.NameIdentifier` off
+      `HttpContext.User`, so a request authenticated by a header answers `null` and every audit-actor
+      procedure it reaches writes **`AuditTrails.User_Id = 0`** — no exception, no failed request, a
+      response that says `success`, and an audit trail that names nobody (§0.1). The Agent API is the
+      pattern to copy (§13.3): a real seeded `dbo.Users` row, resolved **by username** on every request
+      because `User_ID` is an `IDENTITY` and differs per database, turned into a `ClaimsPrincipal` **in an
+      authorization filter, before the action runs**, with a `503` when the row is missing rather than a
+      fall-through. Never configure the id, and never hard-code the claim to `"0"` — this repository has
+      already shipped that bug once.
 
 ### 11.4 The front end
 
@@ -5691,6 +5774,14 @@ report". Every database call in the product is `commandType: CommandType.StoredP
 the property worth protecting: grepping for `"sp` answers "who calls this?" completely, and a procedure's
 signature changing is a compiler error rather than a user's bad afternoon. A new query is a new `.sql` file,
 registered in the `.sqlproj`, plus a new interface method (§11).
+
+**The Agent API changed nothing about this, and that was the point of building it the way it is built.**
+`CRC.Api` contains **no SQL, no `CommandType`, no connection, no `SqlConnection` and not one procedure
+name**: its eight endpoints go through `IDatabaseData` like every controller in `CRC.Web`, its five
+`Agent/` procedures are called from `SqlData.cs` like the other 104, and its one write reuses
+`SaveAppointmentAsync` whole rather than reimplementing a booking path (§13.0, §13.1, §13.5).
+`CRC.Data/Data/SqlData.cs` is still the only file in the solution that names a stored procedure — across
+**four** projects now instead of three.
 
 **3 — 🔴 `@User_ID` IS ALWAYS PASSED EXPLICITLY. THE `sys.parameters` AUTO-INJECTION IS GONE AND IS NOT
 COMING BACK.** `DatabaseHelper` used to ask the catalogue whether each procedure declared `@User_ID` and
@@ -5754,10 +5845,13 @@ the data layer an uploader of its own, are recorded there with their reasons.
 
 **7 — Stored procedures were NOT renamed. nucentra keeps `sp{Table}_{What}`.** HEART uses
 `sp_{Table}_{What}`, with the underscore, and the Dapper layer was copied from HEART in *shape* only. Not
-one of the 104 names changed during the migration, because a rename touches the `.sql`, the `.sqlproj`, the
-deployed database and `SqlData` at once, buys nothing at runtime, and would have made the before/after
-verification that justified the whole exercise impossible to read. **New procedures follow nucentra's
-convention**, not HEART's — and the same goes for the rest of the house style: block-scoped namespaces,
+one of the 104 names that existed then changed during the migration, because a rename touches the `.sql`,
+the `.sqlproj`, the deployed database and `SqlData` at once, buys nothing at runtime, and would have made
+the before/after verification that justified the whole exercise impossible to read. **New procedures follow
+nucentra's convention**, not HEART's — the five `Agent/` procedures added since are
+`spAgentPatient_ListScreeningQueue`, `spAgentPatient_FindByPhone`, `spAgentStaff_ListByBranch`,
+`spAgentSlots_FindOpenByBranch` and `spAgentUsers_GetServiceAccount`, which is `sp{Table}_{What}` applied to
+a caller rather than to a table (§13.1) — and the same goes for the rest of the house style: block-scoped namespaces,
 `Ok(new { … })` rather than `Json(...)`, `ErrorResponse.ForUser` for caught exceptions.
 
 **8 — The two `SQL71502` warnings are the baseline, not a defect.** A `CRC.Database` rebuild reports
@@ -5783,20 +5877,61 @@ precisely, deliberately not repaired here** — every one of them is a behaviour
 change is the owner's call. Fixing one is welcome; fixing one *on the way past something else*, without
 saying so, is not. Update the section in the same commit.
 
+**11 — 🔴 `CRC.Api` IS A CLASS LIBRARY LOADED AS AN MVC APPLICATION PART. IT IS NOT A SECOND HOST AND NOT A
+SECOND APP SERVICE.** It is `Microsoft.NET.Sdk`, not `Microsoft.NET.Sdk.Web`: no `Program.cs`, no
+`appsettings.json`, no `launchSettings.json`, no `WebApplication`, no port and no second process. It is
+compiled into `CRC.Api.dll`, `CRC.Web.csproj` references it, and one line —
+`AddControllersWithViews(…).AddApplicationPart(typeof(AgentApiController).Assembly)` — is what makes MVC
+discover `AgentApiController` at all (§13.2).
+
+**What that buys**, and every item on this list is something a second host would have needed its own copy
+of: **one deployment** and one publish profile; **one `appsettings.json`** and one set of App Service app
+settings (§13.6); **one Serilog pipeline**, so `AgentAuditLog`'s lines land in the same
+`Logs/audit-*.log` as `AuditLog`'s, interleaved by timestamp and under the same 365-day retention (§9.2);
+**the correlation id for free**, because `CorrelationIdMiddleware` is a pipeline stage rather than an MVC
+filter and therefore runs for `/api/agent` exactly as it does for a page; and **one connection string and
+one scoped `SqlData`**, which is why the Agent API is not a second data path (§12 #2).
+
+**What it costs, stated exactly, because both costs are real.** First, §2.2's `AllowAnonymous` audit goes
+from two lines to three, and unlike the other two the third fronts patient data — that is the price of
+putting a header-authenticated controller inside a cookie-authenticated host, and `AgentApiKeyFilter` is
+what is paid to close it (§13.3). Second, **two small infrastructure files are duplicated rather than
+shared** — `AgentAuditLog.cs` and `AgentErrorResponse.cs` — and they cannot be shared, because the
+reference runs `CRC.Web → CRC.Api` and a reference back is a cycle the build refuses (§10). The
+duplication is a *class*, not a mechanism: both files attach to infrastructure `CRC.Web` still owns. It
+does include one string literal, `"CorrelationId"`, with nothing checking that it still matches
+`CorrelationIdMiddleware.HttpContextItemKey` — **rename that key and rename this literal in the same
+commit**, because the failure if you do not is silent and diagnostic rather than loud: the agent is handed
+a correlation id that matches nothing in `app-*.log`, no build breaks and no exception is thrown.
+
+**Re-opening this is a second App Service, not a refactor.** It would need its own `Program.cs`, its own
+Serilog configuration and its own log files, its own copy of the connection string and every app setting,
+its own publish step, its own TLS certificate and its own access restrictions — and two processes to keep
+on the same build. This repository has already had that: a deleted `CRC.Api` (commit `291ab458`, removed in
+`a6c9d16e`) was a standalone `Microsoft.NET.Sdk.Web` host with its own port and Swagger, and it is also
+where the hard-coded `NameIdentifier = "0"` claim came from (§13.3). The one thing that would genuinely
+justify re-opening it is a **second consumer with a different scaling or availability profile from the
+portal's** — and at that point the single-shared-key model in §13.3 needs re-opening in the same
+conversation (§13.7).
+
 ---
 
 ## 13. The Agent API
 
-> **What exists as of Prompt 3: the database half, the project, the guard, all seven reads, and the one
-> write.** Five procedures under `CRC.Database/Stored Procedures/Agent/`, all five registered in
-> `CRC.Database.sqlproj` and published to `CRC_DB`; one seeded `dbo.Users` row, `AGENT_SERVICE`; and the
-> `CRC.Api` class library, loaded into `CRC.Web` as an application part, carrying `AgentApiKeyFilter` and
-> `AgentApiController`. **All five procedures are wired to C#** — `spAgentUsers_GetServiceAccount` by
-> Prompt 1, the other four by Prompt 2 — and the controller carries **all eight endpoints**: seven reads
-> (§13.4) and `POST /api/agent/appointments` (§13.5), which added **no procedure and no data-layer method**
-> because `SaveAppointmentAsync` already existed. §13.0 to §13.5 describe what is built. §13.6 and §13.7 are
-> placeholders, filled in by Prompt 4. Where a sentence here is about code that is not written, it names the
-> prompt that writes it rather than describing it as though it were already there.
+> **This section is a specification of what is built, in the present tense, exactly like the twelve above
+> it. Nothing in it is a proposal and nothing in it is pending.** The Agent API is: five procedures under
+> `CRC.Database/Stored Procedures/Agent/`, all five registered in `CRC.Database.sqlproj` and published to
+> `CRC_DB` (§13.1); one seeded `dbo.Users` row, `AGENT_SERVICE` (§13.3); and the `CRC.Api` class library,
+> loaded into `CRC.Web` as an MVC application part (§13.2), carrying `AgentApiKeyFilter` (§13.3) and
+> `AgentApiController` — **eight endpoints**, seven reads (§13.4) and `POST /api/agent/appointments`
+> (§13.5), which needed **no procedure and no data-layer method** because `SaveAppointmentAsync` already
+> existed. All five procedures have an `IDatabaseData` method; three of the seven reads reuse a method that
+> already existed. §13.6 is the configuration and the platform lock-down an operator needs; §13.7 is what
+> is deliberately absent, with the reason for each.
+>
+> `AgentApiPlan.md` is the finished plan that produced all of it and is **history** (§10). Where it and this
+> section disagree, this section is right; its still-live half is its "Open items — decide before go-live"
+> list, which §13.6 and §13.7 point at by number.
 
 ### 13.0 What the Agent API is, and what it is not
 
@@ -5804,8 +5939,7 @@ saying so, is not. Update the section in the same commit.
 in an `X-Agent-Key` header, with exactly one intended caller.** That caller is an n8n workflow that speaks
 to patients over WhatsApp: it sweeps the screening queue once a day, resolves an inbound phone number to a
 patient, reads branches, staff and open hours, and books one assessment appointment after a human has
-approved it. Prompt 1 builds the project, the filter and endpoint 5; Prompt 2 builds the six remaining
-reads; Prompt 3 builds the write.
+approved it.
 
 **It is not the agent.** The agent is n8n plus the WhatsApp Cloud API, built separately and living outside
 this repository. This API answers questions and performs one write; it holds no conversation, no state
@@ -5817,7 +5951,7 @@ plan, no self-service anything. It is a private integration surface that happens
 shared key is the whole of its access control.
 
 **It is not a second host.** `CRC.Api` is a class library — `Microsoft.NET.Sdk`, not `Microsoft.NET.Sdk.Web`
-— loaded into `CRC.Web` as an MVC application part (Prompt 1). One process, one deployment, one
+— loaded into `CRC.Web` as an MVC application part (§13.2, §12 #11). One process, one deployment, one
 `appsettings.json`, one Serilog pipeline, one connection string. There is no second App Service, no second
 `Program.cs` and no second port. The dependency runs `CRC.Web → CRC.Api → CRC.Data`, and **`CRC.Api` never
 references `CRC.Web`** — which is why it carries its own two small infrastructure files rather than reusing
@@ -5837,13 +5971,13 @@ stored procedure (§12 #2), and the booking write reuses `SaveAppointmentAsync` 
 
 §2.2 is the context: `AddControllersWithViews` installs a global `AuthorizeFilter`, so **every** action in
 the portal requires authentication unless it carries `[AllowAnonymous]`, and a `grep` for `AllowAnonymous`
-is today a complete two-line audit of the portal's public surface. The agent controller adds a third line —
-to a controller that reads patient names, phone numbers, screening results and clinician schedules. That is
-a deliberate, documented widening of the attack surface, and `AgentApiKeyFilter` is the only thing standing
-in the gap: if it is removed, mis-registered, or ever fails open, `/api/agent/patients/queue` becomes an
-unauthenticated dump of every active patient in the programme. Prompt 1 builds and proves that filter
-**before any patient-shaped endpoint exists**, and Prompt 4 rewrites §2.2 rather than leaving its "two
-lines" sentence quietly false.
+is a complete audit of the portal's public surface. **The agent controller is the third line that grep
+returns** — on a controller that reads patient names, phone numbers, screening results and clinician
+schedules. That is a deliberate, documented widening of the attack surface, and `AgentApiKeyFilter` is the
+only thing standing in the gap: if it is removed, mis-registered, or ever fails open,
+`/api/agent/patients/queue` becomes an unauthenticated dump of every active patient in the programme. The
+filter was built and proved against a branch list **before any patient-shaped endpoint existed**, and §2.2
+now says **three** rather than carrying a "two lines" sentence that is quietly false.
 
 The same absence of a cookie has a second consequence, and it is the one that fails silently rather than
 loudly: **no cookie means no `ClaimsPrincipal`, which means `DatabaseHelper.CurrentUserId` is `null`, which
@@ -5863,7 +5997,7 @@ applied to a caller rather than to a table.
 | `spAgentPatient_FindByPhone` | `@Phone VARCHAR(100)` | Zero, one or **many** patients: `Patient_ID, Patient_Name, Patient_Phone, NricLast4, Patient_iFOBTStatus, Patient_iFOBTResults, DischargeType_ID` — `Patient_ID DESC`. A `@Phone` with fewer than 9 digits returns **the same seven columns with no rows** | `FindAgentPatientsByPhoneAsync(phone)` → `List<AgentPatientMatch>` | **no** |
 | `spAgentStaff_ListByBranch` | `@Branch_ID VARCHAR(100)` | `Staff_ID, Staff_Name, Staff_Phone, Staff_Type, StaffType_Name, Staff_Base` for `Staff_Base = @Branch_ID` — `Staff_Name`. `StaffType_Name` is **nullable** (`LEFT JOIN`) | `GetAgentStaffByBranchAsync(branchId)` → `List<AgentStaffItem>` | **no** |
 | `spAgentSlots_FindOpenByBranch` | `@Branch_ID VARCHAR(100)`, `@FromDate DATE`, `@ToDate DATE`, `@Staff_Type VARCHAR(100) = NULL` | One row per **open hour**: `StaffSlot_ID, Staff_ID, Staff_Name, Staff_Phone, Staff_Type, SlotDate, SlotStartTime, SlotEndTime` — the two times as **`VARCHAR(5)` `'HH:mm'`** via `CONVERT(…, 108)`. `SlotDate, SlotStartTime, Staff_Name` | `FindAgentOpenSlotsByBranchAsync(branchId, fromDate, toDate, staffType)` → `List<AgentOpenSlotItem>` | **no** |
-| `spAgentUsers_GetServiceAccount` | — | `TOP 1 User_ID, Username, User_Name, User_Type` from `dbo.Users` where `Username = 'AGENT_SERVICE'`. **Not `Password_Hash`, not `User_Email`** | Prompt 1 | **no** |
+| `spAgentUsers_GetServiceAccount` | — | `TOP 1 User_ID, Username, User_Name, User_Type` from `dbo.Users` where `Username = 'AGENT_SERVICE'`. **Not `Password_Hash`, not `User_Email`** | `GetAgentServiceAccountAsync()` → `AgentServiceAccount?` | **no** |
 
 #### 🔴 None of the five declares `@User_ID`, and that is correct for each of them separately
 
@@ -5880,7 +6014,7 @@ kind, for two different reasons:
   what creates the identity the rest of the request runs as**. Asking it for an actor is asking it for the
   answer it is being called to produce.
 
-The write these reads feed — endpoint 8, Prompt 3 — goes through `SaveAppointmentAsync` and
+The write these reads feed — endpoint 8, §13.5 — goes through `SaveAppointmentAsync` and
 `spPatientAppointment_Insert`, which **is** the actor kind, and the actor it is given is the `User_ID` this
 fifth procedure returned. That is the whole chain, and §13.3 documents it.
 
@@ -6021,7 +6155,7 @@ tidiness rule to be worked around — it is the reason two small files in `CRC.A
 
 | Copy in `CRC.Api` | Original in `CRC.Web` | What is duplicated |
 |---|---|---|
-| `Infrastructure/AgentAuditLog.cs` | `Infrastructure/AuditLog.cs` | The class, and one line: `Log.ForContext("AuditChannel", true)`. Three methods, not 24. |
+| `Infrastructure/AgentAuditLog.cs` | `Infrastructure/AuditLog.cs` | The class, and one line: `Log.ForContext("AuditChannel", true)`. **Five** methods, not 24 — three for the filter (`AgentRequestAuthenticated`, `AgentRequestRejected`, `AgentServiceAccountMissing`) and two for the write (`AgentAppointmentBooked`, `AgentAppointmentRefused`, §13.5). |
 | `Infrastructure/AgentErrorResponse.cs` | `Infrastructure/ErrorResponse.cs` | `ForUser` only — the `{ success = false, message, correlationId }` shape and the same `GenericUserMessage`. `ForView` is not copied: this project has no views. |
 
 **The duplication is a class, not a mechanism.** `AgentAuditLog` does not configure a logger, own a file or
@@ -6047,7 +6181,7 @@ to look in `CRC.Api`.
 | **Serilog, both channels** | ✅ **Free** | One pipeline for the process, configured in `CRC.Web/Program.cs`. `AgentAuditLog` writes the audit channel; `ILogger<AgentApiKeyFilter>` and `ILogger<AgentApiController>` write `app-*.log`. Verified: agent lines appear in both files. |
 | **`CorrelationIdMiddleware`** | ✅ **Free** | It is a pipeline stage, not an MVC filter, so it runs for `/api/agent` exactly as for a page. The id is in `HttpContext.Items` and echoed on `X-Correlation-ID`. **With one caveat that is not free — see §13.3's last finding.** |
 | **Connection string, DI, `IDatabaseData`** | ✅ **Free** | Same container, same `appsettings.json`, same scoped `SqlData`. `CRC.Api` injects `IDatabaseData` and knows nothing below it. |
-| **The global `AuthorizeFilter`** | ❌ **Escaped** | `[AllowAnonymous]` on the controller, replaced by `AgentApiKeyFilter`. §2.2's two-line audit becomes three. |
+| **The global `AuthorizeFilter`** | ❌ **Escaped** | `[AllowAnonymous]` on the controller, replaced by `AgentApiKeyFilter`. This controller is why §2.2's `AllowAnonymous` audit returns **three** lines and not two. |
 | **The global `AutoValidateAntiforgeryTokenAttribute`** | ❌ **Escaped** | `[IgnoreAntiforgeryToken]` on the controller. An external caller has no `__Host-CSRF` cookie and cannot obtain an `X-CSRF-TOKEN`, so without it every POST here would return `400` (§2.4). |
 | **`ErrorResponse.ForUser`** | ❌ **Copied** | Lives in `CRC.Web`. See the table above. |
 
@@ -6167,8 +6301,8 @@ simplifies**, which is why the reasoning is written above the method as well as 
 
 #### 🔴 The service actor — the whole point of the filter
 
-Everything above is ordinary API-key plumbing. **This part is the one that fails silently, and it is why
-Prompt 0 seeded a database row before any C# existed.**
+Everything above is ordinary API-key plumbing. **This part is the one that fails silently, and it is why a
+`dbo.Users` row was seeded before any of this project's C# existed.**
 
 **The problem.** `SqlData` passes `@User_ID` explicitly to the 19 audit-actor procedures, taking it from
 `DatabaseHelper.CurrentUserId`, which reads `ClaimTypes.NameIdentifier` off `HttpContext.User` (§0.1,
@@ -6277,8 +6411,8 @@ it was `AGENT_SERVICE` and that the resolved id was `9`.
 
 ### 13.4 The seven read endpoints, and their exact JSON
 
-**All seven live on the one `AgentApiController`, and there is no second controller.** Endpoint 5 was built
-in Prompt 1; the other six in Prompt 2. Every one is a `GET`, every one is guarded by the single
+**All seven live on the one `AgentApiController`, and there is no second controller.** Every one is a
+`GET`, every one is guarded by the single
 class-level `[ServiceFilter(typeof(AgentApiKeyFilter))]` (§13.3), and every one follows the house style
 unchanged: a hand-built camelCase anonymous object mapped out of the model, never the model itself (§12 #4);
 `catch (SqlException)` then `catch (Exception)`, both `_logger.LogError`, both
@@ -6539,8 +6673,8 @@ get a message about an NRIC they did not type.
 `AgentApiController.BookAppointment`, and everything it does that is hard — the transaction, the
 in-transaction slot read that *is* the concurrency check, the four slot checks, the contiguity check, the
 start/end derivation and the two slot procedures — happens inside `IDatabaseData.SaveAppointmentAsync`,
-which it reuses **whole and unchanged** (§6.7, §12 #1). Prompt 3 added a nested request DTO, an action, two
-`AgentAuditLog` methods, and nothing else.
+which it reuses **whole and unchanged** (§6.7, §12 #1). The endpoint itself is a nested request DTO, one
+action and two `AgentAuditLog` methods — and nothing else.
 
 **It only ever INSERTS.** There is no `appointmentId` in the request and `PatientAppointment_ID` is
 hard-wired to `0`, which is the data layer's insert/update switch. It never updates, never changes a status
@@ -6727,7 +6861,7 @@ booking**, which is why the pre-flight refusals are audited at all. The key is n
 
 ---
 
-#### 🔴 THE HEALTH CHECK — the assertion this whole prompt exists for, and anyone can re-run it
+#### 🔴 THE HEALTH CHECK — the assertion this whole surface turns on, and anyone can re-run it
 
 `spPatientAppointment_Insert` declares `@User_ID INT = NULL` — the **ACTOR** — and `SqlData` supplies it
 from `DatabaseHelper.CurrentUserId`, which reads `ClaimTypes.NameIdentifier` off `HttpContext.User`. An
@@ -6781,8 +6915,8 @@ is still on the development database, deliberately, rather than tidied away.
 
 **2. The antiforgery test passed on its second run and its first run was worth keeping.** The first POST
 with a valid key answered **500**, not the `400` this test hunts for — the local `CRC_DB` had rolled back to
-the pre-Prompt-0 baseline of 104 procedures, so `spAgentUsers_GetServiceAccount` did not exist and the
-filter's own database lookup threw. **Even that proved the thing the test is for**: a `400` would have come
+the baseline of **104** procedures, i.e. the catalogue without the five `Agent/` ones, so
+`spAgentUsers_GetServiceAccount` did not exist and the filter's own database lookup threw. **Even that proved the thing the test is for**: a `400` would have come
 from the antiforgery filter, which runs *before* the action, and the request had already reached
 `AgentApiKeyFilter`. After republishing the `.dacpac` — which created exactly the five `Agent/` procedures
 and nothing else — the same request answered `200`. `[IgnoreAntiforgeryToken]` has been on the controller
@@ -6812,8 +6946,176 @@ different ways a half-published database announces itself, and both name the fil
 
 ### 13.6 Configuration, deployment and the platform lock-down
 
-> *Written in Prompt 4 — not yet filled in.*
+**One app setting, no service user id, one publish order, and one platform control that is not optional.**
+None of it is a code change, and none of the portal steps are repeated here:
+**`Nucentra_Azure_Deployment_Guide.md` is the runbook the owner performs by hand**, and it owns which blade
+to open. This section says what has to be true, and why.
+
+#### The one app setting: `Agent__ApiKey`
+
+The Agent API's entire configuration is a single value, bound in `CRC.Web/Program.cs` from the `Agent`
+section onto `CRC.Api.AgentApiOptions.ApiKey` — the same shape `DocumentStorageOptions` is bound in two
+lines above it.
+
+| Where | Name | Value |
+|---|---|---|
+| `CRC.Web/appsettings.json` | `Agent:ApiKey` | **`""`** — an empty placeholder, deliberately. This file is in source control |
+| `CRC.Web/appsettings.Development.json` | `Agent:ApiKey` | a development-only value, also in source control, and worthless if it leaks |
+| **Azure App Service** | **`Agent__ApiKey`** | 🔴 the real key. An **app setting**, set by hand, never in a file |
+
+🔴 **TWO UNDERSCORES — `Agent__ApiKey`, not `Agent_ApiKey`.** App Service expresses a configuration colon
+as a **double** underscore, so `Agent__ApiKey` binds to `Agent:ApiKey` and `Agent_ApiKey` binds to nothing
+at all. **This is the same rule `DocumentStorage__ConnectionString` follows, and
+[`DOCUMENTSTORAGE.md`](DOCUMENTSTORAGE.md)'s Configuration section owns it** — it is pointed at here rather
+than restated, because there is one rule and it should have one home. It also goes under **App settings**,
+not under **Connection strings**; those are two different lists in the portal and are not interchangeable.
+
+🔴 **An empty key FAILS CLOSED, which is correct and is exactly what makes it confusing to debug.** It is
+`AgentApiKeyFilter`'s **first** branch (§13.3): a null-or-whitespace `Agent:ApiKey` answers **401** before
+the request's header is even read, so **every** call the agent makes is refused. A single-underscore app
+setting therefore produces no startup error, no warning, no 500 and nothing that names configuration — it
+produces an API that says `Unauthorized.` to a caller holding the correct key, which is indistinguishable
+at the caller's end from a stale key.
+
+**Where the tell is: `CRC.Web/Logs/app-*.log`.** That branch, and only that branch, also writes an
+**error** through `ILogger<AgentApiKeyFilter>` naming the setting:
+
+```
+Agent API is not configured: Agent:ApiKey is empty, so every request to GET /api/agent/branches is
+refused. In Azure the value is the App Service app setting Agent__ApiKey (TWO underscores); locally it is
+Agent:ApiKey in appsettings.Development.json.
+```
+
+There is a matching `AUDIT Agent API request rejected. … Reason=not configured` line in `audit-*.log`. The
+other two 401 reasons — `missing key` and `invalid key` — write **only** the audit line and no error. So
+**an error in `app-*.log` is what separates "the portal is misconfigured" from "the caller's key is
+wrong"**, and the wire deliberately says the same `Unauthorized.` to both (§13.3).
+
+#### 🔴 No service user id is configured anywhere, and that is the design
+
+There is **no `Agent__ServiceUserId` setting, in any environment, and there must not be one.**
+`dbo.Users.User_ID` is an `INT IDENTITY` (§3.3), so the `AGENT_SERVICE` row's id is whatever the database
+it was seeded into happened to assign — **9** on the development `CRC_DB`, and some other number on Azure
+SQL. Nothing anywhere stores it: `spAgentUsers_GetServiceAccount` resolves the account **by username** on
+every request, against the `UNIQUE` `IX_Users_Username`, and `AgentApiKeyFilter` builds the principal from
+what comes back (§13.3).
+
+An id in configuration was proposed and rejected, and the reason is the failure mode: a wrong one **does
+not throw**. It writes a different — and *real* — user's id into `dbo.AuditTrails` and reports success. A
+stale setting would be a silent wrong-actor audit, which is worse than a missing one because it is not
+empty but wrong about a named person. A missing **row**, by contrast, is a `503` and no action runs.
+
+#### The publish order: the DACPAC first, then the web app
+
+1. **Publish the `.dacpac`** (`CRC.Database`, from Visual Studio, the deployment guide's §5.2). It carries
+   **both** halves of the database side: the five `Stored Procedures/Agent/` procedures **and** the
+   `AGENT_SERVICE` row, which `CRC.Database/Scripts/Seed_Users.sql` seeds through the post-deployment
+   script, guarded on `Username` so a re-publish never resets it (`SEEDING.md` is authoritative).
+   🔴 **The order is not a preference.** Publish the web app first and every agent request answers `503` —
+   the key is fine, the account is not there — which is precisely the loud failure §13.3 exists to
+   produce, but there is no reason to produce it on purpose.
+2. **Set `Agent__ApiKey`** in App Service → Environment variables → **App settings**, then Apply. The app
+   restarts, about thirty seconds.
+3. **Publish `CRC.Web`**, with **"Remove additional files at destination" UNCHECKED**, as the deployment
+   guide says. That box is off to protect `site/wwwroot/Logs/` — up to 365 days of `audit-*.log`, which is
+   where every agent request's audit line lives (§9.2, §13.3). It is not a setting to reconsider for this
+   feature.
+4. **Smoke-test before pointing n8n at it.** `Test-AgentApi.ps1` at the repo root takes `-BaseUrl` and
+   `-ApiKey` and drives all eight endpoints plus both negative tests. It takes no default key, reads none
+   from a file and prints none. The write is **opt-in** behind `-IncludeWrite` and off by default, because
+   it consumes a real clinician hour that this API cannot give back (§13.5).
+5. **Then run the health check in §13.5** — `dbo.AuditTrails` joined to `dbo.Users` — and confirm the
+   booking's actor reads `AGENT_SERVICE` and not `0`. It is the one failure in this feature that is
+   completely silent.
+
+#### 🔴 The platform lock-down — a requirement, not a nicety
+
+**The API key is the authentication. An App Service access restriction is what stops the internet from
+reaching the endpoint at all. They are not alternatives, and this surface needs both.**
+
+App Service → **Networking → Access restrictions**: allow only n8n's egress addresses (n8n Cloud publishes
+its egress ranges; a self-hosted instance is your own address) and deny everything else. Where the portal
+itself must stay publicly reachable, the rule is scoped to the **`/api/agent`** path.
+
+**Said plainly, because it is the sentence to read before go-live: without that restriction, the entire
+security of this surface is one shared secret in an HTTP header.** There is no second factor, no client
+certificate, no IP check in code, and — deliberately — **no rate limiting on `/api/agent/*`** (§13.7), so
+nothing in the application slows an attacker down. **A leaked key is a full read of the patient register**:
+`GET /api/agent/patients/queue` returns every active patient's name, phone number, screening state and NRIC
+last four in one response (§13.4), `/patients/by-phone` turns a phone number into a person, and
+`/slots/open` plus `POST /appointments` books clinician hours that only a human in the portal can release
+(§13.5). It stays that way **until somebody rotates the key** — there is no expiry, no revocation list and
+nothing that notices an unexpected caller.
+
+**Rotation is one setting plus a restart, and no code change**: change `Agent__ApiKey` in App Service,
+Apply, and the app comes back on the new value. That is worth knowing **before** it is needed rather than
+during. It has one sharp edge worth knowing at the same time: there is **one** key, with no version and no
+overlap window, so a rotation is a **hard cutover** and n8n must be updated in the same minute. Making that
+overlappable is a small change — `AgentApiOptions.ApiKey` becomes a string array and the filter accepts any
+member — and it is a change to make *before* the first rotation, not during one (`AgentApiPlan.md`, open
+item 3).
 
 ### 13.7 What is deliberately not here
 
-> *Written in Prompt 4 — not yet filled in.*
+Each of these is absent on purpose. They are listed with their reasons, so that the next person to notice
+one finds the reason before they close the gap.
+
+**No n8n, and nothing in this repository knows the agent exists.** No workflow, no WhatsApp, no message
+template, no schedule, no system prompt, no conversation state, no webhook. `Nucentra_WhatsApp_Agent_Plan.md`
+specifies the thing that calls this API and it lives entirely outside the code (§10). This API answers
+questions and performs one write; it holds no conversation and decides nothing about who to contact
+(§13.0).
+
+**No SURVEILLANCE booking.** `pjAppTypeId` must be the string `"01"` — PATIENT ASSESSMENT — and `"04"` is
+refused by name (§13.5). That is `AgentApiPlan.md` decision 4, **option C: propose only**. The negative
+path is a coordinator's job, and two independent reasons hold it there: a surveillance visit is 12 or 24
+months out while `spStaffSlots_CreateRange` refuses a range longer than 31 days per call (§5.5), so the
+hours do not exist to consume; and 🔴 a `"04"` appointment **could never be clinically recorded even if it
+were booked** — there is no `dbo.PatientSurveillance`, no `spPatientSurveillance_*`, no template and no
+`.js`, and `GetJourneyTemplate` recognises exactly three strings (§7.3). Booking one through an automation
+would consume a clinician's hour to create a record nobody can complete.
+
+**No slot creation, no cancellation, no patient creation, no document access, no staff writes.**
+
+- **Slot creation** would be the agent's *second* write, against `spStaffSlots_CreateRange` — an ACTOR
+  procedure (§0.1) — and would let an automation manufacture clinician availability months ahead. That is
+  a clinical-governance decision, not an API one (`AgentApiPlan.md`, open item 6).
+- **Cancellation** is not withheld; **it does not exist to expose.** Nucentra has no cancellation concept
+  at all (§3.9): a status change touches no slots, so the only way to free an hour is
+  `POST /Patient/DeleteAppointment`, in the portal, by a person. That asymmetry — an hour trivially easy to
+  take and impossible to return from here — is the entire argument for the human approval gate in front of
+  endpoint 8 (§13.5).
+- **Patient creation** would put a `dbo.PatientBasic` row into the programme out of a WhatsApp
+  conversation, with an NRIC nobody has seen and the birth date and gender derived from it (§3.8).
+  Registration is `AdminOrSuper` and stays a person's job (§4.7).
+- **Document access** is absent completely. No endpoint here touches `dbo.PatientDocument` or
+  `dbo.StaffDocument`, and no blob key or SAS URL is reachable through this API at any point (§8).
+- **Staff writes** — no staff record, no schedule, no branch, no user and no settings row is writable.
+  Every one of those is `AdminOrSuper` or `SuperUserOnly` in the portal, and none of them is something a
+  screening conversation needs.
+
+**No per-caller keys, no rotation schedule, no OAuth, and no rate limiting on `/api/agent/*`.** One key,
+one caller, no version, no expiry; the perimeter is §13.6's platform access restriction, on the argument
+that one control is easier to reason about than two half-controls. `CRC.Web` already has a rate limiter
+installed with a `login-ip` policy (§2.6), so an `agent-api` policy would be about six lines and an
+attribute — it is left out, not overlooked.
+
+🔴 **If a second consumer ever appears, the first thing to reach for is PER-CALLER KEYS.** It is the
+smallest change of the four — an options property that is an array of named keys, and one loop in
+`AgentApiKeyFilter` where there is one comparison today. It is the only one that also solves rotation, because
+two simultaneously valid keys *are* an overlap window instead of a hard cutover. And it is the one without
+which the other three cannot even be measured: **with a single shared key, no line in any log can say
+which consumer made a request**, so `audit-*.log` stops being able to answer "who did this" the moment
+there are two of them — and that is the question this whole section of the portal exists to answer (§9).
+**Rate limiting comes second**, and becomes urgent the moment the access restriction is not in place:
+without it the key is the only thing between the internet and `/patients/queue`, and a key can be
+brute-forced given enough requests. **OAuth comes last** — it buys a token lifetime and a scope model that
+one machine caller inside a network perimeter does not need, at the price of an identity provider nucentra
+does not have and a second authentication scheme in a portal that currently registers exactly one (§2.7).
+
+**No test project.** nucentra has none — not for `CRC.Web`, not for `CRC.Data`, not for anything — and this
+feature did not start one. What it has instead is `Test-AgentApi.ps1` at the repo root, which drives all
+eight endpoints and both negative tests against a running site, and the standing `dbo.AuditTrails` health
+check in §13.5. Both prove something a unit test could not: that the endpoint answers **over HTTP, past the
+filter, with the service actor attached**. Starting a test project is a repository-wide decision of the
+kind §12 #10 describes — taken with the owner, in writing, not on the way past a feature.

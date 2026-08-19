@@ -20,18 +20,18 @@ namespace CRC.Api.Controllers
     // 🔴 1. [AllowAnonymous] DISABLES THE GLOBAL AuthorizeFilter FOR THIS CONTROLLER.
     //    Program.cs installs `options.Filters.Add(new AuthorizeFilter())`, so every action in the portal
     //    requires a signed-in user unless it says otherwise. CoreFlow.md §2.2 states that a grep for
-    //    AllowAnonymous is a complete audit of the portal's public surface and that it returns TWO lines,
-    //    both on AccountController.Login. AFTER THIS CONTROLLER IT RETURNS THREE, AND THIS IS THE THIRD.
-    //    That is a deliberate, documented widening of the portal's public surface — not an oversight, and
-    //    not something to copy onto the next controller.
+    //    AllowAnonymous is a complete audit of the portal's public surface and that it returns THREE
+    //    lines: two on AccountController.Login, and THIS ONE. That is a deliberate, documented widening of
+    //    the portal's public surface — not an oversight, and not something to copy onto the next
+    //    controller.
     //
     // 🔴 2. AgentApiKeyFilter IS THE ONLY THING CLOSING THAT GAP.
     //    Authentication here is the X-Agent-Key header and nothing else. If the [ServiceFilter] below is
     //    removed, if the AddScoped<AgentApiKeyFilter>() registration in Program.cs is dropped (which
     //    would throw at request time rather than fail open — the one failure here that is loud), or if
     //    the filter is ever edited to continue past a bad key, every endpoint on this controller becomes
-    //    an unauthenticated read. The endpoints Prompt 2 adds return patient names, phone numbers,
-    //    screening results and clinician schedules, so the cost of that is a patient-data leak. The two
+    //    an unauthenticated read. The endpoints below return patient names, phone numbers, screening
+    //    results and clinician schedules, so the cost of that is a patient-data leak. The two
     //    tests that prove the guard — a call with no header and a call with a wrong key, both expecting
     //    401 — belong in every verification pass, not just the one that built the filter.
     //
@@ -87,8 +87,8 @@ namespace CRC.Api.Controllers
         // data-layer property is a compile-time change with no effect on the wire, and a procedure
         // gaining a column does not silently gain a JSON field. `branchId` is the value every other agent
         // endpoint takes back as its branchId argument; `name` and `state` are what the agent says out
-        // loud to a patient. CoreFlow.md §13.4 publishes them, and the six endpoints in Prompt 2 follow
-        // the same style: the model's noun without its table prefix, lower-camel.
+        // loud to a patient. CoreFlow.md §13.4 publishes them, and the other six reads follow the same
+        // style: the model's noun without its table prefix, lower-camel.
         [HttpGet("branches")]
         public async Task<IActionResult> GetBranches()
         {
@@ -548,7 +548,7 @@ namespace CRC.Api.Controllers
         // dbo.PatientAppointment has no unique constraint beyond its identity and dbo.StaffSlots has
         // nothing unique on PatientAppointment_ID (§3.9). The only defence is the re-read INSIDE
         // SaveAppointmentAsync's own transaction, which refuses with the typed reason SlotTaken (§6.7).
-        // A SlotTaken answer to the booking in Prompt 3 is therefore A NORMAL OUTCOME OF A CORRECT
+        // A SlotTaken answer from the booking endpoint below is therefore A NORMAL OUTCOME OF A CORRECT
         // SYSTEM, not a bug in this endpoint and not a client error — the caller re-runs this read and
         // tries again. Do not "fix" it by moving this into a transaction: it is the picker, not the check.
         //

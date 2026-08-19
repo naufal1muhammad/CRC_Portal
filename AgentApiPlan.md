@@ -384,7 +384,7 @@ in place — §2.2's is the only one that does.
 - [x] **Prompt 1** — The project and the guard: `CRC.Api`, the application part, `AgentApiKeyFilter`, the service account, and endpoint 5
 - [x] **Prompt 2** — The six remaining reads: four new data-layer methods, four models, endpoints 1, 2, 3, 4, 6, 7
 - [x] **Prompt 3** — The write: endpoint 8, `SaveAppointmentAsync` reused, the typed failure reasons, and the audit assertion
-- [ ] **Prompt 4** — Harden and hand off: `CoreFlow.md` §2.2 / §10 / §11 / §12, §13 finished, the smoke script, the Azure settings sheet
+- [x] **Prompt 4** — Harden and hand off: `CoreFlow.md` §2.2 / §10 / §11 / §12, §13 finished, the smoke script, the Azure settings sheet
 
 ---
 
@@ -1317,7 +1317,7 @@ IDatabaseData method, or a second write path of any kind. DO NOT edit CoreFlow.m
 
 ## Prompt 4 — Harden, document, hand off
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** Prompts 0–3
 
 > **The feature works before this prompt runs.** What it does not yet have is a true `CoreFlow.md`: §2.2 still
@@ -1528,6 +1528,53 @@ All five boxes ticked in the Progress Tracker, and every one of these true:
 - [ ] `SEEDING.md` records two seeded `dbo.Users` rows.
 - [ ] The owner has the ready-to-paste Azure section from Prompt 4 and has not been asked to run anything
       themselves that this plan could have proved locally.
+
+### What actually shipped — where Prompt 4 differed from what this plan predicted
+
+Everything above is done and every box is true, with five things worth recording because they were not what
+this plan expected:
+
+1. **§5 could not simply have its count changed from 104 to 109, and saying "109" alone would have been
+   false.** The five `Agent/` procedures are catalogued in `CoreFlow.md` §13.1, not in §5, so §5's opening
+   claim — *"All 104 procedures … are catalogued below"* — is now *"All 109 … are catalogued in this
+   document, and 104 of them below"*, with a pointer to §13.1 and a note that its `= 107` arithmetic covers
+   this section only. Two other `104`s were **deliberately left as 104** because they are historical
+   measurements that 109 would make wrong: §12 #7's *"not one of the 104 names **that existed then**
+   changed during the migration"*, and §13.5's account of a local database that had rolled back to the
+   104-procedure baseline. Both were reworded to say so rather than renumbered.
+
+2. **Three other counts were stale for the same reason and were fixed in passing**: `CRC.Data/Models/` is
+   **58** files, not 53 (§6.3 and §10), and `IDatabaseData` carries **107** methods covering 109
+   procedures, not 102 covering 104 (§6.2 and §10).
+
+3. **Two contradictions inside §13 itself, both introduced by a later prompt and invisible to the prompt
+   that wrote them.** §13.2's duplication table still said `AgentAuditLog` had *"Three methods, not 24"* —
+   Prompt 3 added two more for the write, so it is five. And the `IDatabaseData` column for
+   `spAgentUsers_GetServiceAccount` in §13.1's table still read **"Prompt 1"** where every other row names
+   a method; it is `GetAgentServiceAccountAsync()`. This is what the plan's own cross-prompt amnesia looks
+   like in practice, and it is the argument for the Part D pass existing at all.
+
+4. **`AgentApiController.cs`'s own header comment had to be edited, and the plan did not anticipate a code
+   change in Prompt 4.** It told the reader that `CoreFlow.md` §2.2 *"states … that it returns TWO lines"* —
+   true when Prompt 1 wrote it and false the moment §2.2 was corrected. Four other forward-tense comments
+   (*"the endpoints Prompt 2 adds"*, *"the booking in Prompt 3"*) were put into the present tense with it.
+   Comments only; no behaviour changed, and `dotnet build` still reports 0 warnings, 0 errors.
+
+5. **`Test-AgentApi.ps1` is written for Windows PowerShell 5.1, not 7.** This plan's "How to use this plan"
+   harness uses `Invoke-RestMethod -SkipCertificateCheck`, which is PowerShell 7 only — and `pwsh` is not
+   installed on the development machine. The script therefore handles non-2xx responses by catching
+   (5.1 throws on a 401, and **two of its checks expect one**), sets TLS 1.2 explicitly, and reaches for a
+   `CertificatePolicy` rather than `-SkipCertificateCheck` when asked to skip certificate validation. It
+   runs unchanged on PowerShell 7. It also carries **twelve** checks rather than ten, having grown two the
+   plan did not list: the blank-`phone=` refusal and the non-ISO-`fromDate` refusal, both of which are
+   published contract in `CoreFlow.md` §13.4 and neither of which any other test covers.
+
+**One open item moved.** Open item 2 (rate limiting) is now written into `CoreFlow.md` §13.7 with a
+recommendation attached: if a second consumer ever appears, **per-caller keys come first**, because they
+are the smallest change, they are the only one that also solves rotation, and without them no log line
+anywhere can say which consumer made a request. Rate limiting is second, and becomes urgent only if the
+platform access restriction is not in place. Open items 1, 3, 4, 5 and 6 are unchanged and remain the
+owner's.
 
 **Then, and only then, §5 of `Nucentra_WhatsApp_Agent_Plan.md` becomes the next thing to read** — the WhatsApp
 Business setup, which is the long pole and should have been started in parallel with all of the above.
