@@ -4,16 +4,23 @@
 nucentra CRC Portal, talks to patients and clinicians over WhatsApp, and books colorectal-cancer
 screening appointments back into the portal.
 
-> **Who this is for.** Two audiences, and the split is deliberate.
+> ## ✅ THE PORTAL SIDE IS FINISHED — THERE IS NO CODE FOR YOU TO WRITE
 >
-> - **n8n's AI Assistant** — attach this whole file. §5 to §10 are written as build instructions:
->   workflows, nodes, credentials, tool definitions and the agent's system prompt.
-> - **Whoever changes the portal** — §4 is a code-change spec for `CRC.Web` and `CRC.Database`,
->   written to the conventions in `CoreFlow.md`. **§4 must ship before any n8n workflow can run**,
->   because four things the agent needs do not exist in the portal today (§3).
+> **Every change the portal needed has been made, built, published and smoke-tested.** The Agent API is
+> live: eight endpoints under `/api/agent`, authenticated by an `X-Agent-Key` header, five new stored
+> procedures, a service account that makes the audit trail name the agent, and a PowerShell smoke test
+> that drives all eight endpoints plus both negative tests. **§4 is no longer a change request — it is
+> the working contract of an API that answers today.**
 >
-> **Where this disagrees with `CoreFlow.md`, `CoreFlow.md` wins.** It is the specification of the
-> portal as built; this is a plan for something new that sits beside it.
+> **Everything still to be built lives in n8n and in Meta.** That is §5 onwards.
+>
+> **Who this is for.** Attach this whole file to n8n's AI Assistant. §4 is the API your workflows call,
+> §5 is the WhatsApp Cloud API setup you do by hand in a browser, and §6 to §10 are the build
+> instructions: workflows, nodes, credentials, tool definitions and the agent's system prompt.
+>
+> **Where this disagrees with `CoreFlow.md`, `CoreFlow.md` wins.** It is the specification of the portal
+> as built, and its **§13 is the Agent API's full specification** — §4 below is the working summary an
+> n8n builder needs, drawn from it.
 
 ---
 
@@ -23,8 +30,12 @@ The agent runs a daily sweep over active patients, finds the ones whose iFOBT is
 opens a WhatsApp conversation to schedule their **PATIENT ASSESSMENT**. It works out which partner
 hospital the patient wants, finds a real open hour in that hospital's clinicians' published schedule,
 asks that clinician to confirm, then asks a human coordinator to approve — and only then writes the
-booking through the portal. Patients whose iFOBT is **negative** get a future **SURVEILLANCE** booking
-instead; patients whose iFOBT is **incomplete** get chased to finish the test.
+booking through the portal. Patients whose iFOBT is **negative** are told so and handed to a
+coordinator for their future surveillance visit — **the agent never books one** (§3.5); patients whose
+iFOBT is **incomplete** get chased to finish the test.
+
+**The portal side of all this is already built and answering** — see the box above. What is left is
+§5 (WhatsApp) and §6 (n8n).
 
 ---
 
@@ -57,10 +68,11 @@ instead; patients whose iFOBT is **incomplete** get chased to finish the test.
           │                      │                            no booking. Re-swept tomorrow.
           │                      │
           │                      ▼
-          │              book 04 SURVEILLANCE
-          │              at the surveillance horizon
-          │              (same booking machinery,
-          │               same two gates below)
+          │              🔴 NO BOOKING. Write the intended
+          │              surveillance date to the state table
+          │              and put the patient on the coordinator
+          │              digest — a human opens the range and
+          │              books it. The API refuses "04" (§3.5).
           ▼
   ┌────────────────────────────────────────────────────────────────────────────────┐
   │ AI AGENT CONVERSATION (n8n AI Agent node, one per patient, memory keyed on wa_id)│
@@ -108,12 +120,12 @@ These were answered before this plan was written. **Do not re-open them while bu
 
 | # | Decision | Answer |
 |---|---|---|
-| 1 | How n8n reaches portal data | **Add a small Agent API to the portal** — new controller, API-key auth, four new stored procedures. §4. |
+| 1 | How n8n reaches portal data | ✅ **Done — the Agent API exists.** `CRC.Api`, API-key auth on an `X-Agent-Key` header, five new stored procedures, eight endpoints. Built and smoke-tested. §4 is its contract. |
 | 2 | WhatsApp provider | **Meta WhatsApp Cloud API** (official Business). n8n's native `WhatsApp Trigger` + `WhatsApp Business Cloud` nodes. |
 | 3 | Autonomy | **Propose → human approves → book.** The agent never writes an appointment without a coordinator's approval. |
 | 4 | Which appointment type to book | **Always `01` PATIENT ASSESSMENT** for a positive iFOBT. Everything downstream (colonoscopy, follow-up) stays with staff in the portal. |
 | 5 | What "incomplete" means | **The iFOBT test itself** — `Patient_iFOBTStatus = 0` or `NULL`. The agent chases the patient to complete the test; it does not chase demographics. |
-| 6 | Negative-result path | **Book a future `04` SURVEILLANCE appointment.** See the constraint in §3.5 — this one has a real problem and a stated resolution. |
+| 6 | Negative-result path | 🔴 **PROPOSE ONLY — the agent never books a `04` SURVEILLANCE appointment.** §3.5 **option C**, settled when the API shipped: `POST /api/agent/appointments` accepts `pjAppTypeId` `"01"` and **refuses `"04"` by name**. On a NEGATIVE result the agent sends the reassurance template and writes the intended surveillance date to a coordinator digest; a human opens the slot range and books it in the portal. §3.5, §7.5. |
 | 7 | Staff messaging | **Always confirm with the clinician before booking**, even when the hour is free. |
 | 8 | "DDOG DATA" in the source diagram | **Nothing — ignore it.** Not modelled. |
 
@@ -121,36 +133,51 @@ These were answered before this plan was written. **Do not re-open them while bu
 
 ## 3. 🔴 Constraints you cannot design around
 
-Every item here was verified against the code, not assumed. Each one has already been designed around
-in this plan; they are listed so nobody "fixes" them later and breaks the agent.
+Every item here was verified against the code, not assumed. **The first three were solved by the Agent
+API and are recorded as solved** — they are kept because they explain *why* the API looks the way it
+does, and because nobody should "simplify" a workflow by going around it. The rest are live constraints
+that no amount of portal code can remove.
 
-### 3.1 The portal has no machine authentication today
+### 3.1 ✅ SOLVED — the portal now has machine authentication, and it is the ONLY door
 
-`CoreFlow.md` §2.7: *no multi-factor authentication, no external identity provider, no API keys or
-bearer tokens.* Every endpoint is cookie-authenticated with a **600-second sliding inactivity
-timeout**, behind a **global antiforgery filter** requiring `X-CSRF-TOKEN` on every non-GET, behind a
-**10-logins-per-minute-per-IP** rate limit on `POST /Account/Login`. There is no CORS configuration.
+`CoreFlow.md` §2.7: the portal's **own** pages and endpoints have *no multi-factor authentication, no
+external identity provider, no bearer tokens.* Every one of them is cookie-authenticated with a
+**600-second sliding inactivity timeout**, behind a **global antiforgery filter** requiring
+`X-CSRF-TOKEN` on every non-GET, behind a **10-logins-per-minute-per-IP** rate limit on
+`POST /Account/Login`. There is no CORS configuration. **None of that changed.**
 
-**Consequence:** n8n cannot call the existing endpoints without scraping tokens and juggling cookies.
-§4 adds a proper API-key surface instead.
+**What changed is that one controller was added beside them.** `/api/agent/*` authenticates on an
+`X-Agent-Key` header, needs no cookie and no CSRF token, and is the only surface in nucentra that
+works that way (§4).
 
-### 3.2 There is no way to find iFOBT-positive patients through the API
+🔴 **n8n calls `/api/agent/*` and nothing else.** Do not point a workflow at `/Patient/…`,
+`/StaffSchedule/…` or any other portal route: they will answer a redirect to the login page or a `400`,
+and making them work would mean scraping tokens and juggling cookies. If the agent needs something the
+eight endpoints do not return, that is a portal change request — not an n8n workaround.
+
+### 3.2 ✅ SOLVED — iFOBT-positive patients are now findable in one call
 
 `spPatientBasic_ListActive` **selects** `Patient_iFOBTStatus`, `Patient_iFOBTCompletionDate` and
 `Patient_iFOBTResults` — but `GET /Patient/GetActivePatients` projects only `patientId` and `name`
-(`CoreFlow.md` §4.7). The agent's entire trigger condition is invisible to the HTTP API.
+(`CoreFlow.md` §4.7), so the agent's entire trigger condition was invisible over HTTP.
 
-**Consequence:** new procedure `spAgentPatient_ListScreeningQueue` (§4.2.1).
+**Solved by `GET /api/agent/patients/queue`** (§4.3, endpoint 1), which returns one row per active
+patient with a pre-computed `screeningState` — so WF1 branches on a string instead of re-deriving
+"positive" in an n8n expression.
 
-### 3.3 There is no patient lookup by phone number, and phone numbers are not unique
+### 3.3 ✅ SOLVED — but a phone number still does not identify one person
 
-WhatsApp identifies a person by phone. `dbo.PatientBasic.Patient_Phone` exists, but nothing searches
-on it — and `CoreFlow.md` §3.8 is explicit that **nothing on that table is unique except the primary
-key**. Not the NRIC, not the email, not the phone.
+WhatsApp identifies a person by phone. `CoreFlow.md` §3.8 is explicit that **nothing on
+`dbo.PatientBasic` is unique except the primary key** — not the NRIC, not the email, not the phone.
 
-**Consequence:** new procedure `spAgentPatient_FindByPhone` (§4.2.2), which returns **zero, one or
-many** rows. The agent must handle the many case by asking a disambiguating question — never by
-picking the first row.
+**Solved by `GET /api/agent/patients/by-phone?phone=`** (§4.3, endpoint 2), which matches on the **last
+nine digits** so Meta's `60123456789` finds a stored `012-345 6789`.
+
+🔴 **The lookup being solved does not make the answer unique, and this is the half that stays your
+problem.** It returns **zero, one or many** rows and all three are normal — a shared household phone,
+and `01X` / `011` mobiles whose last nine digits collide. The response carries `matchCount` so the
+branch is impossible to overlook. **The agent must ask a disambiguating question when
+`matchCount > 1`, and must never pick the first row.**
 
 ### 3.4 There is no state machine, and nothing prevents a duplicate booking
 
@@ -158,31 +185,33 @@ picking the first row.
 and no gate stops any ordering. Separately, `dbo.PatientAppointment` has **nothing unique except the
 primary key** (§3.9) — two appointments can claim the same patient, and nothing in the portal notices.
 
-**Consequence:** the queue procedure returns `openAppointmentCount`, and **workflow WF1 skips any
-patient whose count is greater than zero**. This is the only thing standing between a sweep bug and a
-patient receiving five bookings.
+**Consequence:** the queue read returns `openAppointmentCount`, and **workflow WF1 skips any patient
+whose count is greater than zero**. This is the only thing standing between a sweep bug and a patient
+receiving five bookings.
 
-### 3.5 🔴 A SURVEILLANCE booking needs StaffSlots that will not exist
+### 3.5 🔴 SURVEILLANCE IS NOT AUTOMATED — the API refuses `"04"`, and this is settled
 
-This is the sharpest constraint in the plan and it applies to decision #6.
+This was the sharpest open question in the plan. **It has been answered, in code: option C below.**
 
-`POST /Patient/SaveAppointment` **requires `slotIds[]`** — you cannot book an hour that has no
-`dbo.StaffSlots` row. Slots are pre-created by an administrator, and `spStaffSlots_CreateRange` refuses
-a range longer than **31 days** per call (`CoreFlow.md` §5.5). So a surveillance appointment 12 or 24
-months out has, in practice, **no slot to consume**, and the booking will fail with *"One or more
-selected slots are invalid."*
+The reasoning stands. `POST /api/agent/appointments` **requires `slotIds[]`** — you cannot book an hour
+that has no `dbo.StaffSlots` row. Slots are pre-created by an administrator, and
+`spStaffSlots_CreateRange` refuses a range longer than **31 days** per call (`CoreFlow.md` §5.5). So a
+surveillance appointment 12 or 24 months out has, in practice, **no slot to consume**. And a `04`
+appointment **can never be clinically recorded even if it were booked** — `GetJourneyTemplate`
+recognises exactly three strings and `04` is not one of them (`CoreFlow.md` §7.3), so it would consume
+a real clinician hour to create a record nobody can complete.
 
-**How this plan resolves it — pick one at build time and put it in the config:**
-
-| Option | What happens | Recommendation |
+| Option | What it would have meant | Status |
 |---|---|---|
-| **A. Short surveillance horizon** | Set `SURVEILLANCE_HORIZON_DAYS` to something inside the window an administrator actually opens slots for (e.g. 90 days). Agent books normally. | ✅ **Start here.** Nothing new to build. |
-| **B. Agent opens the slots** | On coordinator approval, the agent calls `POST /StaffSchedule/CreateRange` for the target day first, then books. Legal (`AdminOrSuperOrStaff`), but it means an automation is creating clinician availability months ahead. | Only with the clinician's explicit consent in gate 1. |
-| **C. Propose only** | Agent records the surveillance date in the n8n state table and notifies the coordinator to open the range and book manually. | Safest, least automated. |
+| **A. Short surveillance horizon** | Set `SURVEILLANCE_HORIZON_DAYS` inside the window an administrator actually opens slots for (e.g. 90 days) and let the agent book normally. | ❌ Not chosen. Reversible later — it is one constant in the portal, `AgentApiController.AllowedAppointmentTypeId`, plus a widened refusal message. |
+| **B. Agent opens the slots** | The agent creates clinician availability months ahead, then books. | ❌ Not chosen, and there is **no endpoint for it** — the API exposes no slot creation at all. |
+| **C. Propose only** | The agent records the surveillance date and notifies the coordinator, who opens the range and books by hand. | ✅ **THIS IS WHAT SHIPPED.** |
 
-**Also relevant:** a SURVEILLANCE appointment **can be booked but can never be clinically recorded** —
-`GetJourneyTemplate` recognises exactly three strings and `04` is not one of them (`CoreFlow.md` §7.3).
-That is expected, not a bug to file.
+🔴 **What that means for your n8n build.** `pjAppTypeId` is `"01"` on every booking the agent ever
+makes. Sending `"04"` is refused before the database is touched, with
+`{"success": false, "message": "pjAppTypeId must be the string \"01\" …"}` — so **do not build a
+surveillance booking branch**. WF1's NEGATIVE path sends the reassurance template and writes a
+coordinator digest (§7.5). Nothing more.
 
 ### 3.6 There is no cancellation
 
@@ -204,18 +233,22 @@ confirmation request, the coordinator approval request, the final confirmation i
 be an approved template. §6 lists the seven you need. The AI Agent's free-form conversational replies
 happen **only inside** an open window, which is why the AI Agent node lives in WF2 and not WF1.
 
-### 3.8 Exact formats the portal will reject you for
+### 3.8 Exact formats the API will refuse you for
 
-| Field | Requirement | Failure if wrong |
+**The Agent API is deliberately STRICTER than the portal's own screens**, and it refuses rather than
+guesses — because an n8n expression can produce a malformed value in ways a human clicking a form
+cannot, and a booking consumes a clinician hour that nothing in this system can give back (§3.6).
+
+| Field | Requirement | If wrong |
 |---|---|---|
-| `appointmentDate` | `yyyy-MM-dd`, parsed with `TryParseExact` + `InvariantCulture` | `"Invalid appointment date."` |
-| `status` | exactly one of `Scheduled`, `Attended`, `Not Attended` — case-insensitive in, **stored as sent** | `"Invalid attendance status."`; a lower-case `"attended"` silently stops counting toward clinician hours in `spStaff_GetPerformance` |
-| `slotIds[]` | at least one, all `> 0`, de-duplicated, **contiguous hours** | `"Please select consecutive slots…"` |
-| `pjAppTypeId` | `01`/`02`/`03`/`04` — **a string with a leading zero**, never an integer | silent: `"01"` is not `1` |
-| all times | strictly on-the-hour, one-hour blocks | check constraint |
+| `appointmentDate` | `yyyy-MM-dd`, parsed with `TryParseExact` + `InvariantCulture` | refused before any data call. 🔴 `01/09/2026` is **not** accepted — it would read as 1 September on one server and 9 January on another |
+| `status` | 🔴 **exactly `"Scheduled"`, case-sensitive.** Not `"scheduled"`, not `"SCHEDULED"` | refused. The portal's own screens are case-insensitive here; this endpoint is not, on purpose — a stored `"attended"` silently stops counting toward clinician hours in `spStaff_GetPerformance` |
+| `slotIds[]` | at least one, **every id `> 0`**, de-duplicated by you, **contiguous hours** | a non-positive id is **refused**, where the portal silently drops it. A request that means two hours must never quietly become one |
+| `pjAppTypeId` | 🔴 **exactly the string `"01"`** — with the leading zero, quoted, never the integer `1` | refused by name. `"04"` is refused too — §3.5 |
+| all times | strictly on-the-hour, one-hour blocks — one `slotId` **is** one hour | enforced by the slot rows themselves; you never send a time |
 
-**Always send `"Scheduled"` on a new booking. Always send `"01"` (positive path) or `"04"`
-(negative path) as a quoted string.**
+**Always send `"Scheduled"` and `"01"`, both as quoted strings.** They are the only values this
+endpoint accepts.
 
 ### 3.9 Clinical data over WhatsApp
 
@@ -231,361 +264,632 @@ Confirm your own PDPA position before go-live. This plan does not attempt to ans
 
 ---
 
-## 4. PART A — The Agent API (portal code change)
+## 4. PART A — The Agent API ✅ **BUILT. PUBLISHED. SMOKE-TESTED. NOTHING TO DO HERE.**
 
-Everything here follows `CoreFlow.md` §0 conventions and §11's checklist. Build order is: SQL →
-`.sqlproj` registration → `IDatabaseData` → `SqlData` → controller → config → publish.
-
-### 4.1 🔴 The one thing that will fail silently — the actor identity
-
-`SqlData` passes `@User_ID` explicitly to the 19 audit-actor procedures, taking it from
-`DatabaseHelper.CurrentUserId`, which reads `HttpContext.User`'s `ClaimTypes.NameIdentifier`
-(verified in `CRC.Data/Data/DatabaseHelper.cs`).
-
-**An API-key request has no cookie and therefore no principal.** `CurrentUserId` returns `null`,
-`spPatientAppointment_Insert` writes `ISNULL(@User_ID, 0)`, and **every appointment the agent books is
-audited as user `0` — nobody.** No error, no failed page, a corrupt audit trail. This is precisely the
-silent failure `CoreFlow.md` §0.1 exists to warn about.
-
-**The fix is mandatory, not optional:**
-
-1. Create one real `dbo.Users` row for the agent — `Username = 'AGENT_SERVICE'`, `User_Type = 2`
-   (ADMIN), `Staff_ID = NULL`. Give it a long random password it will never use.
-2. The API-key filter **must set `HttpContext.User`** to a `ClaimsPrincipal` carrying:
-   - `ClaimTypes.NameIdentifier` = that row's `User_ID` **as a plain integer string**
-   - `ClaimTypes.Name` = `"AGENT_SERVICE"`
-   - `"UserType"` = `"2"`
-3. Verify after the first booking:
-   ```bash
-   sqlcmd -S nucentra-sql-prod.database.windows.net -d CRC_DB -U nucentraadmin -P '***' -Q "SELECT TOP 5 AuditTrail_Id, User_Id, AuditTrail_Action, AuditTrail_Category, AuditTrail_Summary FROM dbo.AuditTrails ORDER BY AuditTrail_Id DESC"
-   ```
-   `User_Id` must be the agent account's id. **`0` means step 2 was not done.**
-
-### 4.2 New stored procedures (4)
-
-Create a new folder `CRC.Database/Stored Procedures/Agent/`. **Register every file in
-`CRC.Database/CRC.Database.sqlproj`** as `<Build Include="Stored Procedures\Agent\{File}.sql" />` — an
-unregistered file builds locally and is silently absent from the `.dacpac`.
-
-#### 4.2.1 `spAgentPatient_ListScreeningQueue.sql`
-
-The trigger for the whole agent. One read, everything WF1 needs to branch on.
-
-```sql
-CREATE PROCEDURE [dbo].[spAgentPatient_ListScreeningQueue]
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    SELECT
-        pb.[Patient_ID],
-        pb.[Patient_Name],
-        pb.[Patient_Phone],
-        pb.[Patient_iFOBTStatus],
-        pb.[Patient_iFOBTCompletionDate],
-        pb.[Patient_iFOBTResults],
-        RIGHT(LTRIM(RTRIM(pb.[Patient_NRIC])), 4)               AS [NricLast4],
-        -- The agent's branch key. Computed here so the n8n prompt stays simple and one
-        -- definition of "positive" exists. NO_PHONE wins over everything: without a number
-        -- there is nothing the agent can do at all.
-        CASE
-            WHEN LTRIM(RTRIM(ISNULL(pb.[Patient_Phone], ''))) = '' THEN 'NO_PHONE'
-            WHEN pb.[Patient_iFOBTStatus] IS NULL                  THEN 'UNRECORDED'
-            WHEN pb.[Patient_iFOBTStatus] = 0                      THEN 'INCOMPLETE'
-            WHEN pb.[Patient_iFOBTResults] = 1                     THEN 'POSITIVE'
-            WHEN pb.[Patient_iFOBTResults] = 0                     THEN 'NEGATIVE'
-            ELSE 'UNRECORDED'
-        END                                                      AS [ScreeningState],
-        -- Duplicate-booking guard. dbo.PatientAppointment has nothing unique except its PK
-        -- (CoreFlow.md 3.9), so this count is the only thing stopping a re-sweep booking the
-        -- same patient twice. Future-dated Scheduled bookings only.
-        (SELECT COUNT(*)
-           FROM dbo.PatientAppointment pa
-          WHERE pa.[Patient_ID] = pb.[Patient_ID]
-            AND pa.[PatientAppointment_Status] = 'Scheduled'
-            AND pa.[PatientAppointment_Date] >= CAST(GETDATE() AS DATE)) AS [OpenAppointmentCount],
-        -- Has an assessment ever been recorded? PatientJourney stores the denormalized NAME,
-        -- not the code, and the follow-up literal does not match the lookup (CoreFlow.md 3.10).
-        -- Match on the literal the create procedure actually writes.
-        CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.PatientJourney pj
-                                WHERE pj.[Patient_ID] = pb.[Patient_ID]
-                                  AND UPPER(pj.[PjAppType_Name]) = 'PATIENT ASSESSMENT')
-                  THEN 1 ELSE 0 END AS BIT)                      AS [HasAssessment]
-    FROM dbo.PatientBasic pb
-    WHERE pb.[DischargeType_ID] IS NULL   -- Active = not discharged (CoreFlow.md 3.8)
-    ORDER BY pb.[Patient_ID] DESC;
-END;
-GO
-```
-
-#### 4.2.2 `spAgentPatient_FindByPhone.sql`
-
-Resolves an inbound WhatsApp number to a patient. Malaysian numbers arrive from Meta as `60123456789`
-and are stored in the portal as `0123456789`, so the match is on the **last 9 digits**.
-
-```sql
-CREATE PROCEDURE [dbo].[spAgentPatient_FindByPhone]
-    @Phone VARCHAR(100)
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    -- Meta sends 60123456789; the portal stores 0123456789 or 012-345 6789. Strip everything
-    -- that is not a digit on both sides and compare the last 9, which is the subscriber part of
-    -- every Malaysian mobile number regardless of the 60 / 0 prefix.
-    DECLARE @Digits VARCHAR(100) =
-        (SELECT STRING_AGG(c, '') WITHIN GROUP (ORDER BY n)
-           FROM (SELECT n = v.number,
-                        c = SUBSTRING(@Phone, v.number, 1)
-                   FROM master.dbo.spt_values v
-                  WHERE v.type = 'P' AND v.number BETWEEN 1 AND LEN(@Phone)) s
-          WHERE c LIKE '[0-9]');
-
-    IF @Digits IS NULL OR LEN(@Digits) < 9
-    BEGIN
-        SELECT TOP 0 CAST(NULL AS VARCHAR(100)) AS [Patient_ID];
-        RETURN;
-    END
-
-    DECLARE @Tail VARCHAR(9) = RIGHT(@Digits, 9);
-
-    SELECT
-        pb.[Patient_ID],
-        pb.[Patient_Name],
-        pb.[Patient_Phone],
-        RIGHT(LTRIM(RTRIM(pb.[Patient_NRIC])), 4)  AS [NricLast4],
-        pb.[Patient_iFOBTStatus],
-        pb.[Patient_iFOBTResults],
-        pb.[DischargeType_ID]
-    FROM dbo.PatientBasic pb
-    WHERE RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(pb.[Patient_Phone],'-',''),' ',''),'+',''),'(',''), 9) = @Tail
-    ORDER BY pb.[Patient_ID] DESC;
-END;
-GO
-```
-
-> **`master.dbo.spt_values` is a row generator**, the same trick `spStaffSlots_CreateRange` already
-> uses with `sys.all_objects`. Expect it to add **one more `SQL71502` warning** to the build. The
-> documented baseline is exactly two warnings (`CoreFlow.md` §3.7) — after this change the baseline is
-> **three**, and that is expected. Update `SEEDING.md` if you track the count there.
+> 🔴 **READ THIS BEFORE YOU READ ANYTHING ELSE IN THIS SECTION.**
 >
-> If you prefer no new warning, replace the digit-strip with a `TRANSLATE`-based expression or do the
-> normalisation in n8n before the call. Either is fine; the match rule is what matters.
+> **This section used to be a change request. It is not one any more.** Every stored procedure, every
+> data-layer method, the controller, the API-key filter, the service account and the configuration
+> **exist in the portal today**. The API answers over HTTP right now. There is **no .NET work, no SQL
+> work and no portal work left to do before the n8n build can start.**
+>
+> What follows is the **contract**: the URLs, the headers, the exact JSON that comes back, and the
+> rules the API enforces. Build your HTTP Request nodes from it.
+>
+> `CoreFlow.md` **§13** is the full specification of everything below, written as built. If a detail is
+> missing here, it is there.
 
-#### 4.2.3 `spAgentStaff_ListByBranch.sql`
+### 4.1 What exists, in one table
 
-Who works at a branch, with the phone number the agent needs for gate 1. Avoids the N+1 of calling
-`/Staff/GetStaff` once per clinician.
+| Piece | Where | Status |
+|---|---|---|
+| **5 stored procedures** | `CRC.Database/Stored Procedures/Agent/` — `spAgentPatient_ListScreeningQueue`, `spAgentPatient_FindByPhone`, `spAgentStaff_ListByBranch`, `spAgentSlots_FindOpenByBranch`, `spAgentUsers_GetServiceAccount` | ✅ written, registered in the `.sqlproj`, published to `CRC_DB` |
+| **5 data-layer methods + 5 models** | `CRC.Data` — `IDatabaseData` / `SqlData`, `CRC.Data/Models/` | ✅ done, no inline SQL anywhere |
+| **`CRC.Api`** | a class library loaded into `CRC.Web` as an MVC application part — **one host, one deployment, one config file, one log pipeline.** There is no second App Service and no second port | ✅ done |
+| **`AgentApiController`** | `CRC.Api/Controllers/` — **8 endpoints**, seven reads and one write | ✅ done |
+| **`AgentApiKeyFilter`** | `CRC.Api/Infrastructure/` — validates `X-Agent-Key` in fixed time, then builds the service principal | ✅ done, both negative tests pass |
+| **The `AGENT_SERVICE` account** | a real seeded `dbo.Users` row, resolved **by username** on every request | ✅ done and **asserted** — see 4.6 |
+| **`Test-AgentApi.ps1`** | repo root — drives all eight endpoints plus both 401 tests, **twelve checks** | ✅ passing |
 
-```sql
-CREATE PROCEDURE [dbo].[spAgentStaff_ListByBranch]
-    @Branch_ID VARCHAR(100)
-AS
-BEGIN
-    SET NOCOUNT ON;
+**The booking write reuses the portal's own transaction whole and unchanged** — the slot lock, the
+availability check, the contiguity check, the slot assignment and the audit row all live inside
+`SaveAppointmentAsync`, exactly as they do when a human books through the portal. There is **no second
+write path**, which is why an appointment the agent makes is indistinguishable from one an
+administrator makes, except in who the audit trail names.
 
-    SELECT
-        s.[Staff_ID],
-        s.[Staff_Name],
-        s.[Staff_Phone],
-        s.[Staff_Type],
-        t.[StaffType_Name],
-        s.[Staff_Base]
-    FROM dbo.Staff s
-    LEFT JOIN dbo.LU_STAFFTYPE t ON t.[StaffType_ID] = s.[Staff_Type]  -- not an FK; LEFT on purpose
-    WHERE s.[Staff_Base] = @Branch_ID
-    ORDER BY s.[Staff_Name];
-END;
-GO
-```
+### 4.2 How to call it
 
-#### 4.2.4 `spAgentSlots_FindOpenByBranch.sql`
+| | |
+|---|---|
+| **Base URL** | `{{PORTAL}}` — the App Service URL, e.g. `https://nucentra-web-prod-<suffix>.malaysiawest-01.azurewebsites.net` |
+| **Route prefix** | `/api/agent` |
+| **Authentication** | one header: `X-Agent-Key: <the shared secret>`. **That is the whole of it** |
+| **No cookie, no login, no session** | this surface never sees one |
+| **No `X-CSRF-TOKEN`** | the antiforgery filter is switched off for this controller. Do not send one; you could not obtain one |
+| **Content type on the POST** | `application/json` |
+| **Dates on the wire** | **always `yyyy-MM-dd`**, in and out. Never a locale format, never a `DateTime` with a time part |
+| **Times on the wire** | **`HH:mm`**, 24-hour, as strings (`"09:00"`) |
+| **Property names** | camelCase, and they are a **published contract** — the portal will not rename one without telling you |
 
-The single most valuable of the four. Answers *"who at this hospital is free between these dates?"* in
-one call, instead of looping `/StaffSchedule/List` over every clinician.
-
-```sql
-CREATE PROCEDURE [dbo].[spAgentSlots_FindOpenByBranch]
-    @Branch_ID  VARCHAR(100),
-    @FromDate   DATE,
-    @ToDate     DATE,
-    @Staff_Type VARCHAR(100) = NULL   -- optional: 'END', 'NUR', …
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    SELECT
-        sl.[StaffSlot_ID],
-        sl.[Staff_ID],
-        s.[Staff_Name],
-        s.[Staff_Phone],
-        s.[Staff_Type],
-        sl.[SlotDate],
-        CONVERT(VARCHAR(5), sl.[SlotStartTime], 108) AS [SlotStartTime],
-        CONVERT(VARCHAR(5), sl.[SlotEndTime],   108) AS [SlotEndTime]
-    FROM dbo.StaffSlots sl
-    INNER JOIN dbo.Staff s ON s.[Staff_ID] = sl.[Staff_ID]   -- not an FK; join by convention
-    WHERE s.[Staff_Base] = @Branch_ID
-      AND sl.[SlotDate] BETWEEN @FromDate AND @ToDate
-      AND sl.[PatientAppointment_ID] IS NULL   -- 🔴 NULL *is* availability (CoreFlow.md 3.7)
-      AND (@Staff_Type IS NULL OR s.[Staff_Type] = @Staff_Type)
-    ORDER BY sl.[SlotDate], sl.[SlotStartTime], s.[Staff_Name];
-END;
-GO
-```
-
-> **This read is outside any transaction and is advisory only.** A slot it returns can be taken by an
-> administrator in the portal a second later. That is fine and expected — `SaveAppointmentAsync` re-reads
-> the slots under its own lock and refuses with `SlotTaken` if so. The agent must handle that answer,
-> not assume its earlier read is still true. See §7.4.
-
-### 4.3 Data layer
-
-Add to `CRC.Data/Data/IDatabaseData.cs` and implement in `SqlData.cs`, one method per procedure, no
-inline SQL, block-scoped namespaces:
-
-```csharp
-Task<List<AgentScreeningQueueItem>> GetAgentScreeningQueueAsync();
-Task<List<AgentPatientMatch>>       FindPatientsByPhoneAsync(string phone);
-Task<List<AgentStaffItem>>          GetStaffByBranchAsync(string branchId);
-Task<List<AgentOpenSlotItem>>       FindOpenSlotsByBranchAsync(string branchId, DateTime fromDate, DateTime toDate, string? staffType);
-```
-
-New models in `CRC.Data/Models/`: `AgentScreeningQueueItem`, `AgentPatientMatch`, `AgentStaffItem`,
-`AgentOpenSlotItem`. **Nullable where the column is nullable** — `Patient_iFOBTStatus`,
-`Patient_iFOBTResults` and `Patient_iFOBTCompletionDate` are all `NULL`-able, and Dapper *throws*
-mapping a NULL onto a non-nullable value type.
-
-**Booking reuses `SaveAppointmentAsync` unchanged.** Do not add a second write path — the transaction,
-the slot-availability check, the contiguity check and the slot assignment all live there and there is
-no correct way to reimplement them.
-
-### 4.4 The controller
-
-`CRC.Web/Controllers/Agent/AgentApiController.cs`, route prefix `api/agent`.
-
-```csharp
-[ApiController]
-[Route("api/agent")]
-[AllowAnonymous]              // 🔴 see the warning below
-[ServiceFilter(typeof(AgentApiKeyFilter))]
-[IgnoreAntiforgeryToken]      // global AutoValidateAntiforgeryToken would otherwise 400 every POST
-public class AgentApiController : ControllerBase { … }
-```
-
-> 🔴 **`CoreFlow.md` §2.2 says a grep for `AllowAnonymous` is a complete audit of the portal's public
-> surface and returns two lines. After this change it returns three.** That is a deliberate, documented
-> widening of the attack surface, and the `AgentApiKeyFilter` is the only thing closing it. Say so in
-> the code comment, and update §2.2 in `CoreFlow.md` when this ships.
-
-**`AgentApiKeyFilter`** (`CRC.Web/Infrastructure/`):
-
-1. Read header `X-Agent-Key`. Missing → `401`.
-2. Compare against `Agent:ApiKey` from configuration using a **fixed-time comparison**
-   (`CryptographicOperations.FixedTimeEquals`), not `==`. Mismatch → `401`.
-3. **Build the service principal and assign it to `HttpContext.User`** — §4.1. Without this the audit
-   trail is silently wrong.
-4. Write an `AuditLog` line naming the endpoint and the caller IP.
-
-**Endpoints:**
-
-| # | Verb | Route | Backed by | Returns |
-|---|---|---|---|---|
-| 1 | GET | `/api/agent/patients/queue` | `spAgentPatient_ListScreeningQueue` | `{ success, data[] }` |
-| 2 | GET | `/api/agent/patients/by-phone?phone=` | `spAgentPatient_FindByPhone` | `{ success, matchCount, data[] }` |
-| 3 | GET | `/api/agent/patients/{patientId}` | `spPatientBasic_GetById` (existing) | `{ success, data }` |
-| 4 | GET | `/api/agent/patients/{patientId}/appointments` | `spPatientAppointment_ListByPatient` (existing) | `{ success, data[] }` |
-| 5 | GET | `/api/agent/branches` | `spBranch_ListActive` (existing) | `{ success, data[] }` |
-| 6 | GET | `/api/agent/staff?branchId=` | `spAgentStaff_ListByBranch` | `{ success, data[] }` |
-| 7 | GET | `/api/agent/slots/open?branchId=&fromDate=&toDate=&staffType=` | `spAgentSlots_FindOpenByBranch` | `{ success, data[] }` |
-| 8 | POST | `/api/agent/appointments` | **`SaveAppointmentAsync`** (existing) | `{ success, appointmentId }` / `{ success:false, message, reason }` |
-
-**Response shape follows `CoreFlow.md` §0** — `Ok(new { … })`, camelCase, envelope on single reads and
-writes. **Endpoint 3 must not return the full NRIC to n8n**; project `nricLast4` only.
-
-**Endpoint 8's request body** mirrors `SaveAppointmentRequest`:
+#### 🔴 The two response shapes, and the one that trips every n8n build
 
 ```jsonc
-{ "patientId": "PAT-000042",
-  "appointmentDate": "2026-09-01",     // yyyy-MM-dd, TryParseExact
-  "staffId": "END-00001",
-  "slotIds": [17],                     // contiguous, > 0, de-duplicated
-  "pjAppTypeId": "01",                 // STRING. "01" for assessment, "04" for surveillance
-  "branchId": "022367001",
-  "status": "Scheduled" }              // exact casing
+{ "success": true,  "data": [ … ] }                       // or "data": { … }, or "appointmentId": 21
+{ "success": false, "message": "…", "correlationId": "…" } // something went wrong
 ```
 
-**Endpoint 8's response must expose the typed failure reason**, not just the sentence — n8n needs to
-branch on it:
+🔴 **A FAILURE COMES BACK AS HTTP `200` WITH `success: false` — NOT AS A `4xx`.** The only status codes
+that are not `200` are:
 
-```jsonc
-{ "success": true,  "appointmentId": 8 }
-{ "success": false, "reason": "SlotTaken",
-  "message": "One or more selected slots are no longer available." }
-{ "success": false, "reason": "SlotsNotConsecutive", "message": "…" }
-{ "success": false, "reason": "SlotNotFound",        "message": "…" }
-```
+| Code | Meaning | What you do |
+|---|---|---|
+| **401** | bad or missing `X-Agent-Key`, **or the portal's key setting is empty**. The body is always `{"success":false,"message":"Unauthorized."}` and never says which | check the credential in n8n; if it is right, the portal's `Agent__ApiKey` app setting is the problem (4.7) |
+| **503** | the `AGENT_SERVICE` row is missing from the database — the portal was published without its seed | tell whoever deploys the portal. Nothing you can fix in n8n |
+| **400** | your JSON body did not parse at all, or `slotIds` was not an array of numbers | a malformed n8n expression |
 
-Map `AppointmentSaveFailure` to `reason` verbatim. **`SlotTaken` is the one n8n must handle by
-re-running slot discovery**, because it means someone booked that hour between the agent's read and
-the write.
+**So every HTTP Request node that calls this API must be set to `Never Error` / "Continue on error"**,
+and must branch on `$json.success` — not on the status code. A node left on its default will treat a
+perfectly normal `SlotTaken` refusal as a workflow crash, and will treat a `401` as no output at all.
 
-### 4.5 Configuration
+`correlationId` appears on failures. **Quote it when you report a problem** — it is the one string that
+ties your failed call to a line in the portal's own logs.
 
-`appsettings.json` gets a section; **the real key is an App Service app setting and never lives in the
-file** (same rule as `DocumentStorage`, `DOCUMENTSTORAGE.md`):
+### 4.3 The eight endpoints, with the exact JSON they return
 
-```
-Agent__ApiKey            = <64+ random chars>
-Agent__ServiceUserId     = <the dbo.Users.User_ID from 4.1>
-```
-
-App Service expresses the section separator as **two underscores**. A single underscore is silently
-ignored and the app starts with an empty key — which, with a fixed-time comparison against empty,
-fails closed. Good, but confusing to debug.
-
-**Also lock the surface down at the platform level:** App Service → Networking → **Access restrictions**
-→ allow only n8n's egress IPs to `/api/agent/*`. n8n Cloud publishes its egress ranges; self-hosted is
-your own IP. The API key is the authentication; the IP allow-list is the thing that stops the internet
-from even reaching it.
-
-### 4.6 Build and publish checklist (`CoreFlow.md` §11)
-
-1. Write the four `.sql` files under `Stored Procedures/Agent/`.
-2. **Register all four in `CRC.Database.sqlproj`.** ← the step that fails silently.
-3. Build the database project with MSBuild (not `dotnet build`):
-   ```bash
-   "C:/Program Files/Microsoft Visual Studio/18/Insiders/MSBuild/Current/Bin/MSBuild.exe" CRC.Database/CRC.Database.sqlproj /p:Configuration=Debug /p:VisualStudioVersion=18.0 /nologo /v:minimal
-   ```
-   Expect `Build succeeded`, `0 Error(s)`, and **three** `SQL71502` warnings (the two baseline plus the
-   new one from §4.2.2).
-4. `dotnet build CRC.Web/CRC.Web.csproj`.
-5. Publish the DACPAC, then the web app. **Leave "Remove additional files at destination" unchecked**,
-   as the deployment guide says.
-6. Insert the `AGENT_SERVICE` user row.
-7. Set the two app settings, restart the app.
-8. Smoke-test every endpoint with `curl` before touching n8n (§10.1).
+Every payload below is a **real response copied from the wire**, not an illustration.
 
 ---
 
-## 5. PART B — WhatsApp Cloud API setup
+**1 · `GET /api/agent/patients/queue`** — the daily sweep. No parameters.
 
-Do this **before** building the n8n workflows; template approval takes hours to days.
+```jsonc
+{ "success": true,
+  "data": [
+    { "patientId": "PAT-000011", "name": "HUSSEIN AKMAL", "phone": "0166542542",
+      "nricLast4": "5805", "screeningState": "POSITIVE",
+      "iFobtStatus": true, "iFobtResult": true, "iFobtCompletionDate": "2026-08-06",
+      "openAppointmentCount": 1, "hasAssessment": false },
+    { "patientId": "PAT-000010", "name": "P9 PATIENT JULIET", "phone": "0199000010",
+      "nricLast4": "5900", "screeningState": "UNRECORDED",
+      "iFobtStatus": null, "iFobtResult": null, "iFobtCompletionDate": null,
+      "openAppointmentCount": 0, "hasAssessment": false }
+  ] }
+```
 
-1. **Meta Business Suite** → create/confirm a Business account.
-2. **developers.facebook.com** → create an app, type **Business** → add the **WhatsApp** product.
-3. Note the **Phone Number ID** and the **WhatsApp Business Account (WABA) ID**.
-4. Add a real phone number and verify it. (The test number Meta gives you can only message 5
-   pre-registered recipients — fine for development, useless for the sweep.)
-5. Generate a **System User token** with `whatsapp_business_messaging` and
-   `whatsapp_business_management`. The temporary 24-hour token is for testing only.
-6. **Webhook**: point it at n8n's WhatsApp Trigger production URL, subscribe to the `messages` field,
-   set a verify token.
+Only **active** patients appear — a discharged patient is not in this list at all.
 
-### The seven templates to submit (category **UTILITY**)
+🔴 **`screeningState` is the branch and `openAppointmentCount` is the guard.** `screeningState` is one
+of `NO_PHONE` · `UNRECORDED` · `INCOMPLETE` · `POSITIVE` · `NEGATIVE`, computed in the database so one
+definition of "positive" exists and your n8n expression does not have to invent a second one.
+`openAppointmentCount` counts **future `Scheduled`** appointments and is **the only duplicate-booking
+guard in the whole system** — WF1 drops every row where it is not zero (§3.4).
 
-Every business-initiated message must be one of these. Keep them plain — Meta rejects anything that
-reads like marketing, and a clinical service should read plainly anyway.
+`iFobtStatus` and `iFobtResult` are **nullable on purpose**: `null` means "never recorded", which is a
+different fact from `false`. Do not coerce them.
+
+---
+
+**2 · `GET /api/agent/patients/by-phone?phone=60166542542`** — resolve an inbound WhatsApp number.
+
+```jsonc
+{ "success": true, "matchCount": 1,
+  "data": [
+    { "patientId": "PAT-000011", "name": "HUSSEIN AKMAL", "phone": "0166542542",
+      "nricLast4": "5805", "iFobtStatus": true, "iFobtResult": true,
+      "dischargeTypeId": null, "isActive": true }
+  ] }
+```
+
+Send the number in **any format** — `60166542542`, `+60 16-654 2542`, `0166542542` all work. The match
+is on the last nine digits.
+
+🔴 **Branch on `matchCount`, and treat all three cases as normal.** `0` is a **successful** response
+(an unknown number messaged you — escalate). `1` continues. `>1` means the agent must ask a
+disambiguating question and **must never take the first row** (§3.3).
+
+A missing or blank `phone` is refused before the database is touched:
+`{"success": false, "message": "A phone number is required. Supply it as ?phone= …", "correlationId": "…"}`
+
+---
+
+**3 · `GET /api/agent/patients/PAT-000011`** — one patient, by portal id.
+
+```jsonc
+{ "success": true,
+  "data": { "patientId": "PAT-000011", "name": "HUSSEIN AKMAL", "phone": "0166542542",
+            "nricLast4": "5805",
+            "iFobtStatus": true, "iFobtResult": true, "iFobtCompletionDate": "2026-08-06",
+            "dischargeTypeId": null, "dischargeTypeName": null, "isActive": true } }
+
+{ "success": false, "message": "Patient not found." }        // unknown id
+```
+
+**Ten fields, and that is the whole of it.** The full NRIC, the address, the e-mail, the emergency
+contact, the birth date and age, race, religion, marital status and occupation **are on the record and
+are deliberately not returned** (4.5).
+
+---
+
+**4 · `GET /api/agent/patients/PAT-000011/appointments`**
+
+```jsonc
+{ "success": true,
+  "data": [
+    { "appointmentId": 20, "appointmentDate": "2026-09-01",
+      "startTime": "09:00", "endTime": "10:00", "status": "Scheduled",
+      "staffId": "END-00001", "staffName": "P7 DOCTOR ALPHA",
+      "branchId": "022367001", "branchName": "P7 SMOKE BRANCH",
+      "appointmentTypeId": "01", "appointmentType": "PATIENT ASSESSMENT" } ] }
+```
+
+🔴 **The order is part of the contract — newest first (date, then start time, then id, all descending).
+Do not re-sort it.**
+
+🔴 **An unknown patient id returns an empty list, NOT an error.** So `data: []` means "this patient has
+no appointments" — it does **not** mean "this patient is not registered". Endpoint 3 answers that
+question and it is the only one that does.
+
+---
+
+**5 · `GET /api/agent/branches`** — every active partner facility.
+
+```jsonc
+{ "success": true,
+  "data": [ { "branchId": "022367001", "name": "P7 SMOKE BRANCH", "state": "SELANGOR" } ] }
+```
+
+**A hospital that is not in this list is not a partner and cannot be booked.** This is the list the
+agent matches a patient's answer against (§7.2).
+
+---
+
+**6 · `GET /api/agent/staff?branchId=022367001`**
+
+```jsonc
+{ "success": true,
+  "data": [
+    { "staffId": "END-00001", "name": "P7 DOCTOR ALPHA", "phone": "0123456789",
+      "staffType": "END", "staffTypeName": "ENDOSCOPIST", "branchId": "022367001" } ] }
+```
+
+`staffTypeName` can be `null` — a clinician holding a staff-type code that has since been removed from
+the lookup table still works at the branch, and dropping them would tell the agent a doctor standing in
+the building does not work there. Handle the null; do not filter on it.
+
+🔴 **`phone` here is the clinician's own mobile, and it exists for gate 1 only.** Nothing in the API
+stops you from putting it in a patient's message — **the system prompt is what stops you** (§9). Never
+send it to a patient.
+
+An unknown `branchId` returns an empty list; a missing one is refused.
+
+---
+
+**7 · `GET /api/agent/slots/open?branchId=022367001&fromDate=2026-09-01&toDate=2026-09-02&staffType=END`**
+
+```jsonc
+{ "success": true,
+  "data": [
+    { "slotId": 34, "staffId": "END-00001", "staffName": "P7 DOCTOR ALPHA",
+      "staffPhone": "0123456789", "staffType": "END",
+      "slotDate": "2026-09-01", "startTime": "10:00", "endTime": "11:00" } ] }
+```
+
+**One row is exactly one hour.** A clinician free 09:00–12:00 is three rows, and grouping them into
+"9am to noon" for the patient is your job. `slotId` is the value you hand back as `slotIds` on the
+booking.
+
+`fromDate` and `toDate` are **required** and must be `yyyy-MM-dd`. `staffType` is optional — leave it
+out entirely to mean "any clinician"; do **not** send it as an empty string, which would match nothing
+and answer "no availability" to a question that meant "anyone".
+
+A bad date is refused, never guessed:
+`{"success": false, "message": "fromDate is required and must be yyyy-MM-dd (for example 2026-09-01).", "correlationId": "…"}`
+
+🔴 **THIS READ IS ADVISORY.** It runs outside any transaction and holds no lock. An hour it returns can
+be taken by an administrator working in the portal one second later. That is not a bug and it is not
+avoidable — see endpoint 8 and §7.4.
+
+---
+
+**8 · `POST /api/agent/appointments`** — the only write in the entire system.
+
+```jsonc
+POST /api/agent/appointments
+X-Agent-Key: «the shared secret»
+Content-Type: application/json
+
+{ "patientId":       "PAT-000010",
+  "appointmentDate": "2026-09-01",     // yyyy-MM-dd. Nothing else.
+  "staffId":         "END-00001",
+  "slotIds":         [34],             // slotId values from endpoint 7. One id = one hour.
+  "pjAppTypeId":     "01",             // 🔴 THE STRING "01" AND NOTHING ELSE. Not 1, not "1", not "04".
+  "branchId":        "022367001",
+  "status":          "Scheduled" }     // exactly that, with that capitalisation
+```
+
+```jsonc
+// committed
+{ "success": true, "appointmentId": 21 }
+
+// the database was asked and the answer was no — NOTHING was written, the transaction rolled back
+{ "success": false, "reason": "SlotTaken",
+  "message": "One or more slotIds were taken by another booking after they were read. …" }
+
+// refused before any database call — this is a bug in your request body
+{ "success": false,
+  "message": "pjAppTypeId must be the string \"01\" (PATIENT ASSESSMENT). …",
+  "correlationId": "3738f76b79d14c6e8fabfccbcd190e8c" }
+```
+
+🔴 **THE PRESENCE OF `reason` IS THE SIGNAL, AND YOUR SWITCH NODE SHOULD TEST FOR IT.** A response
+carrying `reason` is an **outcome** — the request was well formed, the database was asked, the answer
+was no. A response carrying `correlationId` instead is a **client bug** — nothing was opened, read or
+begun, and retrying the identical body will fail identically. **The two are never both present.**
+
+### 4.4 The `reason` values — build your Switch node from this table
+
+🔴 **`reason` is the enum member's name, verbatim.** Not `slot_taken`, not `SLOT_TAKEN`, not
+`"Slot taken"`. Match these strings exactly.
+
+| `reason` | What happened | What the workflow does |
+|---|---|---|
+| *(absent, `success: true`)* | Committed. `appointmentId` is the real portal id | store it, tell the patient, and hand the id to a human if it ever has to be undone |
+| **`SlotTaken`** | Somebody took that hour between your slot read and this write | 🔴 **The one every build must handle.** Re-run endpoint 7 and offer another hour. **Not an error and not a retry-the-same-body** |
+| **`SlotNotFound`** | At least one `slotId` was not among the rows the portal's own in-transaction read returned. **The broadest of the six** — it also swallows *another clinician's* slot and *another day's* slot | re-run endpoint 7 and book only from ids it just returned. Do not retry the same body |
+| **`SlotsNotConsecutive`** | Sorted by start time, some hour does not begin exactly one hour after the one before it | send a contiguous run, or book fewer hours |
+| **`SlotWrongStaff`** | A slot does not belong to the requested clinician | same as `SlotNotFound`. Cannot fire today — handle it anyway |
+| **`SlotWrongDate`** | A slot is not on the appointment's date | same as `SlotNotFound`. Cannot fire today — handle it anyway |
+| **`InsertFailed`** | The insert produced no id. Defensive; should never happen | escalate to a human. Nothing was written |
+
+### 4.5 The three privacy rules the API enforces for you
+
+1. **`nricLast4`, and never the full NRIC.** No endpoint returns the full twelve digits — not one, not
+   ever, not even endpoint 3 which reads a record that holds them. The agent confirms identity by
+   asking the patient for four digits and comparing; **it cannot state them because it is never given
+   them.**
+2. **The patient projection is deliberately narrow** — ten fields out of a record with more than thirty.
+   The address, e-mail, emergency contact, birth date, age, race, religion, marital status and
+   occupation are all withheld. A conversational agent repeats what it is handed; this is the defence.
+3. **`staffPhone` is for gate 1 only** (endpoints 6 and 7). The API returns it because the agent has to
+   message a clinician. **Nothing in the API stops it reaching a patient — §9's system prompt is the
+   only thing that does.**
+
+### 4.6 The one silent failure this design already prevents — and the check that proves it
+
+An API-key request arrives with no cookie, so there is no logged-in user for the portal's audit trail
+to name. Left alone, **every appointment the agent booked would be recorded as having been made by
+"nobody"** — no error, no failed request, a corrupt audit trail on a clinical system, discovered
+whenever somebody first needed it.
+
+**That is solved.** A real `dbo.Users` row — `AGENT_SERVICE` — is seeded with the database and resolved
+**by username** on every single request, and the filter attaches it as the acting user before any
+action runs. If the row is missing the request fails loudly with a `503` rather than quietly writing a
+zero.
+
+It has been asserted against a real booking, and the result is recorded in `CoreFlow.md` §13.5:
+
+```
+AuditTrail_Id|User_Id|Username     |Action|Category           |Summary
+150          |9      |AGENT_SERVICE|INSERT|PatientAppointment |Created Appointment: PatientAppointment_ID=21; …
+```
+
+**You do not need to do anything about this.** It is recorded here because §10.2 step 10 asks you to
+confirm it once, end to end, after your first booking through n8n — and because it is the one failure
+in this feature that no response body would ever have told you about.
+
+### 4.7 The two things that are settings, not code — confirm before pointing n8n at production
+
+Neither is an n8n task, and neither is a code change. They belong to whoever owns the App Service, and
+`Nucentra_Azure_Deployment_Guide.md` is where the click-by-click lives.
+
+| # | What | Why it matters to you |
+|---|---|---|
+| 1 | **`Agent__ApiKey`** — an App Service **app setting** (🔴 **two underscores**), holding the real key. Never in a file, never in source control | This is the value you paste into n8n's Header Auth credential (§6.1). 🔴 **If it is missing or misspelled, the API answers `401` to a caller holding the correct key** — indistinguishable, from n8n's end, from a wrong key |
+| 2 | **An App Service access restriction on `/api/agent`** — allow n8n's egress addresses, deny the rest | The key is the authentication; this is what stops the internet from reaching the endpoint at all. 🔴 **Without it, the entire security of a patient register is one string in an HTTP header** — and there is no rate limiting on this surface by design |
+
+**Rotating the key is one setting plus a restart — and a hard cutover.** There is one key with no
+overlap window, so n8n's credential must be updated in the same minute. Worth knowing before it is
+needed rather than during.
+
+---
+
+## 5. PART B — WhatsApp Cloud API setup, click by click
+
+**Start this TODAY, before you build anything in n8n.** Two things here take real waiting time and
+nothing you do in n8n can shorten them: **business verification** (days) and **template approval**
+(minutes to days, per template). Everything else is an afternoon.
+
+> **Written for somebody who has never opened a Meta developer page in their life.** Every step says
+> which website, which menu, which button, and what you should see when it worked. Where Meta has
+> renamed a button between releases — and it does, often — the alternative label is given in brackets.
+> If a screen does not match, look for the label rather than the position: the wording survives
+> redesigns better than the layout does.
+
+### 5.0 The four places you will work, and what lives in each
+
+🔴 **All of this is done in a DESKTOP WEB BROWSER. None of it can be done in the Meta Business Suite
+phone app, and none of it is done in WhatsApp itself.** The only time your phone is involved is to
+receive a verification code, and to free up the number you are going to use (5.5).
+
+| # | Site | What it is | What you do there |
+|---|---|---|---|
+| 1 | **business.facebook.com** | **Meta Business Suite** and, inside it, **Business settings** | Create the business portfolio; create the **system user** and its permanent token; run business verification |
+| 2 | **developers.facebook.com** | the **App Dashboard** | Create the app; add the WhatsApp product; read the ids; configure the **webhook**; flip the app Live |
+| 3 | **business.facebook.com/wa/manage** | **WhatsApp Manager** (reachable from 1, but bookmark it separately) | Add and verify the **phone number**; the two-step PIN; **message templates**; messaging limits; quality rating; billing |
+| 4 | **your n8n** | | Produce the webhook URL that site 2 needs, and hold the four credentials at the end |
+
+They are three views of the same account, they cross-link constantly, and it is completely normal to
+be bounced between them. **Keep all three open in three browser tabs** — you will go back and forth.
+
+### 5.1 Before you start — have these in hand
+
+| | |
+|---|---|
+| **A personal Facebook account** | Meta has no other way in. It is only an identity; nothing is ever posted to it |
+| 🔴 **A phone number you can dedicate to this** | It receives an SMS or a voice call once, and then **belongs to the API forever** |
+| **The business's legal details** | Registered name, address, and a registration document (SSM certificate) plus a recent utility bill or bank statement — for verification (5.9) |
+| **A credit or debit card** | WhatsApp templates are not free past a small allowance (5.9) |
+| **An n8n instance reachable from the public internet over HTTPS** | Meta calls *you*. `localhost` will never work (5.8) |
+| **A scratch note (a password manager, not a text file)** | You will collect six values. 5.11 is the list |
+
+#### 🔴 The phone number rule that catches everyone, said before you pick one
+
+**A number registered to the WhatsApp Cloud API can no longer be used in the WhatsApp app on a
+phone — not the normal app, not the WhatsApp Business app.** It becomes an API endpoint and stops
+being a handset.
+
+- **Do not use your personal number.**
+- **Do not use the clinic's existing WhatsApp number** unless you are ready for staff to lose access
+  to it in the app, and for its chat history to be deleted.
+- If the number you want is currently active in either app, you must **delete the account from inside
+  that app first** — open WhatsApp → **Settings → Account → Delete my account**. This erases that
+  number's chat history. Do it deliberately.
+- A brand-new prepaid SIM is the cleanest choice. It only ever needs to receive one code.
+
+### 5.2 Step 1 — the Business portfolio *(business.facebook.com)*
+
+This is the container that owns the app, the WhatsApp account and the phone number. Meta used to call
+it a "Business Manager account"; you will still see that name in older guides.
+
+1. Open **https://business.facebook.com** and log in with your Facebook account.
+2. **If you have never created one:** you land on a "Create a portfolio" (older: "Create account")
+   screen. Fill in:
+   - **Business name** — this is public. Use the clinic's real trading name.
+   - **Your name** and **business email** — the email gets a confirmation link. Click it.
+   Then **Submit**.
+3. **If you already have one:** the portfolio switcher is the button at the very top-left. Confirm the
+   right business is selected before doing anything else — creating the app under a personal or wrong
+   portfolio is the single most common reason step 5.7 later refuses to show you the WhatsApp account.
+4. In the left rail, at the bottom, click the **gear / Settings** icon, then **Business settings**.
+   That opens `business.facebook.com/settings`. **Bookmark this URL** — you come back to it in 5.7 and
+   5.9.
+
+✅ **You know it worked when** the left rail of Business settings shows sections called *Users*,
+*Accounts* and *Data sources*.
+
+### 5.3 Step 2 — create the app *(developers.facebook.com)*
+
+1. Open **https://developers.facebook.com** and click **Log in** at the top right — same Facebook
+   account.
+2. **First visit only:** Meta asks you to register as a developer — confirm a phone number or email,
+   accept the platform terms, and pick "Developer" when asked your role. This takes a minute.
+3. Top right → **My Apps** → **Create App** (green button).
+4. Meta's wording here has changed twice. You will get one of two flows:
+   - **Newer flow:** *"What do you want your app to do?"* → choose **Other** → **Next** → app type
+     **Business** → **Next**.
+   - **Older flow:** it asks for the app type first → choose **Business**.
+5. Fill in:
+   - **App name** — internal only, patients never see it. `nucentra-whatsapp` is fine. 🔴 Do **not**
+     put the word "WhatsApp" in it — Meta rejects app names containing its product names.
+   - **App contact email**.
+   - **Business portfolio** → select the one from 5.2. 🔴 **Do not leave this as "No business
+     portfolio".** The WhatsApp product needs it, and attaching it afterwards is more work than
+     choosing it now.
+6. **Create app**, and re-enter your Facebook password when prompted.
+7. You land on the App Dashboard. Go to **App settings → Basic** in the left rail and copy two values
+   into your note:
+   - **App ID** — a long number, also visible in the page URL.
+   - **App secret** — click **Show**, re-enter your password. 🔴 Treat this like a password.
+
+✅ **You know it worked when** the left rail shows *App settings*, *Roles*, *Alerts* and a
+**Dashboard** with a grid of products you can add.
+
+### 5.4 Step 3 — add the WhatsApp product, and collect the ids *(developers.facebook.com)*
+
+1. On the App Dashboard, scroll the product tiles to **WhatsApp** and click **Set up**. (If you do not
+   see tiles: left rail → **Add product**.)
+2. Meta may ask you to select or create a **WhatsApp Business Account (WABA)** — accept the one it
+   offers, or create one under your portfolio. Click through.
+3. The left rail now has **WhatsApp** with children. Click **API Setup** (older: *Getting started*,
+   *Quickstart*).
+4. This one page holds three of the six values you need. Copy them into your note:
+   - **Temporary access token** — at the top. 🔴 **It expires in 24 hours.** It is for poking around
+     only. Do **not** build n8n on it; you replace it in 5.7 and, if you skip that, your agent will
+     stop dead tomorrow morning with `401`s.
+   - **Phone number ID** — under the **From** dropdown. Right now this is the ID of Meta's free **test
+     number**, not yours. You will replace it in 5.5.
+   - **WhatsApp Business Account ID** (WABA ID) — just below.
+5. In the **To** section, click **Manage phone number list** and add your own mobile as a recipient.
+   You will get a code on WhatsApp; enter it. The test number can only ever message the **five**
+   numbers on this list.
+6. **Sanity test, worth doing:** click **Send message**. A `hello_world` template should arrive on your
+   phone within seconds.
+
+✅ **When that message arrives, the app, the WABA and the token are all correctly wired together.** If
+it does not arrive, nothing later in this section will work — fix it here.
+
+> **The test number is for development and nothing else.** It cannot message a patient who is not on
+> that five-number list, so the daily sweep is impossible with it. That is what 5.5 exists for.
+
+### 5.5 Step 4 — add and verify your real phone number *(developers.facebook.com → WhatsApp Manager)*
+
+🔴 Re-read the phone number rule in 5.1 before you do this. It is not reversible in any convenient way.
+
+1. On the **API Setup** page, next to the **From** dropdown, click **Add phone number**. (Equivalently:
+   WhatsApp Manager → **Phone numbers** → **Add phone number**.)
+2. A form appears. Fill it:
+   - **Display name** — 🔴 **this is what patients see as the sender name.** It must plausibly relate
+     to the business; Meta reviews it. `nucentra Screening` or the clinic's trading name. Do not put a
+     phone number, a URL, or a promotional phrase in it.
+   - **Business category** — Medical and health.
+   - **Business description**, **website** — optional but they help the display-name review pass.
+   - **Time zone** — Asia/Kuala_Lumpur.
+3. **Next**. Enter the phone number **with its country code** (Malaysia is `+60`, and you drop the
+   leading `0`: `012-345 6789` is entered as `+60 12 345 6789`).
+4. Choose **Text message** or **Phone call** for the verification code. If the number is a SIM in a
+   handset, SMS is easiest. Click **Next**, then type the **6-digit code** in.
+5. Meta may ask you to set the **two-step verification PIN** during this step — if it does, jump to 5.6
+   now, do it, and come back.
+6. When it completes, the number appears in the **From** dropdown on the API Setup page. Select it and
+   copy its **Phone number ID**. 🔴 **This is a DIFFERENT number from the test number's ID.** Replace
+   the value in your note. Using the test number's ID in n8n is a silent failure that looks like "only
+   five people ever get my messages".
+
+✅ **You know it worked when** WhatsApp Manager → **Phone numbers** lists your number with status
+**Connected**, and a *Display name status* of **Pending review** or **Approved**. Pending is fine —
+it does not block sending.
+
+### 5.6 Step 5 — the two-step verification PIN *(WhatsApp Manager)*
+
+A 6-digit PIN that locks the number to your account. Meta requires it, and you will need it again if
+you ever move or re-register the number.
+
+1. Open **https://business.facebook.com/wa/manage** → **Phone numbers** (older: *Account tools → Phone
+   numbers*).
+2. Click your number → the **gear / Settings** icon → **Two-step verification**.
+3. Enter a 6-digit PIN, confirm it, **Save**.
+4. 🔴 **Write it down in the same password manager as everything else.** There is no "forgot PIN" flow
+   that does not involve waiting.
+
+### 5.7 Step 6 — the permanent access token *(business.facebook.com → Business settings)*
+
+🔴 **This is the step people skip, and it is why agents die overnight.** The token from 5.4 expires in
+24 hours. A **system user** token does not expire at all.
+
+1. Go to your bookmark: **business.facebook.com/settings**.
+2. Left rail → **Users** → **System users** → **Add** (older: *Add a new system user*).
+3. **System user name**: `nucentra-agent-system-user`. **Role**: **Admin**. → **Create system user**.
+4. Select it in the list, then click **Assign assets**:
+   - Asset type **Apps** → tick the app from 5.3 → turn on **Full control (Manage app)** →
+     **Save changes**.
+5. Click **Assign assets** a second time:
+   - Asset type **WhatsApp accounts** → tick your WABA → turn on **Full control** → **Save changes**.
+   - 🔴 **If "WhatsApp accounts" is empty or your WABA is not listed**, the WABA is not owned by this
+     business portfolio. Go back to 5.3 step 5 — the app was created without a portfolio, or under the
+     wrong one.
+6. With the system user still selected, click **Generate new token**:
+   - **App**: the app from 5.3.
+   - **Token expiration**: 🔴 **Never**.
+   - **Permissions**: tick **`whatsapp_business_messaging`** and **`whatsapp_business_management`**.
+     (Add `business_management` only if you later want the same token to read the portfolio itself.)
+   - **Generate token**.
+7. 🔴 **Copy the token now. Meta shows it exactly once.** Put it in the password manager next to
+   everything else. It is a bearer credential that can message every patient you have.
+
+✅ **You know it worked when** the token starts with `EAA…` and the system user's row shows the app and
+the WhatsApp account under *Assigned assets*.
+
+### 5.8 Step 7 — the webhook: n8n FIRST, then Meta
+
+🔴 **Order matters.** Meta calls your URL the instant you click *Verify and save*, and fails the whole
+form if nothing answers. So the n8n end has to be live before you touch Meta.
+
+**In n8n:**
+
+1. Create a new workflow. Add a **WhatsApp Trigger** node.
+2. Create its credential — call it `nucentra-whatsapp-webhook`. It asks for the **App ID** and **App
+   secret** from 5.3. If your n8n version also asks for a **verify token**, invent a random string
+   (20+ characters, letters and digits) and paste it there; if it *gives* you one instead, copy it.
+   Either way, **that exact string goes into Meta in the next block.**
+3. In the node's parameters, tick the **messages** event.
+4. Copy the node's **Production URL**. 🔴 **The Production URL, not the Test URL** — the test URL only
+   listens for about two minutes after you press "Listen for event".
+5. **Save the workflow and switch it Active.** The production URL returns 404 while the workflow is
+   inactive, and Meta will report exactly that as a failed verification.
+6. **Self-hosted n8n:** Meta must reach that URL from the public internet, over HTTPS, with a valid
+   certificate. A Cloudflare Tunnel or an ngrok tunnel in front of n8n is the usual answer. A
+   `localhost` or `192.168.x.x` URL can never work.
+
+**Then in Meta:**
+
+7. App Dashboard → left rail **WhatsApp** → **Configuration** (older: the *Webhooks* box on the API
+   Setup page).
+8. In the **Webhook** section click **Edit**.
+9. **Callback URL** = the n8n production URL from step 4. **Verify token** = the exact same string as
+   step 2 — character for character, no trailing space.
+10. **Verify and save**. Meta sends a `GET` to your URL with a challenge; if n8n answers, the dialog
+    closes without complaint.
+11. 🔴 **You are not done.** On the same page, next to **Webhook fields**, click **Manage**, find
+    **`messages`** in the list, and tick **Subscribe**. **Without this the webhook is verified and no
+    message is ever delivered to you** — the most common "everything is configured and nothing
+    happens" failure in this whole section.
+
+✅ **The real test:** from your own phone, send any WhatsApp message to your business number. Within a
+second or two an execution should appear in n8n's execution list. **Do not proceed until it does.**
+
+### 5.9 Step 8 — go Live, get verified, and turn on billing
+
+None of these are optional for a production sweep, and the first two take days, so start them now.
+
+1. **Flip the app Live.** App Dashboard → the toggle at the top of the page, **Development → Live**.
+   Meta may first require a **Privacy Policy URL** under *App settings → Basic* — any public page that
+   states what you do with the data is enough to satisfy the field.
+2. **Business verification.** Business settings → **Security Centre** → **Start verification**. You
+   submit the legal business name, address, phone, and a document — a business registration
+   certificate, plus a utility bill or bank statement showing the same address. Meta reviews in
+   anything from a day to a couple of weeks.
+   🔴 **Unverified, you are capped at messaging 250 unique customers per 24 hours** and at two phone
+   numbers. For a screening sweep that cap is real: budget for it, or verify early.
+3. **Messaging limits.** WhatsApp Manager → **Phone numbers** → your number shows a tier: **250 → 1K →
+   10K → 100K → unlimited** unique customers per day. Meta raises it automatically as you send
+   quality traffic. 🔴 **Design WF1's daily batch around 250 until you are actually promoted.**
+4. **Payment method.** WhatsApp Manager → **Billing** / *Payment settings* → add a card. **Every
+   business-initiated template message is billable** past the free allowance, and the sweep's first
+   message to each patient is exactly that. With no card on file, sends start failing — and they fail
+   as an API error your workflow has to notice, not as a warning email.
+   *(Replies you send inside the 24-hour window a patient opened are a different, cheaper — often
+   free — category. §3.7 is why the agent's conversation lives there.)*
+5. **Quality rating.** WhatsApp Manager → your number → **Quality rating**: Green, Yellow or Red.
+   Patients blocking or reporting the number pushes it down; **Red gets the number restricted or
+   suspended.** 🔴 This is the mechanism that makes §7.6's opt-out and §5.10's plain wording a
+   *technical* requirement rather than good manners: a handful of "block" taps can end the programme's
+   ability to send anything at all.
+
+### 5.10 Step 9 — submit the seven message templates *(WhatsApp Manager)*
+
+Every message the agent sends **first** — the sweep, the clinician request, the coordinator request,
+and any confirmation that lands after the window closed — must be one of these pre-approved templates
+(§3.7). Free-form text only works inside a window a patient opened by messaging you.
+
+**Where:** WhatsApp Manager → **Manage templates** (`business.facebook.com/wa/manage/message-templates`)
+→ **Create template**.
+
+**For each of the seven below:**
+
+1. **Category: `Utility`.** 🔴 Not *Marketing*. A marketing template is priced differently, is refused
+   for content like this, and is suppressed for anyone who has opted out of marketing — which would
+   silently drop patients from your sweep.
+2. **Name:** exactly as in the table — lowercase letters, digits and underscores only. n8n nodes refer
+   to these names verbatim, so a typo here is a broken workflow later.
+3. **Language:** English. (Add Bahasa Melayu copies if you want Malay — templates are per-language and
+   a missing translation is a send failure, not a fallback. §12.5.)
+4. **Body:** paste the text from the table. Variables are `{{1}}`, `{{2}}`, … in order.
+   🔴 Meta rejects a body that **starts or ends** with a variable, or that has **two variables next to
+   each other**. The bodies below already obey this.
+5. **Sample values:** Meta will not submit the form without a realistic example for every variable —
+   `Ahmad`, `nucentra`, `Tuesday 1 September`, `9:00am`. **A missing sample is the single most common
+   rejection.**
+6. **Buttons (optional, recommended for #1 and #4):** add **Quick reply** buttons — `YES` / `CALL` on
+   template 1, `YES` / `NO` on template 4. A tapped button arrives as that exact text, which makes
+   WF2's parsing trivial and stops a patient replying "ya boleh" from falling through your switch.
+7. **Submit.** Status goes **Pending** → **Approved** (usually minutes, sometimes a day). A rejected
+   template can be edited and resubmitted — read the stated reason first; it is usually the sample
+   values or a marketing tone.
+
+#### The seven templates (category **UTILITY**)
+
+Keep them plain — Meta rejects anything that reads like marketing, and a clinical service should read
+plainly anyway.
 
 | # | Name | Used by | Body (variables in `{{n}}`) |
 |---|---|---|---|
@@ -601,6 +905,35 @@ reads like marketing, and a clinical service should read plainly anyway.
 > "your result is ready", not "your result is positive". The specifics happen in the conversation, on
 > the patient's own initiative, inside the 24-hour window.
 
+### 5.11 The crib sheet — the six values, and where each one goes
+
+By now your note should hold exactly these. This is what §6.1 consumes.
+
+| Value | Where you got it | Where it goes in n8n |
+|---|---|---|
+| **Permanent access token** (`EAA…`) | 5.7 step 7 | credential `nucentra-whatsapp` |
+| **Phone number ID** (of the **real** number) | 5.5 step 6 | credential `nucentra-whatsapp` / the WhatsApp node's *Phone Number ID* field |
+| **WhatsApp Business Account ID** (WABA) | 5.4 step 4 | credential `nucentra-whatsapp`, where asked |
+| **App ID** | 5.3 step 7 | credential `nucentra-whatsapp-webhook` |
+| **App secret** | 5.3 step 7 | credential `nucentra-whatsapp-webhook` |
+| **Webhook verify token** | 5.8 step 2 | credential `nucentra-whatsapp-webhook`, and Meta's Configuration page — **identical in both** |
+
+Two more, from the portal side, complete §6.1: the **`X-Agent-Key`** value (§4.7) and an **Anthropic
+API key**.
+
+### 5.12 When it does not work — the eight failures, in the order you will meet them
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| *Verify and save* fails on the webhook | n8n workflow is not **Active**, you used the **Test URL**, or the verify tokens differ by a character | 5.8 steps 4–5 and 9 |
+| Webhook verified, but no execution ever fires | you did not **Subscribe** to the `messages` field | 5.8 step 11 |
+| Webhook verified, n8n unreachable | self-hosted n8n is not public over HTTPS with a valid certificate | 5.8 step 6 |
+| Everything worked yesterday, `401` today | you built on the **temporary 24-hour token** | 5.7 — replace it with the system user token |
+| Only five people ever receive messages | you are still sending from the **test number's** Phone Number ID | 5.5 step 6 |
+| Template send fails with a not-found error | the template is still **Pending**, or the name or language does not match exactly | 5.10 steps 2–3, 7 |
+| Sends stop after a while, no obvious error | you hit the **250 unique customers / 24h** unverified cap, or there is **no payment method** | 5.9 steps 2 and 4 |
+| Number restricted or suspended | **quality rating** fell to Red — blocks and reports | 5.9 step 5, and honour every opt-out (§7.6) |
+
 ---
 
 ## 6. PART C — The n8n build
@@ -609,9 +942,9 @@ reads like marketing, and a clinical service should read plainly anyway.
 
 | Credential type | Name | Holds |
 |---|---|---|
-| **WhatsApp API** | `nucentra-whatsapp` | Access token + Phone Number ID (§5.3, §5.5) |
-| **WhatsApp Trigger** | `nucentra-whatsapp-webhook` | App ID, App Secret, verify token |
-| **Header Auth** (Generic) | `nucentra-agent-api` | Name `X-Agent-Key`, Value = the key from §4.5 |
+| **WhatsApp API** | `nucentra-whatsapp` | The permanent access token (§5.7) + the **real** number's Phone Number ID (§5.5) + the WABA ID (§5.4) |
+| **WhatsApp Trigger** | `nucentra-whatsapp-webhook` | App ID, App Secret (§5.3), verify token (§5.8) |
+| **Header Auth** (Generic) | `nucentra-agent-api` | Name `X-Agent-Key`, Value = the portal's `Agent__ApiKey` (§4.7). 🔴 Test this one first — §11 step 3 |
 | **Anthropic** | `nucentra-llm` | Anthropic API key. Model: `claude-sonnet-5`. |
 
 ### 6.2 The state store — one n8n Data Table
@@ -659,8 +992,8 @@ The only thing in the system that writes to the portal. Isolated so exactly one 
 | Node | Type | Configuration |
 |---|---|---|
 | 1 | **Execute Sub-workflow Trigger** | Inputs: `proposalId`, `patientId`, `appointmentDate`, `staffId`, `slotIds`, `pjAppTypeId`, `branchId` |
-| 2 | **HTTP Request** | `POST {{PORTAL}}/api/agent/appointments` · Auth: `nucentra-agent-api` · JSON body per §4.4 · **`status` hard-coded to `"Scheduled"`** · *Never Error* on non-2xx so node 3 can read the body |
-| 3 | **Switch** on `{{ $json.success }}` / `{{ $json.reason }}` | `true` → node 4 · `SlotTaken` → node 5 · anything else → node 6 |
+| 2 | **HTTP Request** | `POST {{PORTAL}}/api/agent/appointments` · Auth: `nucentra-agent-api` · JSON body exactly per §4.3 endpoint 8 · **`status` hard-coded to `"Scheduled"`, `pjAppTypeId` hard-coded to `"01"`** · *Never Error* on non-2xx so node 3 can read the body |
+| 3 | **Switch** on `{{ $json.success }}` / `{{ $json.reason }}` | `true` → node 4 · `SlotTaken` → node 5 · anything else → node 6. The full reason list is §4.4 |
 | 4 | **Data Table (Update)** | `stage = BOOKED`, store `appointmentId` |
 | 5 | **Set** | `outcome = RETRY_SLOTS` — returns to the caller, which re-runs slot discovery |
 | 6 | **Set** | `outcome = ESCALATE` with the message, so a human sees it |
@@ -774,7 +1107,7 @@ stalls.
 | 5 | **Loop Over Items** (batch 1, ~2 s between) | stays inside Meta's throughput limits and makes failures readable |
 | 6 | **Switch** on `screeningState` | `POSITIVE` → 7a · `NEGATIVE` → 7b · `INCOMPLETE`/`UNRECORDED` → 7c · `NO_PHONE` → 7d |
 | 7a | **WhatsApp** template `crc_result_ready_positive` | then upsert state `stage = AWAITING_CONSENT`, `role = PATIENT` |
-| 7b | **WhatsApp** template `crc_result_normal` | then branch into the surveillance path (§7.5) |
+| 7b | **WhatsApp** template `crc_result_normal` | then the surveillance path (§7.5) — **a coordinator digest, not a booking.** The API refuses `"04"` (§3.5) |
 | 7c | **WhatsApp** template `crc_test_incomplete` | `stage = AWAITING_CONSENT`, `screeningState = INCOMPLETE`. **No booking on this path** |
 | 7d | **Set** → coordinator digest | one message listing every unreachable patient. No portal write |
 | 8 | **Data Table (Upsert)** | `lastOutboundAt = now`, `attempts = 0` |
@@ -803,16 +1136,19 @@ one isn't in our partner network — here are the ones near you"*, not a booking
 patient supplying the **last 4 digits of their NRIC**, the agent says nothing about results at all.
 
 ### 7.4 It treats its slot read as advisory
-The read in §4.2.4 runs outside any transaction. Between the read and the booking, an administrator in
-the portal can take that hour. `SaveAppointmentAsync` will catch it and answer `SlotTaken` — WF0 node 5
-returns `RETRY_SLOTS` and the conversation resumes at slot discovery. **This is a normal outcome, not
-an error.**
+`GET /api/agent/slots/open` (§4.3 endpoint 7) runs outside any transaction. Between that read and the
+booking, an administrator in the portal can take the hour. The portal catches it and answers
+`SlotTaken` — WF0 node 5 returns `RETRY_SLOTS` and the conversation resumes at slot discovery. **This
+is a normal outcome, not an error.**
 
-### 7.5 The surveillance path
-On `NEGATIVE`: compute `today + SURVEILLANCE_HORIZON_DAYS` (start at **90**, per §3.5 option A), find
-an open slot in that week, and run it through the **same two gates**. If no slot exists that far out,
-do not force it — write the intended date to the state table and send the coordinator a digest. The
-constraint in §3.5 is real and the honest failure is better than a broken booking.
+### 7.5 The surveillance path — propose only, never book
+On `NEGATIVE`: send `crc_result_normal`, write the intended surveillance date to the state table, and
+put the patient on the **coordinator digest**. A human opens the slot range and books it in the portal.
+
+🔴 **Do not build a booking branch here.** §3.5 is settled as option C and the portal enforces it:
+`POST /api/agent/appointments` accepts `pjAppTypeId` `"01"` and refuses `"04"` by name, before it
+touches the database. There is no `SURVEILLANCE_HORIZON_DAYS` to configure and no slot far enough out
+to consume — the honest hand-off is the design, not a fallback.
 
 ### 7.6 Escalation triggers — hand to a human immediately, no further automated messaging
 - The patient reports symptoms: bleeding, pain, weight loss, or anything the agent reads as urgent.
@@ -976,9 +1312,21 @@ attempts, and the appointments already known. Trust it over your own memory.
 
 ## 10. Test plan
 
-### 10.1 Portal API, before n8n exists
+### 10.1 Portal API — prove it answers *your* environment before you build anything
 
-Run each of these and read the body. `$KEY` is the value of `Agent__ApiKey`.
+The API is already tested; what you are testing here is **this deployment, from where n8n will call
+it** — the key, the URL and the network path.
+
+**The fast way:** `Test-AgentApi.ps1` at the repo root drives all eight endpoints and both negative
+tests — twelve checks — and prints a pass/fail line for each. It takes `-BaseUrl` and `-ApiKey`, and
+the write is opt-in behind `-IncludeWrite` because it consumes a real clinician hour the API cannot
+give back.
+
+```bash
+powershell -File Test-AgentApi.ps1 -BaseUrl "$PORTAL" -ApiKey "$KEY"
+```
+
+**The manual way**, if you would rather see the bodies. `$KEY` is the value of `Agent__ApiKey`:
 
 ```bash
 curl -s -H "X-Agent-Key: $KEY" "$PORTAL/api/agent/patients/queue" | head -c 2000
@@ -1008,7 +1356,13 @@ curl -s -H "X-Agent-Key: $KEY" -H "Content-Type: application/json" -X POST "$POR
 sqlcmd -S nucentra-sql-prod.database.windows.net -d CRC_DB -U nucentraadmin -P "$PW" -Q "SELECT TOP 3 User_Id, AuditTrail_Action, AuditTrail_Category, AuditTrail_Summary FROM dbo.AuditTrails ORDER BY AuditTrail_Id DESC"
 ```
 
-🔴 **`User_Id` must be the `AGENT_SERVICE` account's id. If it is `0`, §4.1 step 2 was not done.**
+🔴 **`User_Id` must be the `AGENT_SERVICE` account's id — not `0`, not blank** (§4.6). It reads
+`AGENT_SERVICE` on the development database; if it reads `0` here, the portal was published without its
+seed and that is a deployment problem, not an n8n one.
+
+> **That POST consumes a real clinician hour and nothing in this system can release it** (§3.6). Use a
+> throwaway patient and a slot you opened for the purpose, and expect to delete the appointment from
+> the portal by hand afterwards.
 
 ### 10.2 End to end, with one real test patient
 
@@ -1046,18 +1400,23 @@ sqlcmd -S nucentra-sql-prod.database.windows.net -d CRC_DB -U nucentraadmin -P "
 
 ## 11. Day 1 — what to actually click
 
-You said you are staring at the n8n homepage. Here is the order.
+You are staring at the n8n homepage. Here is the order.
 
-**This week — nothing in n8n yet.**
-1. Get §4 built and published. Nothing works before it. If someone else does your .NET work, hand
-   them §4 on its own.
-2. Start the WhatsApp Business setup (§5) **today** — number verification and template approval are
-   the long poles and they run in parallel with the code.
+**✅ The portal is done — §4 needs nothing from you.** The API answers today. That removes the one
+blocker this plan used to open with.
+
+**Today, in a browser, before n8n:**
+1. **Start §5 now.** Business verification and template approval are the long poles — days, not hours,
+   and nothing in n8n shortens them. Get through §5.8 (the webhook) and submit all seven templates,
+   then come back while they sit in review.
+2. **Confirm §4.7 with whoever owns the App Service** — that `Agent__ApiKey` is set on the environment
+   n8n will point at, and that the access restriction allows n8n's egress addresses. These are the two
+   settings that make a working API look broken.
 
 **Then, in n8n, in this order:**
-3. **Credentials** (§6.1). Four of them. Test the Header Auth one first by building a throwaway
-   workflow: `Manual Trigger → HTTP Request → GET /api/agent/patients/queue`. When that returns your
-   patient list, the hard part is over.
+3. **Credentials** (§6.1). Four of them. 🔴 **Test the Header Auth one first**, with a throwaway
+   workflow: `Manual Trigger → HTTP Request → GET {{PORTAL}}/api/agent/patients/queue`. **When that
+   returns your patient list, the entire portal half is proven** and everything after it is n8n work.
 4. **Data table** `crc_agent_state` (§6.2).
 5. **WF0**, the booking executor. Test it with a Manual Trigger and a hard-coded body.
 6. **WF2**, the router — WF2a first with a Manual Trigger standing in for the WhatsApp Trigger, so you
@@ -1074,14 +1433,22 @@ poorly, and you will get better results reviewing each one before moving on.
 
 ## 12. Open items — decide before go-live
 
-1. **The surveillance horizon** (§3.5). Pick option A, B or C and set `SURVEILLANCE_HORIZON_DAYS`.
+1. ~~**The surveillance horizon**~~ ✅ **Settled — §3.5 option C, propose only.** The portal enforces
+   it: `pjAppTypeId` must be `"01"` and `"04"` is refused by name. No horizon to configure.
 2. **Who is the coordinator?** One WhatsApp number, or a rota? A rota means a second state table.
+   🔴 This is also who owns the follow-up a `REJECT` promises the patient (WF2c c8), and who opens the
+   slot range for every surveillance patient §7.5 hands over.
 3. **PDPA position** on clinical messaging over WhatsApp, and whether patients must opt in first.
+   Note that the Agent API moved nothing outside the portal — **the PDPA question arrives with
+   WhatsApp**, in §5.
 4. **Out-of-hours.** WF1 fires at 09:00 MYT — should the agent reply to inbound messages at 2am, or
    queue them?
 5. **Language.** The prompt mirrors English/Malay. Templates are per-language in Meta — submit Malay
-   versions of all seven if you need them.
+   versions of all seven if you need them (§5.10 step 3).
 6. **What happens to `NO_PHONE` patients?** Right now they become a coordinator digest and nothing
-   more. That may be a real gap in the programme worth closing in the portal instead.
-7. **`CoreFlow.md` §2.2 needs updating** when §4 ships — the `AllowAnonymous` count goes from two
-   to three, and that sentence is load-bearing for anyone auditing the portal's public surface.
+   more. That may be a real gap in the programme worth closing in the portal instead — the API is what
+   made it visible for the first time.
+7. ~~**`CoreFlow.md` §2.2 needs updating**~~ ✅ **Done.** The `AllowAnonymous` count reads three, and
+   §13 documents the whole Agent API as built.
+8. **Key rotation** (§4.7). One key, no overlap window, so rotating it is a hard cutover and n8n must
+   be updated in the same minute. Decide how you will do it **before** you have to.

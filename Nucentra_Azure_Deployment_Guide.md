@@ -1029,6 +1029,180 @@ on **.NET 10**, the same as HEART.
 
 ---
 
+## 17. PART H — The Agent API: the app setting, the publish order, and the lock-down
+
+The portal grew a machine-callable surface: eight endpoints under `/api/agent`, for one caller (an n8n
+WhatsApp workflow). It runs **inside the web app you already have** — no second App Service, no second
+plan, no second port, no extra cost. `CoreFlow.md` §13 is the specification; this section is the three
+things you do in the portal.
+
+⚠️ **Do this only once the plan reports a clean local pass.** Nothing here is reversible by itself, and
+step 17.3 is the one that keeps the API off the public internet.
+
+---
+
+### 17.1 Add the app setting `Agent__ApiKey`
+
+1. **Generate a key first, on your own machine.** 64 characters of randomness, not a password you
+   remember. In PowerShell:
+
+   ```powershell
+   -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
+   ```
+
+   Copy it somewhere you can paste from twice — here, and later into n8n. It is **never** written into
+   `appsettings.json`, and after this it lives in exactly two places: this app setting, and n8n.
+
+2. Portal → your Web App **`nucentra-web-prod`** → **Settings → Environment variables** →
+   **App settings** tab.
+
+3. **+ Add** once:
+
+   | Name | Value |
+   |---|---|
+   | `Agent__ApiKey` | *(the 64-character key from step 1)* |
+
+4. 🔴 **Two underscores, not one.** Exactly the trap as `DocumentStorage__ConnectionString` in §10.4:
+   .NET maps `__` onto the `:` in `Agent:ApiKey`. A single underscore is **not an error** — it is
+   silently ignored, the app starts with an empty key, and the API then correctly refuses **every**
+   request with `401 Unauthorized`. Your n8n workflow will look like it is using the wrong key when in
+   fact the setting never bound at all. The tell is an **error** line in `app-*.log` reading
+   *"Agent API is not configured: Agent:ApiKey is empty"* — see §11 for where to read it.
+
+5. These go under **App settings**, *not* under **Connection strings**. (Same rule as §10.4, and the
+   opposite of the database one in §7, which belongs under Connection strings with type `SQLAzure`. The
+   two lists are different and are not interchangeable.)
+
+6. Click **Apply**, then **Confirm**. The app restarts — about 30 seconds.
+
+7. **Nothing works yet**, and that is expected. The account that every agent write is audited as does
+   not exist until §17.2 publishes the database.
+
+---
+
+### 17.2 Publish the database FIRST, then the web app
+
+🔴 **The order matters here in a way it did not in §10.5.** The DACPAC carries **both** halves of the
+database side of this feature: five new stored procedures under `Stored Procedures/Agent/`, **and** the
+`AGENT_SERVICE` user row that every agent write is audited as. Publish the web app first and every agent
+request answers `503 Service Unavailable` — the key is fine, the account is missing.
+
+1. **The database.** In Visual Studio, publish `CRC.Database` to `CRC_DB` exactly as in **§5.2**.
+
+   This is a **purely additive** publish: five new procedures and one new seeded row. No table changes,
+   no column renames, nothing dropped. Your data is not at risk, and there is **no Option A / Option B
+   choice** to make this time — unlike §10.5, where a column rename forced one.
+
+2. **Verify the seed in SSMS** before going further. Two queries, and both must answer:
+
+   ```sql
+   SELECT COUNT(*) FROM sys.procedures WHERE name LIKE 'spAgent%';   -- must be 5
+
+   SELECT User_ID, Username, User_Type FROM dbo.Users WHERE Username = 'AGENT_SERVICE';
+   ```
+
+   The second must return **exactly one row**. 🔴 **Write down nothing about its `User_ID`.** It is an
+   IDENTITY column, so it is a different number on Azure than on any developer's machine, and **nothing
+   in the application stores it** — the account is looked up *by username* on every request, on purpose.
+   There is no `Agent__ServiceUserId` setting and you must not create one: a wrong id would not throw,
+   it would silently audit the agent's bookings as a different, real person.
+
+3. **Then the web app.** Publish `CRC.Web` from Visual Studio exactly as in **§8**, with
+   **"Remove additional files at destination" UNCHECKED** — same reason as always: that box protects
+   `site/wwwroot/Logs/`, and `audit-*.log` is where every agent request's security line lands.
+
+4. **Smoke-test before n8n ever points at it.** From the repo root on your own machine:
+
+   ```powershell
+   .\Test-AgentApi.ps1 -BaseUrl 'https://nucentra-web-prod.azurewebsites.net' -ApiKey '<the key>'
+   ```
+
+   Expect **PASS on every line** — the seven read endpoints and, first, the two that matter most: a call
+   with **no** key and a call with a **wrong** key, both `401`. The script takes no default key and never
+   prints one. The write endpoint is **not** run unless you add `-IncludeWrite`, because it books a real
+   clinician hour and nothing in this portal can cancel one.
+
+5. **Then confirm the audit actor.** This is the one failure in this feature that is completely silent:
+   the booking succeeds, the response says success, and the audit row names nobody. In SSMS, after a
+   booking:
+
+   ```sql
+   SELECT TOP 3 a.AuditTrail_Id, a.User_Id, u.Username, a.AuditTrail_Action, a.AuditTrail_Category
+   FROM dbo.AuditTrails a
+   LEFT JOIN dbo.Users u ON u.User_ID = a.User_Id
+   ORDER BY a.AuditTrail_Id DESC;
+   ```
+
+   🔴 **`Username` must read `AGENT_SERVICE`.** If `User_Id` comes back `0` or the name is blank, stop:
+   every write the agent has made is unattributed, and no other test will tell you.
+
+---
+
+### 17.3 🔴 Lock the surface down — this is a requirement, not a hardening item
+
+**The API key is the authentication. The access restriction is what stops the internet from reaching the
+endpoint at all.** They are not alternatives, and unlike everything in §13 this one is not a "once the
+basics work" item — it belongs in the same sitting as §17.1 and §17.2.
+
+Without it, the entire security of `/api/agent` is **one shared secret in an HTTP header**. There is no
+second factor, no client certificate and no rate limit on these routes, so nothing slows an attacker
+down. `GET /api/agent/patients/queue` returns every active patient's name, phone number and screening
+state in a single response — so a leaked or guessed key is a **full read of the patient register**, and
+it stays that way until somebody rotates the key.
+
+1. Portal → **`nucentra-web-prod`** → **Settings → Networking** → **Access restrictions** →
+   **Configure access restrictions**.
+
+2. On the **Main site** tab, click **+ Add rule**:
+
+   | Field | Value |
+   |---|---|
+   | Name | `allow-n8n` |
+   | Action | **Allow** |
+   | Priority | `100` |
+   | Type | **IPv4** |
+   | IP Address Block | *(n8n's egress address or CIDR — n8n Cloud publishes its egress ranges; a self-hosted instance is your own public IP)* |
+
+3. **Add a second Allow rule for your own office/home IP** at priority `110`, or you will lock yourself
+   out of the site along with everyone else.
+
+4. Azure adds an implicit **Deny all** rule at the bottom as soon as any Allow rule exists. Confirm you
+   can see it before you leave the blade — if it is not there, nothing is being blocked.
+
+5. **Save**, then test from a phone on mobile data (not your office Wi-Fi): the site should answer
+   **403**. If it still loads, the rules have not applied yet — wait a minute and retry before changing
+   anything.
+
+> **If the portal itself must stay publicly reachable to staff**, do not restrict the main site. Instead
+> scope the rule to the API path only: **+ Add rule** → expand **Advanced** → set **Path** to
+> `/api/agent`, and leave the main site open. Everything above still applies to that rule, including the
+> implicit deny and the test in step 5.
+
+**Rotating the key later** is one setting and a restart, with **no code change and no re-publish**:
+change `Agent__ApiKey` in §17.1, click **Apply**, and the app comes back on the new value in about 30
+seconds. Worth knowing before you need it — and worth knowing now that there is only **one** key, with no
+version and no overlap window, so a rotation is a **hard cutover**: n8n must be updated in the same
+minute or the agent stops working. If you need an overlap, that is a small code change and it should be
+made *before* the first rotation, not during one.
+
+---
+
+### 17.4 What this part does and does not give you
+
+- **It creates nothing new in Azure.** No storage account, no App Service, no database, no extra cost.
+  One app setting, one DACPAC publish, one web publish, one networking rule.
+- **The agent can only book PATIENT ASSESSMENT appointments.** Surveillance visits are opened and booked
+  by a coordinator in the portal, by hand, deliberately.
+- **The agent cannot cancel anything.** There is no cancellation concept in this portal at all — the only
+  way to release a booked hour is to delete the appointment on that patient's Appointment tab. That
+  asymmetry is why a human approves each booking before the agent makes it.
+- **No documents are reachable through this API**, and no patient's full identity-card number ever leaves
+  it — the agent is given the last four digits only.
+- **Every booking the agent makes is audited as `AGENT_SERVICE`** in `dbo.AuditTrails`, so the
+  `/AuditTrails` page tells a human and a machine apart at a glance.
+
+---
+
 ### Sources
 - [Azure App Service — .NET version support and platform updates](https://learn.microsoft.com/en-us/azure/app-service/configure-language-dotnetcore)
 - [.NET support policy — release lifecycles and LTS end-of-support dates](https://dotnet.microsoft.com/platform/support/policy/dotnet-core)
