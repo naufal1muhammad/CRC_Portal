@@ -1600,6 +1600,7 @@ clinician who is on leave, or a coordinator who is asleep, freezes a real patien
 | B. Let the next daily sweep do it | Change WF1 node 4 to re-admit rows stuck in a gate for over 24h. No new workflow, but the granularity is a day and WF1 stops being a pure sweep. |
 | C. No timeout; the coordinator watches the table | Honest only if somebody genuinely opens that table every morning. 🔴 If you choose this, say who — and it belongs in §7.6 as a named human duty, not as an absence. |
 
+Answer: A (recommended option)
 ---
 
 **Q6 · A patient who never replies to the sweep is contacted once and then dropped forever.**
@@ -1614,6 +1615,7 @@ on this path ever increments it** — no reply means no execution means no node 
 | B. One message only; unanswered patients go on a weekly coordinator digest for a phone call | Cheapest, and arguably better clinically — a positive screening result deserves a human call, not a third WhatsApp. |
 | C. One message only, no digest | 🔴 Not viable for a POSITIVE result. It is the current behaviour, and it is the biggest silent hole in the design. |
 
+Answer: A (recommended option)
 ---
 
 **Q7 · A patient who abandons mid-conversation is in the same trap.**
@@ -1626,6 +1628,7 @@ choose the reaper** — one workflow, one threshold table, three problems.
 window if it is open, a template if it is not, then `stage = CLOSED` with `lastReason = "Patient stopped
 replying"` — which makes them sweepable again tomorrow, exactly as a c7 reject is.**
 
+Answer: A (recommended option)
 ---
 
 **Q8 · Nothing ever clears `stage = ESCALATED`, and no workflow tells anyone it was set.**
@@ -1641,6 +1644,7 @@ at all.** The patient is told a person will contact them; no person is told.
 | B. Auto-clear after N days back to `CLOSED` | Puts them back in the sweep without anyone having looked. Fine for "stopped replying", 🔴 wrong for "mentioned bleeding". |
 | C. As now | Escalations vanish. Not viable given §7.6's promise. |
 
+Answer: A (recommended option)
 ---
 
 **Q9 · The agent has no way to *signal* an escalation, so a9 cannot detect one.**
@@ -1659,6 +1663,7 @@ in §7.6 and §9 is currently decorative. The same gap is why a0's sidebar can a
 | B. String-match the escalation sentence in a9 | No prompt change, and brittle in exactly the way §7's opening rule warns about — the model paraphrases, and a missed match is a patient who mentioned bleeding being answered by a bot. |
 | C. A sixth tool, `escalate_to_human`, that the agent calls | Cleanest agent ergonomics, and it makes the escalation an *action* rather than a parse. Costs a webhook or sub-workflow tool and breaks §7.1's "its five tools are all reads" — which is a rule worth keeping literal. |
 
+Answer: A (recommended option)
 ---
 
 ### Group C — Paths the design describes but does not have a mechanism for
@@ -1676,6 +1681,7 @@ portal. There is no defined way to make the agent take a turn on its own.
 | B. No agent turn; a fixed templated message plus a fresh `find_open_slots` call in plain nodes, patient replies, and *that* reply re-enters WF2a normally | Deterministic and cheaper. Loses the conversational quality on exactly the turn where the patient is being let down. |
 | C. Escalate to a human on every retry | Safest, and it converts a routine race (§7.4 calls `SlotTaken` "a normal outcome") into a human interruption. |
 
+Answer: A (recommended option)
 ---
 
 **Q11 · On `matchCount > 1` the agent is asked to disambiguate with data it was never given.**
@@ -1693,6 +1699,7 @@ gets them from.
 | B. A sixth tool, `find_patient_by_phone` | Gives the agent the raw endpoint. It also hands a conversational model a *list of other people's names and phone numbers* on one call, which is the one thing §4.5's narrow projection exists to avoid. |
 | C. Never let the agent disambiguate — escalate every `matchCount > 1` to a human | Zero risk, and it sends a shared household phone — an ordinary case, not an edge case — to a person every time. |
 
+Answer: A (recommended option)
 ---
 
 **Q12 · The system prompt is written for the POSITIVE path only, and three templates invite replies it
@@ -1710,6 +1717,7 @@ it. `CALL` has no handling at all.
 | B. Three separate AI Agent nodes, one per state, routed by a Switch before a1 | Cleaner prompts, three times the prompt maintenance, and a patient whose state changes mid-conversation crosses nodes. |
 | C. Only POSITIVE reaches the agent; NEGATIVE and INCOMPLETE replies go straight to the coordinator | Very safe, and it makes templates 2 and 3 promises the coordinator must personally keep — count the volume before choosing it. |
 
+Answer: A (recommended option)
 ---
 
 **Q13 · Four outbound messages ignore the 24-hour window they are subject to.**
@@ -1725,6 +1733,7 @@ message. Outside the window Meta refuses them, and the workflow does not look at
 | B. Fix the four nodes individually | No new workflow, and the fifth node someone adds later will get it wrong. |
 | C. Send anything to staff and coordinators free-form and accept the failures | 🔴 Staff and coordinators are subject to the same window as patients. A clinician who has not messaged in a day simply does not receive the request, silently. |
 
+Answer: A (recommended option)
 ---
 
 ### Group D — Data and semantics
@@ -1747,6 +1756,7 @@ five states and the most common one on a fresh database. It will be redrawn with
 | B. Leave the API alone; WF1 splits on `iFobtStatus === true && iFobtResult === null` | No portal change, and it re-derives in an n8n expression the thing §3.2 says the API exists to stop you re-deriving. |
 | C. Send them nothing and log them | Same outcome as A without naming the state, so nobody reading the queue can see the category exists. |
 
+Answer: A (recommended option)
 ---
 
 **Q15 · The surveillance path has no interval, no column and no digest.**
@@ -1772,6 +1782,7 @@ Answer all four parts:
   aggregation step at all. **Alternative:** an *Aggregate* node after WF1's loop and a separate send —
   more nodes, and a second digest to keep consistent with the first.
 
+Answer: A (recommended option)
 ---
 
 **Q16 · The agent can offer an hour that has already passed.**
@@ -1787,6 +1798,7 @@ there is no "not in the past" predicate, on the date or on the time. §9 step 5 
 | B. Filter in the procedure | `SlotDate > CAST(GETDATE() AS DATE) OR (SlotDate = today AND SlotStartTime > CAST(GETDATE() AS TIME))`. Correct at the source and fixes it for every future caller — but 🔴 **`GETDATE()` on Azure SQL is UTC, and Malaysia is UTC+8**, so it needs `AT TIME ZONE` to be right, and it is a portal change for a rule the agent can simply obey. |
 | C. Leave it | A patient is offered an appointment that started three hours ago, and a clinician's past hour is consumed. |
 
+Answer: A (recommended option)
 ---
 
 **Q17 · Nothing notices a message that fails to send.**
@@ -1798,6 +1810,7 @@ dropped from the sweep. 🟢 **Recommended: every WhatsApp node set to *Continue
 branch writing `lastReason` and adding the patient to the coordinator digest (Q15) instead of writing
 `lastOutboundAt`.** A patient who could not be reached must not be recorded as reached.
 
+Answer: A (recommended option)
 ---
 
 **Q18 · `hasAssessment` is returned by the API and used by nothing.**
@@ -1812,6 +1825,7 @@ A patient who has already been through an assessment and has no *future* appoint
 | B. Sweep them anyway | Defensible only if a second positive iFOBT should re-open a second assessment. 🔴 That is a clinical question, not a workflow one. |
 | C. Leave it unread and say so in §4.3 | Honest, and it leaves a field on the wire that means nothing — which is how the next builder ends up guessing. |
 
+Answer: A (recommended option)
 ---
 
 **Q19 · `SlotNotFound` is routed two different ways by two different sections.**
@@ -1823,6 +1837,7 @@ WF0 wins — escalate.** By the time WF0 runs, a clinician *and* a coordinator h
 `SlotNotFound` means the stored proposal no longer describes reality, which is a different and more
 worrying thing than the ordinary race `SlotTaken` describes. §4.4's row will be reworded to say so.
 
+Answer: A (recommended option)
 ---
 
 **Q20 · `crc_agent_events` — history, or not.**
@@ -1839,6 +1854,7 @@ patients about cancer screening, and it cannot be added retroactively. **Decline
 different plan for that audit trail** — note that `dbo.AuditTrails` records the *booking* and nothing about
 the conversation that led to it.
 
+Answer: A (recommended option)
 ---
 
 **Q21 · WF0 stores an `appointmentId` in a column that does not exist.**
@@ -1848,6 +1864,7 @@ WF0 node 4 says *"`stage = BOOKED`, store `appointmentId`"*, and §6.2's column 
 `POST /Patient/DeleteAppointment`, which §3.6 makes the only way to undo a booking, and losing it means
 finding the appointment by hand.
 
+Answer: A (recommended option)
 ---
 
 ### Group E — Carried over, still open
@@ -1858,11 +1875,15 @@ recommendation offered: this needs a legal answer, not an engineering one. 🔴 
 can invalidate the whole design, so answer it early. If opt-in is required, WF1's first message becomes a
 consent request and every branch in §6.3 gains a gate in front of it.
 
+Answer: No consent needed
+
 **Q23 · Out-of-hours.** WF1 fires at 09:00 MYT, but inbound replies arrive at any hour and WF2 answers
 immediately. 🟢 **Recommended: reply at any hour** — a worried patient at 2am is better served by an answer
 than by silence, the agent never says anything clinical, and every escalation path already ends at a human.
 **But cap the outbound sweep to business hours** so the *first* message of a conversation is never sent at
 night. Alternative: queue overnight inbound messages to 08:00, which needs a queue and a release schedule.
+
+Answer: A (recommended option)
 
 **Q24 · Language.** §9 mirrors English/Malay in free-form, but **templates are per-language in Meta and a
 missing translation is a send failure, not a fallback** (§5.10 step 3). Today the seven templates are
@@ -1871,12 +1892,16 @@ English-only, so every business-initiated message is English regardless of what 
 `crc_agent_state` set from the patient's first reply. **Alternative:** English-only templates and Malay
 free-form, which is inconsistent but honest — say so if you choose it, so nobody reports it as a bug.
 
+Answer: A (recommended option)
+
 **Q25 · `NO_PHONE` patients.** They become a coordinator digest and nothing more, in both this plan and
 `AgentApiPlan.md`'s open item 4. 🔴 The deeper problem is upstream: `Patient_Phone` is `VARCHAR(100) NOT
 NULL` and **nothing stops it being an empty string** — the register permits a patient with no way to be
 contacted. 🟢 **Recommended: the digest is the agent-side answer, and separately add phone validation to
 the portal's patient form** so the category stops growing. Out of scope for n8n; named because this API is
 what made it visible for the first time.
+
+Answer: A (recommended option)
 
 **Q26 · Key rotation** (§4.7). One key, no version, no overlap window, so rotating it is a hard cutover —
 n8n's credential must change in the same minute as the App Service setting. 🟢 **Recommended: make
@@ -1885,6 +1910,8 @@ portal change, it is the only change that also solves per-consumer keys later
 (`CoreFlow.md` §13.7 recommends those first if a second consumer appears), and doing it before the first
 rotation is much cheaper than doing it during one. **Alternative:** accept the hard cutover and write the
 runbook now.
+
+Answer: A (recommended option)
 
 **Q27 · `AGENT_SERVICE` is a real ADMIN account** — `AgentApiPlan.md` open item 1, never answered, and the
 only item in this section that is about the portal's own security rather than the agent's behaviour. It is
@@ -1895,6 +1922,7 @@ no policy admits (all five require `1`, `2` or `3`), so even a successful login 
 page refuses. It costs one digit and one line in `Seed_Users.sql`; the only cost is that the account shows
 an unknown type on any screen that maps the integer to a name, and no screen lists it today.
 
+Answer: A (recommended option)
 ---
 
 ### 🔴 What is NOT in this list, and is deliberately out of scope
