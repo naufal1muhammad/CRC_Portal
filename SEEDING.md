@@ -65,7 +65,7 @@ into the `.dacpac` at **build** time, so the deployed server never needs the see
 | `LU_STAFFTYPE` | 5 | Staff types (three-letter ids) |
 | **Eleven lookups total** | **77** | |
 | `LU_LOCATION` | 3,242 | 16 states + 442 cities + 2,784 postcodes |
-| `Users` | 2 | The SUPERUSER above (`User_Type = 1`, `Staff_ID` NULL) and `AGENT_SERVICE` (`User_Type = 2`, `Staff_ID` NULL) |
+| `Users` | 2 | The SUPERUSER above (`User_Type = 1`, `Staff_ID` NULL) and `AGENT_SERVICE` (`User_Type = 9`, `Staff_ID` NULL) — **9 is a type no policy admits**, so the machine account is deliberately unusable as a login |
 
 After a publish, `IDENT_CURRENT('dbo.LU_LOCATION')` sits at 3242, so the next location created through the
 UI gets 3243 and does not collide.
@@ -86,6 +86,19 @@ plaintext is not recoverable. The account is resolved **by username**, never by 
 trail. The guard on `[Username]` means a re-publish never re-seeds it; if it is deleted, the next publish
 recreates it with a new random password nobody knows, which is fine, because nothing depends on its password
 or its id. See [`CoreFlow.md`](CoreFlow.md) §13.3.
+
+**`User_Type = 9` is deliberate: no policy admits it.** All five of the portal's policies are claim checks
+over `"1"`, `"2"` or `"3"` (`CoreFlow.md` §2.3), so even a successful login as this account would land on a
+principal every page refuses. The Agent API does not care — `AgentApiKeyFilter` resolves the row by username
+and uses its `User_ID` as the audit actor, and no action on that controller applies a policy. The one visible
+cost is that the SUPERUSER user-management page renders this row's type as the literal text **`9`**, because
+`AccountController`'s two integer-to-name mappers both fall back to `_ => t.ToString()`.
+
+🔴 **`Seed_Users.sql` carries the one `UPDATE` in the whole seed, and this is what it is for.** The insert is
+guarded on `[Username]` and never re-seeds, so editing it alone would leave every already-published database
+— local and Azure — holding the old `User_Type = 2`. A guarded `UPDATE … WHERE [Username] = 'AGENT_SERVICE'
+AND [User_Type] <> 9` corrects them on the next publish, touches no other row, never writes a password, and
+writes nothing at all once the value is already 9.
 
 ## What is deliberately NOT seeded
 
@@ -108,7 +121,9 @@ first upload works.
 
 ## Adding a lookup value later
 
-A publish only ever **INSERTs missing rows**. It never updates and never deletes an existing one.
+A publish only ever **INSERTs missing rows**. It never updates and never deletes an existing one — with
+**exactly one exception, and it is not a lookup**: the guarded `UPDATE` that re-types `AGENT_SERVICE` to
+`User_Type = 9` (see above). Nothing else in any seed file updates anything.
 
 So adding a value to a live installation takes **two** steps:
 

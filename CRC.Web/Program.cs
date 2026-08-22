@@ -94,11 +94,15 @@ builder.Services.Configure<DocumentStorageOptions>(
     builder.Configuration.GetSection(DocumentStorageOptions.SectionName));
 builder.Services.AddSingleton<IDocumentStorage, AzureBlobDocumentStorage>();
 
-// The Agent API's shared key, bound from the "Agent" section exactly as DocumentStorage above is bound
-// from its own. appsettings.json carries an empty placeholder and appsettings.Development.json a
-// development-only value; the real key is the App Service app setting Agent__ApiKey (TWO underscores),
-// set by hand and never in source control. An empty key is treated as a misconfiguration by the filter
-// and refuses every request — it never means "no key required". See CoreFlow.md §13.6.
+// The Agent API's shared keys, bound from the "Agent" section exactly as DocumentStorage above is bound
+// from its own. Agent:ApiKey is an ARRAY — the filter accepts ANY member — so that two keys can be valid
+// at once and a rotation is an overlap rather than a hard cutover (§13.6). appsettings.json carries an
+// empty array and appsettings.Development.json a single development-only value; the real keys are the App
+// Service app settings Agent__ApiKey__0, Agent__ApiKey__1, … — TWO underscores between every segment,
+// with the index as a further segment — set by hand and never in source control. 🔴 A SCALAR
+// Agent__ApiKey now binds to NOTHING, so the indexed setting must be in place BEFORE the web app is
+// published. An absent, empty or all-blank array is treated as a misconfiguration by the filter and
+// refuses every request — it never means "no key required". See CoreFlow.md §13.6.
 builder.Services.Configure<CRC.Api.AgentApiOptions>(
     builder.Configuration.GetSection(CRC.Api.AgentApiOptions.SectionName));
 

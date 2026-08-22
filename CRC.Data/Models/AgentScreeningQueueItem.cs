@@ -46,11 +46,17 @@ namespace CRC.Data.Models
         // column is null, so a string? here would only invite a null-forgiving operator downstream.
         public string NricLast4 { get; set; } = string.Empty;
 
-        // NOT nullable: a CASE with an ELSE branch, so every row gets one of five literals —
-        // NO_PHONE, UNRECORDED, INCOMPLETE, POSITIVE, NEGATIVE. NO_PHONE is tested FIRST, ahead of every
-        // clinical branch, because a patient with no number is one the agent can do nothing with whatever
-        // their result says. Note the sixth state that reports as UNRECORDED: status = 1 with a NULL
-        // result — the test is done and the result has not been entered (CoreFlow.md §13.1, finding 4).
+        // NOT nullable: a CASE with an ELSE branch, so every row gets one of six literals —
+        // NO_PHONE, UNRECORDED, INCOMPLETE, POSITIVE, NEGATIVE, RESULT_PENDING. NO_PHONE is tested FIRST,
+        // ahead of every clinical branch, because a patient with no number is one the agent can do nothing
+        // with whatever their result says.
+        //
+        // RESULT_PENDING is the CASE's ELSE, and it is reachable in exactly one state: status = 1 with a
+        // NULL result — the sample is done and the lab result has not been entered. (A NULL result matches
+        // neither `= 1` nor `= 0`, because a comparison with NULL is UNKNOWN rather than false.) It carries
+        // its OWN label, so that state is no longer indistinguishable from UNRECORDED, which means nothing
+        // was recorded at all — one is "chase the lab", the other is "chase the patient", and the caller
+        // branches on the difference (CoreFlow.md §13.1, finding 4).
         public string ScreeningState { get; set; } = string.Empty;
 
         // 🔴 NOT nullable, and this is the one place the "aggregate over a possibly empty set" rule in

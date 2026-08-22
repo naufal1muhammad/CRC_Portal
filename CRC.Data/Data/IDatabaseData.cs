@@ -1528,8 +1528,11 @@ namespace CRC.Data.Data
         // the three methods below it.
         //
         // The three derived columns, because two of them are what the caller branches on:
-        //   • ScreeningState — NO_PHONE / UNRECORDED / INCOMPLETE / POSITIVE / NEGATIVE, one definition of
-        //     "positive" computed in one place. NO_PHONE is tested FIRST, ahead of every clinical branch.
+        //   • ScreeningState — NO_PHONE / UNRECORDED / INCOMPLETE / POSITIVE / NEGATIVE / RESULT_PENDING,
+        //     one definition of "positive" computed in one place. NO_PHONE is tested FIRST, ahead of every
+        //     clinical branch. RESULT_PENDING is the CASE's ELSE and means status = 1 with a NULL result:
+        //     the sample is done, the lab result is not in yet — distinct from UNRECORDED, which means
+        //     nothing was recorded at all.
         //   • OpenAppointmentCount — future 'Scheduled' appointments for this patient. 🔴 IT IS THE ONLY
         //     DUPLICATE-BOOKING GUARD THERE IS: dbo.PatientAppointment has nothing unique except its
         //     primary key (§3.9), so nothing else would notice a re-run of the sweep booking a patient

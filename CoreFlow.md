@@ -199,6 +199,11 @@ user types; the three values are a convention held in `Program.cs`, in `AccountC
 `RegisterUserRequest` DTO's `= 3` default. A row with `User_Type = 7` inserts fine, satisfies no policy, and
 its holder can reach only the actions that require authentication alone.
 
+🔴 **The portal now has exactly one such row, on purpose: `AGENT_SERVICE`, seeded `User_Type = 9`** (§3.3).
+It is the Agent API's audit actor, it is never logged into, and the unusable type is the point — see
+**§13.3** for why a type no policy admits is the right one for a machine account whose writes never pass
+through a policy at all.
+
 The claims are built in **exactly one place** — `AccountController.Login` (POST), after the password
 verifies — and are the only thing the rest of the product ever sees:
 
@@ -611,11 +616,25 @@ Three consequences:
   must not already be linked to another account. **Those are checks in one procedure, not constraints**, so
   a direct `INSERT` bypasses all of them.
 
-#### The seeded row
+#### The two seeded rows
 
-Exactly one row is seeded (`CRC.Database/Scripts/Seed_Users.sql`, guarded on `Username`, so a re-publish
-never resets it): `SUPERUSER` / `ChangeMe!123`, `User_Type = 1`, `Staff_ID` NULL. See `SEEDING.md`. Nothing
-in the application forces that password to be changed — there is no `MustChangePassword` column (§2.7).
+**Two** rows are seeded, both by `CRC.Database/Scripts/Seed_Users.sql` and both guarded on `Username`, so a
+re-publish never resets either. See `SEEDING.md`, which is authoritative.
+
+| `Username` | `User_Type` | `Staff_ID` | What it is |
+|---|---|---|---|
+| `SUPERUSER` | **1** | NULL | The bootstrap human login, password `ChangeMe!123`. Nothing in the application forces that password to be changed — there is no `MustChangePassword` column (§2.7). |
+| `AGENT_SERVICE` | **9** | NULL | A **machine** account, never logged into: the audit actor every Agent API write is attributed to. `9` is a type **no policy admits** — deliberately unusable as a login. Its password is a random secret generated once and discarded. **§13.3** is what it is for. |
+
+🔴 **This sub-section said "Exactly one row is seeded" and described only `SUPERUSER` from the moment the
+second row shipped** (`AgentApiPlan.md` Prompt 0) until it was corrected here. The seed file is one file and
+the count is one number, and nothing checks either — which is the argument for reading `SEEDING.md` rather
+than this table when the question is "what does a published database actually contain".
+
+`Seed_Users.sql` also carries **the only `UPDATE` in any seed file**: a guarded
+`UPDATE … SET [User_Type] = 9 WHERE [Username] = 'AGENT_SERVICE' AND [User_Type] <> 9`. It exists because
+the insert-guard on `Username` means an edit to the insert corrects nothing on a database that already holds
+the row. It touches no other row and never writes a password.
 
 ### 3.4 `dbo.Staff`
 
@@ -5490,9 +5509,13 @@ CRC.Api/             net10.0 CLASS LIBRARY — Microsoft.NET.Sdk, NOT Microsoft.
                      🔴 NO Program.cs, NO appsettings.json, NO launchSettings.json, NO port, NO second
                      process. CRC.Web loads its controller as an MVC application part. It NEVER
                      references CRC.Web — see the note above the tree.
-  AgentApiOptions.cs                the ONE setting: Agent:ApiKey, bound from the "Agent" section by
-                                    CRC.Web/Program.cs, exactly as DocumentStorageOptions is bound.
-                                    🔴 In Azure it is Agent__ApiKey — TWO underscores (§13.6).
+  AgentApiOptions.cs                the ONE setting: Agent:ApiKey, a string[] — ANY member is accepted, so
+                                    two keys are valid at once and a rotation is an overlap rather than a
+                                    hard cutover. Bound from the "Agent" section by CRC.Web/Program.cs,
+                                    exactly as DocumentStorageOptions is bound. Defaults to an EMPTY ARRAY,
+                                    never null. 🔴 In Azure it is Agent__ApiKey__0 (then __1, …) — TWO
+                                    underscores between EVERY segment, and a scalar Agent__ApiKey binds to
+                                    nothing at all (§13.6).
   Controllers/
     AgentApiController.cs           all EIGHT endpoints under /api/agent: seven GETs (§13.4) and the one
                                     POST (§13.5). Four class-level attributes, each a deliberate hole in
@@ -5607,8 +5630,9 @@ CRC.Web/             net10.0 MVC · Serilog · Azure.Storage.Blobs
   appsettings.json                  ConnectionStrings:CRC_DB, DocumentStorage, Agent, Account:{Password,
                                     SessionTimeout,LoginLockout} — the lockout and password thresholds
                                     are config, not database policy (§2.6). 🔴 Agent:ApiKey is an EMPTY
-                                    placeholder here, and empty FAILS CLOSED; the real key is the App
-                                    Service app setting Agent__ApiKey (§13.6).
+                                    ARRAY here, and empty FAILS CLOSED — as does an array whose only
+                                    members are blank; the real keys are the App Service app settings
+                                    Agent__ApiKey__0, __1, … (§13.6).
 ```
 
 **Two folder facts that surprise people, both deliberate:**
@@ -6064,14 +6088,29 @@ caller re-runs slot discovery. This is the same two-reads-of-one-thing distincti
 `/Patient/GetAppointmentSlots` and the transactional read — one paints a picture, one decides — and the
 agent's read is firmly the first kind.
 
-**4. `ScreeningState` has a sixth case that reports as one of the five, and it is worth knowing.** The
-`CASE` tests `NO_PHONE` first — deliberately, because a patient with no number is one the agent can do
-nothing with whatever their result says, and ranking it below `POSITIVE` would put them in the "message
-them" bucket that no message can reach. But the fall-through `ELSE 'UNRECORDED'` catches a genuinely
-different state: **`Patient_iFOBTStatus = 1` with `Patient_iFOBTResults` still `NULL`** — the test is
-complete and the result has not been entered — and reports it identically to "nothing recorded at all".
-That is the sketch's behaviour and it is kept, because both states mean "do not message this patient about
-a result"; it is written down here so nobody reads `UNRECORDED` as proof that no test was done.
+**4. `ScreeningState` has SIX values, because the `CASE`'s `ELSE` is reachable in exactly one state and now
+carries its own name: `RESULT_PENDING`.** The `CASE` tests `NO_PHONE` first — deliberately, because a
+patient with no number is one the agent can do nothing with whatever their result says, and ranking it
+below `POSITIVE` would put them in the "message them" bucket that no message can reach.
+
+**The reachability proof is the valuable half, and it is what makes the label correct.** Walk what is left
+after each branch has taken its rows: `Patient_iFOBTStatus IS NULL` is caught (`UNRECORDED`), `= 0` is
+caught (`INCOMPLETE`), so anything still falling through has `status = 1`; `Patient_iFOBTResults = 1` is
+caught (`POSITIVE`), `= 0` is caught (`NEGATIVE`), and **a `NULL` result satisfies neither of those two,
+because a comparison with `NULL` is `UNKNOWN` rather than false and `CASE` takes only branches that are
+`TRUE`.** So the `ELSE` fires **if and only if `Patient_iFOBTStatus = 1 AND Patient_iFOBTResults IS
+NULL`** — the sample is done and the lab result is not in yet.
+
+**Why it was renamed rather than left.** Both states mean "do not message this patient about a result",
+which is exactly why the original sketch collapsed them into one label — **that merge was deliberate when
+it was written, not an oversight.** But they mean **different things to a human**: `RESULT_PENDING` is
+*chase the lab*, `UNRECORDED` is *chase the patient*. n8n's WF1 branches on this value, so a label that
+merges them forces the agent to guess which of the two it is looking at, and the guess it made was telling
+a patient who is waiting on a result that their test was never done. **This is a decision reversed with
+new information, not a bug fixed** — nothing about the `CASE`'s structure or ordering changed, only the
+string in the `ELSE` (`Nucentra_WhatsApp_Agent_Plan.md` §4.8 change 1; `AgentApiPlan.md` Prompt 5).
+`UNRECORDED` keeps its own branch — `Patient_iFOBTStatus IS NULL` — and still means nothing was recorded
+at all.
 
 **5. `Patient_Phone` is `NOT NULL`, so `NO_PHONE` is about an empty string.** `NOT NULL` rejects a `NULL`
 and accepts `''` (§3.8), and the portal's sixteen "mandatory field" checks live in C#, not in the schema.
@@ -6244,7 +6283,7 @@ never binds a parameter and (step 4) never causes a query. It is reached with
 
 | # | Condition | Answer | Logged |
 |---|---|---|---|
-| 1 | `Agent:ApiKey` is null or whitespace | **401** | `AgentRequestRejected(…, "not configured")` **and `_logger.LogError`** |
+| 1 | `Agent:ApiKey` holds **no usable key** — the array is null, has no members, or every member is blank | **401** | `AgentRequestRejected(…, "not configured")` **and `_logger.LogError`** |
 | 2 | `X-Agent-Key` absent, or present and empty | **401** | `AgentRequestRejected(…, "missing key")` |
 | 3 | The two keys do not match | **401** | `AgentRequestRejected(…, "invalid key")` |
 | 4 | — *only now is the database touched* — | | |
@@ -6253,10 +6292,25 @@ never binds a parameter and (step 4) never causes a query. It is reached with
 | 7 | — | *action runs* | `AgentRequestAuthenticated(…, endpoint, serviceUserId)` |
 
 **Step 1 fails closed, and it is the misconfiguration case, not a caller error.** An empty key never means
-"no key required"; it means the app setting is missing or misspelled — `Agent__ApiKey` needs **two**
-underscores (§13.6) — and an API whose key is the empty string is an open API. The caller correctly gets an
-undifferentiated 401, but this also writes an **error** to `app-*.log` naming the setting, because
-otherwise a mistyped deployment setting looks exactly like an agent using a stale key.
+"no key required"; it means the app setting is missing or misspelled — `Agent__ApiKey__0` needs **two**
+underscores between every segment (§13.6) — and an API whose key is the empty string is an open API. The
+caller correctly gets an undifferentiated 401, but this also writes an **error** to `app-*.log` naming the
+setting, because otherwise a mistyped deployment setting looks exactly like an agent using a stale key.
+
+🔴 **The refusal condition is one expression, and it has to cover three shapes.** `ApiKey` is a `string[]`,
+so "not configured" is a null array, an array with no members, **and** an array whose only members are
+blank — `[""]` is the one a naive `.Length == 0` check lets through, and letting it through is an open API.
+The filter filters the blanks out once and tests what survives, which collapses all three into a single
+`Length == 0`; the surviving array is also the one step 3 compares against, so a blank member can never be
+matched by a caller sending a blank header. **This is the property that is easiest to lose when a scalar
+becomes a collection**, which is why both `[]` and `[""]` are driven against a running site rather than
+reasoned about.
+
+**Step 3 loops the usable keys and accumulates the result** — deliberately no early `return true` on the
+first match, using `|=` rather than `||=` so it does not short-circuit. An early exit would leak *which*
+key matched through timing; a caller holding a valid key already knows which one they hold, so the
+practical risk is close to nil. It is written this way because it costs one line and removes the need to
+have the argument again.
 
 **Step 2 treats an empty header value as a missing one.** Verified: a request sending `X-Agent-Key` with no
 value is logged `Reason=missing key`, not `invalid key`.
@@ -6311,7 +6365,7 @@ Everything above is ordinary API-key plumbing. **This part is the one that fails
 is audited as user `0` — nobody. **No error. No failed request. A corrupt audit trail on a clinical
 system**, discovered whenever somebody first needs it.
 
-**The fix, as built.** A real `dbo.Users` row — `Username = 'AGENT_SERVICE'`, `User_Type = 2`,
+**The fix, as built.** A real `dbo.Users` row — `Username = 'AGENT_SERVICE'`, **`User_Type = 9`**,
 `Staff_ID NULL`, a random password generated once and thrown away so the account cannot be logged into —
 seeded by `CRC.Database/Scripts/Seed_Users.sql` guarded on `Username`, and resolved **per request** by
 `spAgentUsers_GetServiceAccount` through `IDatabaseData.GetAgentServiceAccountAsync()`. The filter builds a
@@ -6333,6 +6387,34 @@ the request straight back into the failure above. Hence `InvariantCulture`. `"Us
 five policies check (§2.1) and is taken from the row rather than hard-coded, so changing the seeded
 account's type changes what the agent may reach in one place; no action on this controller uses a policy
 today.
+
+##### 🔴 `User_Type = 9` — a type no policy admits, and why that is the right one
+
+**The account never passes through a policy, so an administrator type bought it nothing and cost it a login
+path.** `AgentApiKeyFilter` resolves the row by username and uses its `User_ID` as the audit actor;
+`AgentApiController` carries `[AllowAnonymous]` and `[ServiceFilter]` and **not one of its eight actions
+carries `[Authorize(Policy = …)]`**. Meanwhile `spUsers_ValidateLogin` selects any row by username without
+filtering on type (§5.3), so while it was seeded `User_Type = 2` anyone who ever learned or reset its
+password held a working portal **administrator**. Its password is a random secret generated once and
+discarded, so that was theoretical rather than live — and the hardening costs one digit. **9 satisfies none
+of the five policies**, every one of which is a `RequireClaim("UserType", …)` over `"1"`, `"2"` or `"3"`
+(§2.3), so even a successful login lands on a principal every page refuses. Nothing constrains the column
+(§2.1, §3.3), so 9 inserts exactly as cleanly as 2 did.
+
+**The cost is one screen, and it is not the one the source plan predicted.**
+`Nucentra_WhatsApp_Agent_Plan.md` §4.8 says *"No screen lists it today"*; that is false.
+`GET /Account/GetUsers` (`SuperUserOnly`, §4.3) reads `spUsers_GetAll`, which returns **every** `dbo.Users`
+row including this one, and `wwwroot/js/account/register.js` renders `userTypeName` into the
+user-management table. What makes the change safe is that **both** integer-to-name mappers in
+`AccountController` — `UserTypeName` inside `GetUsers`, and `UserTypeDisplay` — end in `_ => t.ToString()`,
+so an unrecognised type renders as the bare number rather than throwing or rendering blank. **The SUPERUSER
+user list therefore shows `AGENT_SERVICE` with the literal text `9`** where every other row reads
+`SUPERUSER`, `ADMIN` or `STAFF`. Confirmed on screen, not inferred from the switch expression.
+
+§2.1's note that an unrecognised type produces `UserType = "9"` **and** `Role = "STAFF"` — the role
+derivation's final branch is an `else` — applies to `AccountController`'s **login** path, which this account
+cannot reach. This filter never goes near it: it builds exactly the three claims above and **adds no role
+claim at all**.
 
 ##### Why by-username, and never a configured id
 
@@ -6456,10 +6538,32 @@ to something no compiler here can see.
 ```
 
 🔴 **`screeningState` and `openAppointmentCount` are named exactly that because the daily sweep branches on
-both.** `screeningState` selects the message (`NO_PHONE` / `UNRECORDED` / `INCOMPLETE` / `POSITIVE` /
-`NEGATIVE`); `openAppointmentCount` is **the only duplicate-booking guard in nucentra** (§3.9), and non-zero
+both.** `screeningState` selects the message and is **one of six literals** — `NO_PHONE` / `UNRECORDED` /
+`INCOMPLETE` / `POSITIVE` / `NEGATIVE` / `RESULT_PENDING`, where **`RESULT_PENDING` is `Patient_iFOBTStatus
+= 1` with `Patient_iFOBTResults` still `NULL`: the sample is done, the lab result is not in yet** (§13.1,
+finding 4). `openAppointmentCount` is **the only duplicate-booking guard in nucentra** (§3.9), and non-zero
 means the sweep skips that patient. `iFobtStatus` and `iFobtResult` stay **nullable on the wire** — a JSON
 `null` is "never recorded", which is a different fact from `false`, and the agent has to tell them apart.
+
+The `PAT-000010` row above still reads `"screeningState": "UNRECORDED"` and is still correct: its
+`iFobtStatus` is `null`, which is the `Patient_iFOBTStatus IS NULL` branch, not the `ELSE`. That branch was
+never the one that changed.
+
+##### 🔴 ADDING A VALUE TO THIS ENUM IS A BREAKING CHANGE, AND NO COMPILER HERE CAN SEE IT
+
+`screeningState` is a **string passed straight through** — SQL computes it, Dapper maps it onto
+`AgentScreeningQueueItem.ScreeningState`, the action copies it onto the wire. Nothing in this repository
+parses it, switches on it or validates it, so **adding a sixth value broke no build, failed no test and
+produced no warning.** The consumer that *does* switch on it lives outside this repository, in n8n.
+
+**A sixth value arriving at a Switch node with five branches falls through to whatever that node's default
+is** — in n8n, the "extra"/fallback output, or nothing at all if none is wired, which silently drops the
+patient from the sweep. Adding `RESULT_PENDING` was free **only because n8n does not exist yet**: WF1 is
+unbuilt, so there is no five-branch Switch to fall through. That is a window, not a property. **Once WF1 is
+live, a seventh state costs a coordinated change on both sides** — the label ships in a DACPAC publish and
+the branch ships in an n8n workflow, and between those two deployments the new state is being handled by a
+default nobody chose. Anyone adding one should say so to whoever owns the workflow first, and treat the two
+deployments as one change.
 
 **2 — `GET /api/agent/patients/by-phone?phone=60166542542`**
 
@@ -6951,40 +7055,58 @@ None of it is a code change, and none of the portal steps are repeated here:
 **`Nucentra_Azure_Deployment_Guide.md` is the runbook the owner performs by hand**, and it owns which blade
 to open. This section says what has to be true, and why.
 
-#### The one app setting: `Agent__ApiKey`
+#### The one app setting: `Agent__ApiKey__0`
 
-The Agent API's entire configuration is a single value, bound in `CRC.Web/Program.cs` from the `Agent`
-section onto `CRC.Api.AgentApiOptions.ApiKey` — the same shape `DocumentStorageOptions` is bound in two
-lines above it.
+The Agent API's entire configuration is a single setting — **an ARRAY of keys**, bound in
+`CRC.Web/Program.cs` from the `Agent` section onto `CRC.Api.AgentApiOptions.ApiKey` (`string[]`), the same
+shape `DocumentStorageOptions` is bound in two lines above it. **The filter accepts any member**, which is
+what makes a rotation an overlap rather than a cutover.
 
 | Where | Name | Value |
 |---|---|---|
-| `CRC.Web/appsettings.json` | `Agent:ApiKey` | **`""`** — an empty placeholder, deliberately. This file is in source control |
-| `CRC.Web/appsettings.Development.json` | `Agent:ApiKey` | a development-only value, also in source control, and worthless if it leaks |
-| **Azure App Service** | **`Agent__ApiKey`** | 🔴 the real key. An **app setting**, set by hand, never in a file |
+| `CRC.Web/appsettings.json` | `Agent:ApiKey` | **`[]`** — an empty array, deliberately. This file is in source control |
+| `CRC.Web/appsettings.Development.json` | `Agent:ApiKey` | a one-member array holding a development-only value, also in source control, and worthless if it leaks |
+| **Azure App Service** | **`Agent__ApiKey__0`** (then `__1`, `__2`, … for more) | 🔴 the real keys. **App settings**, set by hand, never in a file |
 
-🔴 **TWO UNDERSCORES — `Agent__ApiKey`, not `Agent_ApiKey`.** App Service expresses a configuration colon
-as a **double** underscore, so `Agent__ApiKey` binds to `Agent:ApiKey` and `Agent_ApiKey` binds to nothing
-at all. **This is the same rule `DocumentStorage__ConnectionString` follows, and
+🔴 **TWO UNDERSCORES — `Agent__ApiKey__0`, not `Agent_ApiKey_0`.** App Service expresses a configuration
+colon as a **double** underscore, so `Agent__ApiKey__0` binds to `Agent:ApiKey:0` and a single underscore
+binds to nothing at all. **This is the same rule `DocumentStorage__ConnectionString` follows, and
 [`DOCUMENTSTORAGE.md`](DOCUMENTSTORAGE.md)'s Configuration section owns it** — it is pointed at here rather
-than restated, because there is one rule and it should have one home. It also goes under **App settings**,
-not under **Connection strings**; those are two different lists in the portal and are not interchangeable.
+than restated, because there is one rule and it should have one home. **The index is simply a further
+segment**, so the doubling applies in *both* places on the same name: `Agent` `__` `ApiKey` `__` `0`. It
+also goes under **App settings**, not under **Connection strings**; those are two different lists in the
+portal and are not interchangeable.
 
-🔴 **An empty key FAILS CLOSED, which is correct and is exactly what makes it confusing to debug.** It is
-`AgentApiKeyFilter`'s **first** branch (§13.3): a null-or-whitespace `Agent:ApiKey` answers **401** before
-the request's header is even read, so **every** call the agent makes is refused. A single-underscore app
-setting therefore produces no startup error, no warning, no 500 and nothing that names configuration — it
-produces an API that says `Unauthorized.` to a caller holding the correct key, which is indistinguishable
-at the caller's end from a stale key.
+🔴 **A SCALAR `Agent__ApiKey` NOW BINDS TO NOTHING.** It bound correctly while `ApiKey` was a `string`;
+against a `string[]` it matches no element and the array comes back empty. That is a **one-time hard
+cutover**, and it is why the indexed setting must exist **before** the web app is published — the publish
+order below is not a preference. The failure it produces is a clean 401 with an error in `app-*.log`, not
+an open door, which is the next paragraph's property doing its job.
+
+🔴 **An unconfigured key FAILS CLOSED, which is correct and is exactly what makes it confusing to debug.**
+It is `AgentApiKeyFilter`'s **first** branch (§13.3), and with an array it must catch **three** shapes, all
+of which mean "not configured": the array is **null**, the array has **no members**, or **every member is
+blank or whitespace**. All three answer **401** before the request's header is even read, so **every** call
+the agent makes is refused. `[""]` — one blank member — is the case a naive `.Length == 0` check would let
+through, and letting it through would be an open API; the filter filters the blanks out first and then
+tests what survives, which collapses all three into one expression. A mistyped app setting therefore
+produces no startup error, no warning, no 500 and nothing that names configuration — it produces an API
+that says `Unauthorized.` to a caller holding the correct key, which is indistinguishable at the caller's
+end from a stale key.
 
 **Where the tell is: `CRC.Web/Logs/app-*.log`.** That branch, and only that branch, also writes an
 **error** through `ILogger<AgentApiKeyFilter>` naming the setting:
 
 ```
-Agent API is not configured: Agent:ApiKey is empty, so every request to GET /api/agent/branches is
-refused. In Azure the value is the App Service app setting Agent__ApiKey (TWO underscores); locally it is
-Agent:ApiKey in appsettings.Development.json.
+Agent API is not configured: Agent:ApiKey holds no usable key (the array is absent, empty, or every member
+is blank), so every request to GET /api/agent/branches is refused. In Azure the value is the App Service
+app setting Agent__ApiKey__0 — TWO underscores between every segment, and the __0 index is required because
+the setting is an ARRAY; a scalar Agent__ApiKey binds to nothing. Add Agent__ApiKey__1 for a second key
+during a rotation. Locally it is the Agent:ApiKey array in appsettings.Development.json.
 ```
+
+**That message names the INDEXED form deliberately.** An operator reading this line is about to go and add
+the setting it names, and `Agent__ApiKey` is now the one that does not work.
 
 There is a matching `AUDIT Agent API request rejected. … Reason=not configured` line in `audit-*.log`. The
 other two 401 reasons — `missing key` and `invalid key` — write **only** the audit line and no error. So
@@ -7014,8 +7136,11 @@ empty but wrong about a named person. A missing **row**, by contrast, is a `503`
    🔴 **The order is not a preference.** Publish the web app first and every agent request answers `503` —
    the key is fine, the account is not there — which is precisely the loud failure §13.3 exists to
    produce, but there is no reason to produce it on purpose.
-2. **Set `Agent__ApiKey`** in App Service → Environment variables → **App settings**, then Apply. The app
-   restarts, about thirty seconds.
+2. **Set `Agent__ApiKey__0`** in App Service → Environment variables → **App settings**, then Apply. The
+   app restarts, about thirty seconds. 🔴 **Before** step 3, not after: a scalar `Agent__ApiKey` left over
+   from an earlier deployment binds to nothing against the array, so publishing the web app first leaves
+   every agent request answering `401` until the setting is corrected. Fail-closed and logged, but an
+   outage.
 3. **Publish `CRC.Web`**, with **"Remove additional files at destination" UNCHECKED**, as the deployment
    guide says. That box is off to protect `site/wwwroot/Logs/` — up to 365 days of `audit-*.log`, which is
    where every agent request's audit line lives (§9.2, §13.3). It is not a setting to reconsider for this
@@ -7047,13 +7172,25 @@ last four in one response (§13.4), `/patients/by-phone` turns a phone number in
 (§13.5). It stays that way **until somebody rotates the key** — there is no expiry, no revocation list and
 nothing that notices an unexpected caller.
 
-**Rotation is one setting plus a restart, and no code change**: change `Agent__ApiKey` in App Service,
-Apply, and the app comes back on the new value. That is worth knowing **before** it is needed rather than
-during. It has one sharp edge worth knowing at the same time: there is **one** key, with no version and no
-overlap window, so a rotation is a **hard cutover** and n8n must be updated in the same minute. Making that
-overlappable is a small change — `AgentApiOptions.ApiKey` becomes a string array and the filter accepts any
-member — and it is a change to make *before* the first rotation, not during one (`AgentApiPlan.md`, open
-item 3).
+**Rotation is an OVERLAP, not a cutover, and it is no code change.** `Agent:ApiKey` is an array and the
+filter accepts any member, so two keys are valid at once and the caller can be moved between them at
+leisure. The procedure:
+
+1. **Add `Agent__ApiKey__1`** with the new key, alongside the existing `Agent__ApiKey__0`. Apply. **Both
+   keys now work**, and nothing has broken.
+2. **Move n8n's Header Auth credential to the new key**, and confirm — a `Test-AgentApi.ps1` run with the
+   new key, or one real request.
+3. **Remove `Agent__ApiKey__0`.** Apply. The old key is now refused.
+
+**Every Apply restarts the app — about thirty seconds each**, so a rotation is two restarts rather than
+one. That is the price of never having a minute in which no valid key exists. Renumbering afterwards
+(`__1` → `__0`) is cosmetic and costs a third restart; the indices are just binding keys and nothing reads
+them in order.
+
+**What has NOT changed:** there is still **no expiry, no revocation list, and nothing that notices an
+unexpected caller** — a leaked key stays valid until somebody removes it from the app settings, and no log
+line can say which of the configured keys a request used, because they have no names (§13.7). The overlap
+window solves *rotation*, and only rotation.
 
 ### 13.7 What is deliberately not here
 
@@ -7094,19 +7231,23 @@ would consume a clinician's hour to create a record nobody can complete.
   Every one of those is `AdminOrSuper` or `SuperUserOnly` in the portal, and none of them is something a
   screening conversation needs.
 
-**No per-caller keys, no rotation schedule, no OAuth, and no rate limiting on `/api/agent/*`.** One key,
-one caller, no version, no expiry; the perimeter is §13.6's platform access restriction, on the argument
-that one control is easier to reason about than two half-controls. `CRC.Web` already has a rate limiter
+**No per-caller keys, no rotation schedule, no OAuth, and no rate limiting on `/api/agent/*`.** One
+*caller*, no version, no expiry; the perimeter is §13.6's platform access restriction, on the argument that
+one control is easier to reason about than two half-controls. `CRC.Web` already has a rate limiter
 installed with a `login-ip` policy (§2.6), so an `agent-api` policy would be about six lines and an
 attribute — it is left out, not overlooked.
 
-🔴 **If a second consumer ever appears, the first thing to reach for is PER-CALLER KEYS.** It is the
-smallest change of the four — an options property that is an array of named keys, and one loop in
-`AgentApiKeyFilter` where there is one comparison today. It is the only one that also solves rotation, because
-two simultaneously valid keys *are* an overlap window instead of a hard cutover. And it is the one without
-which the other three cannot even be measured: **with a single shared key, no line in any log can say
-which consumer made a request**, so `audit-*.log` stops being able to answer "who did this" the moment
-there are two of them — and that is the question this whole section of the portal exists to answer (§9).
+🔴 **If a second consumer ever appears, the first thing to reach for is still PER-CALLER KEYS — and HALF OF
+IT IS NOW BUILT.** `AgentApiOptions.ApiKey` **is** a `string[]`, and `AgentApiKeyFilter` **does** loop it,
+comparing the supplied value against every member in fixed time (§13.6). That half shipped for rotation:
+two simultaneously valid keys *are* an overlap window instead of a hard cutover, which is why this was
+always the recommendation that also solved rotation. **What is still missing is the NAME on each key** — a
+shape like `{ "n8n-whatsapp": "…", "reporting": "…" }` instead of a bare list — and, following from it,
+**the log line that says which consumer made the request**. Today `audit-*.log` records that *a* valid key
+was presented and cannot say which; with two consumers that is the moment it stops being able to answer
+"who did this", and that is the question this whole section of the portal exists to answer (§9). **The
+remaining work is genuinely smaller than it was** — the options shape and the log line, not the comparison
+loop — but it is the half that carries the identity, so the recommendation and its ranking are unchanged.
 **Rate limiting comes second**, and becomes urgent the moment the access restriction is not in place:
 without it the key is the only thing between the internet and `/patients/queue`, and a key can be
 brute-forced given enough requests. **OAuth comes last** — it buys a token lifetime and a scope model that

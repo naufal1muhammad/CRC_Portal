@@ -458,7 +458,7 @@ in place — §2.2's is the only one that does.
 
 **The second wave — `Nucentra_WhatsApp_Agent_Plan.md` §4.8:**
 
-- [ ] **Prompt 5** — `RESULT_PENDING`, the hardened `AGENT_SERVICE` type, and a key that is a list (§4.8 changes 1, 2, 3)
+- [x] **Prompt 5** — `RESULT_PENDING`, the hardened `AGENT_SERVICE` type, and a key that is a list (§4.8 changes 1, 2, 3)
 - [ ] **Prompt 6** — The patient form learns what a phone number looks like (§4.8 change 4)
 
 ---
@@ -1558,7 +1558,7 @@ DapperLayerPlan.md. DO NOT edit any .js, .cshtml or .sql file. DO NOT add an end
 
 ## Prompt 5 — `RESULT_PENDING`, a service account no policy admits, and a key that is a list
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** Prompts 0–4
 **Source:** `Nucentra_WhatsApp_Agent_Plan.md` §4.8 changes **1, 2 and 3**
 
@@ -2081,7 +2081,9 @@ a production key, and each one is recorded here so it is not discovered later.
 item **3** → Prompt 5 change 3, item **4** → Prompt 6. They are left below **unedited**, because they are the
 record of what was open and why — each prompt ticks its own when it lands.
 
-1. **🔴 `AGENT_SERVICE` is a real ADMIN account.** *(Decided → **Prompt 5**, change 2: `User_Type = 9`.)* This plan follows `Nucentra_WhatsApp_Agent_Plan.md` §4.1 and
+1. **🔴 `AGENT_SERVICE` is a real ADMIN account.** ✅ **CLOSED — Prompt 5, change 2.** The row is seeded and
+   re-typed to `User_Type = 9`, a type no policy admits; a guarded `UPDATE` in `Seed_Users.sql` corrects
+   every already-published database on the next DACPAC publish. *(Decided → **Prompt 5**, change 2: `User_Type = 9`.)* This plan follows `Nucentra_WhatsApp_Agent_Plan.md` §4.1 and
    seeds it with `User_Type = 2`. `spUsers_ValidateLogin` selects any row by username, so **if anyone ever
    learns or resets its password, it is a working portal administrator.** The password is a discarded random
    secret, so this is theoretical — but there is a cheap hardening available: seed it with a `User_Type` that
@@ -2097,7 +2099,9 @@ record of what was open and why — each prompt ticks its own when it lands.
    **Revisit the moment the access restriction is not in place**, because then the key is the only thing
    between the internet and `/patients/queue`, and a key can be brute-forced given enough requests.
 
-3. **Key rotation.** *(Decided → **Prompt 5**, change 3: `ApiKey` becomes a `string[]`.)* There is one key, shared by one caller, with no version, no overlap window and no
+3. **Key rotation.** ✅ **CLOSED — Prompt 5, change 3.** `AgentApiOptions.ApiKey` is a `string[]`, the filter
+   accepts any member, and two keys valid at once make a rotation an overlap instead of a hard cutover;
+   `CoreFlow.md` §13.6 carries the procedure. *(Decided → **Prompt 5**, change 3: `ApiKey` becomes a `string[]`.)* There is one key, shared by one caller, with no version, no overlap window and no
    expiry. Rotating it is a one-setting change plus a restart — and a hard cutover, so n8n must be updated in
    the same minute. If that is unacceptable, the change is to make `AgentApiOptions.ApiKey` a string array and
    have the filter accept any member, which allows an overlap. **Decide before the first rotation, not

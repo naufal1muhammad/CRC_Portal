@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "crc-web-https",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "CRC.Web", "--launch-profile", "https"],
+      "port": 7276,
+      "url": "https://localhost:7276"
+    }
+  ]
+}

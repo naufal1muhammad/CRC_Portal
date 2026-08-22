@@ -56,13 +56,33 @@ BEGIN
         -- rejects a NULL and accepts '' (CoreFlow.md 3.8). The ISNULL stays as a
         -- belt-and-braces guard; do not go looking for the null case, there is not
         -- one in the schema today.
+        --
+        -- SIX LITERALS, AND THE ELSE IS REACHABLE IN EXACTLY ONE STATE. The proof,
+        -- because the ELSE reads like a catch-all and is not one — walk what is
+        -- left after each branch has taken its rows:
+        --     phone blank                  -> NO_PHONE    (caught, first)
+        --     Patient_iFOBTStatus IS NULL  -> UNRECORDED  (caught)
+        --     Patient_iFOBTStatus = 0      -> INCOMPLETE  (caught)
+        --   so anything still falling through has status = 1.
+        --     Patient_iFOBTResults = 1     -> POSITIVE    (caught)
+        --     Patient_iFOBTResults = 0     -> NEGATIVE    (caught)
+        --   and a NULL result satisfies NEITHER of those two: a comparison with
+        --   NULL is UNKNOWN, not false, and CASE takes only branches that are TRUE.
+        -- Therefore the ELSE fires if and only if
+        --     Patient_iFOBTStatus = 1 AND Patient_iFOBTResults IS NULL
+        -- — the sample is done and the lab result is not in yet. It has its own
+        -- label, RESULT_PENDING, and is no longer indistinguishable from
+        -- UNRECORDED, which means "nothing was recorded at all". Both states mean
+        -- "do not message this patient about a result", but they mean different
+        -- things to a human: chase the lab, versus chase the patient. n8n's WF1
+        -- switches on this value (CoreFlow.md 13.1 finding 4, 13.4).
         CASE
             WHEN LTRIM(RTRIM(ISNULL(pb.[Patient_Phone], ''))) = '' THEN 'NO_PHONE'
             WHEN pb.[Patient_iFOBTStatus] IS NULL                  THEN 'UNRECORDED'
             WHEN pb.[Patient_iFOBTStatus] = 0                      THEN 'INCOMPLETE'
             WHEN pb.[Patient_iFOBTResults] = 1                     THEN 'POSITIVE'
             WHEN pb.[Patient_iFOBTResults] = 0                     THEN 'NEGATIVE'
-            ELSE 'UNRECORDED'                                       -- status = 1 with a NULL result
+            ELSE 'RESULT_PENDING'                                   -- status = 1 with a NULL result
         END AS [ScreeningState],
 
         -- THE DUPLICATE-BOOKING GUARD, AND IT IS THE ONLY ONE THERE IS.

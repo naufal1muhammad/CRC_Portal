@@ -38,8 +38,11 @@
     there is no reason to smoke-test a clinical API over plain HTTP.
 
 .PARAMETER ApiKey
-    The value of Agent:ApiKey (locally, appsettings.Development.json) or of the App Service app setting
-    Agent__ApiKey — TWO underscores (§13.6). REQUIRED. No default.
+    ANY ONE member of Agent:ApiKey, which is an ARRAY — locally the array in appsettings.Development.json,
+    in Azure the App Service app settings Agent__ApiKey__0, Agent__ApiKey__1, … (🔴 TWO underscores between
+    every segment, and the __0 index is part of the name — a scalar Agent__ApiKey binds to nothing, §13.6).
+    The filter accepts any member, so during a rotation either key drives this script equally. REQUIRED.
+    No default. This script sends ONE key, in one header, and that is all it has ever done.
 
 .PARAMETER IncludeWrite
     Also drive POST /api/agent/appointments. OFF by default. See the warning above.
@@ -87,8 +90,9 @@ if ([string]::IsNullOrWhiteSpace($ApiKey)) {
     Write-Host ''
     Write-Host '  -ApiKey is required and has no default.' -ForegroundColor Red
     Write-Host ''
-    Write-Host '  Locally  : the value of Agent:ApiKey in CRC.Web/appsettings.Development.json'
-    Write-Host '  In Azure : the App Service app setting Agent__ApiKey  (TWO underscores - CoreFlow.md 13.6)'
+    Write-Host '  Locally  : any member of the Agent:ApiKey ARRAY in CRC.Web/appsettings.Development.json'
+    Write-Host '  In Azure : the App Service app setting Agent__ApiKey__0  (TWO underscores between every'
+    Write-Host '             segment, and the __0 index is part of the name - CoreFlow.md 13.6)'
     Write-Host ''
     Write-Host '  This script deliberately does not read a key from a file or an environment variable'
     Write-Host '  on your behalf, and never prints one.'

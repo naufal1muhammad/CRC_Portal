@@ -180,7 +180,9 @@ namespace CRC.Api.Controllers
                         // is no full value on this path to leak. Rule 1 above.
                         nricLast4 = p.NricLast4,
 
-                        // NO_PHONE / UNRECORDED / INCOMPLETE / POSITIVE / NEGATIVE.
+                        // NO_PHONE / UNRECORDED / INCOMPLETE / POSITIVE / NEGATIVE / RESULT_PENDING.
+                        // RESULT_PENDING is status = 1 with a NULL result — sample done, lab result not
+                        // in yet — and is a different fact from UNRECORDED (nothing recorded at all).
                         screeningState = p.ScreeningState,
 
                         // Nullable all the way to the wire — a JSON null means "never recorded", which is

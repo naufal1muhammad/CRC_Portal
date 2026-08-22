@@ -63,18 +63,47 @@ namespace CRC.Api.Infrastructure
             var endpoint = $"{httpContext.Request.Method} {httpContext.Request.Path.Value}";
 
             // ---- i. Is a key configured at all? ---------------------------------------------------
-            // Fail CLOSED. An empty Agent:ApiKey never means "no key required"; it means the app setting
-            // is missing or misspelled (Agent__ApiKey needs TWO underscores — see AgentApiOptions), and
-            // an API whose key is the empty string would be an open API. The caller correctly sees an
-            // undifferentiated 401, but this is a MISCONFIGURATION of the portal rather than a caller
-            // error, so it is also logged as an error on the operational channel where an operator will
-            // see it — otherwise a mistyped app setting looks exactly like an agent using a stale key.
-            if (string.IsNullOrWhiteSpace(_options.ApiKey))
+            // 🔴 THE REFUSAL CONDITION IS WRITTEN ONCE, AS ONE EXPRESSION, AND IT MUST MEAN "THERE IS NOT
+            // A SINGLE USABLE KEY". Agent:ApiKey is a string[] (see AgentApiOptions), and THREE different
+            // inputs are all "not configured" — all three must answer 401:
+            //
+            //     • the array is NULL          (the "Agent" section is absent, or nothing bound to it —
+            //                                   including a SCALAR Agent__ApiKey app setting, which binds
+            //                                   to no element of an array property)
+            //     • the array has NO MEMBERS   ("ApiKey": [])
+            //     • every member is BLANK      ("ApiKey": [""] — the case a naive .Length == 0 check lets
+            //                                   straight through, which would be an OPEN API)
+            //
+            // Filtering the blanks out first collapses all three into one Length == 0 test, and the array
+            // that survives is the one step iii compares against — so a blank member can never be matched
+            // by a caller sending a blank header either. This is the property that is easiest to lose when
+            // a scalar becomes a collection, and losing it is the whole surface.
+            //
+            // Fail CLOSED. An empty Agent:ApiKey never means "no key required"; it means the app setting is
+            // missing or misspelled, and an API whose key is the empty string would be an open API. The
+            // caller correctly sees an undifferentiated 401, but this is a MISCONFIGURATION of the portal
+            // rather than a caller error, so it is also logged as an error on the operational channel where
+            // an operator will see it — otherwise a mistyped app setting looks exactly like an agent using
+            // a stale key.
+            var configuredKeys = (_options.ApiKey ?? Array.Empty<string>())
+                .Where(key => !string.IsNullOrWhiteSpace(key))
+                .ToArray();
+
+            if (configuredKeys.Length == 0)
             {
+                // 🔴 THIS MESSAGE NAMES THE INDEXED FORM ON PURPOSE. Agent__ApiKey — the scalar an operator
+                // would otherwise copy from this line — binds to NOTHING now that the property is an array,
+                // so naming it here would send them to add exactly the setting that does not work. This log
+                // line is the only thing separating "the portal is misconfigured" from "the caller's key is
+                // wrong": the wire says the same Unauthorized. to both (§13.3, §13.6). Its text is
+                // load-bearing.
                 _logger.LogError(
-                    "Agent API is not configured: Agent:ApiKey is empty, so every request to {Endpoint} is refused. " +
-                    "In Azure the value is the App Service app setting Agent__ApiKey (TWO underscores); locally it is " +
-                    "Agent:ApiKey in appsettings.Development.json.",
+                    "Agent API is not configured: Agent:ApiKey holds no usable key (the array is absent, empty, or " +
+                    "every member is blank), so every request to {Endpoint} is refused. In Azure the value is the App " +
+                    "Service app setting Agent__ApiKey__0 — TWO underscores between every segment, and the __0 index " +
+                    "is required because the setting is an ARRAY; a scalar Agent__ApiKey binds to nothing. Add " +
+                    "Agent__ApiKey__1 for a second key during a rotation. Locally it is the Agent:ApiKey array in " +
+                    "appsettings.Development.json.",
                     endpoint);
 
                 AgentAuditLog.AgentRequestRejected(httpContext, endpoint, "not configured");
@@ -91,8 +120,26 @@ namespace CRC.Api.Infrastructure
                 return;
             }
 
-            // ---- iii. Does it match? --------------------------------------------------------------
-            if (!KeysMatch(_options.ApiKey, supplied.ToString()))
+            // ---- iii. Does it match ANY configured key? -------------------------------------------
+            // Every usable key is compared, and each comparison is the hash-then-fixed-time one below.
+            //
+            // 🔴 THE RESULT IS ACCUMULATED ACROSS THE LOOP — there is deliberately no `return true` on the
+            // first match, and `|=` is used rather than `||=` precisely because it does NOT short-circuit.
+            // Being honest about why: an early exit leaks WHICH key matched through timing, and a caller
+            // holding a valid key already knows which one they hold, so the practical risk is close to nil.
+            // It is written this way because it costs one line, it keeps every request through this filter
+            // doing identical work, and it removes the need to have this argument again the next time
+            // somebody reads it. Do not "optimise" it: the loop runs over one or two keys, once per
+            // request, against a caller whose entire traffic is a daily sweep plus a conversation.
+            var suppliedKey = supplied.ToString();
+            var matched = false;
+
+            foreach (var configuredKey in configuredKeys)
+            {
+                matched |= KeysMatch(configuredKey, suppliedKey);
+            }
+
+            if (!matched)
             {
                 AgentAuditLog.AgentRequestRejected(httpContext, endpoint, "invalid key");
                 context.Result = Unauthorized();
@@ -176,6 +223,9 @@ namespace CRC.Api.Infrastructure
         // LENGTH through exactly the timing channel the call was chosen to close (and would need a length
         // check first, which leaks it outright). Hashing maps both values to 32 bytes whatever they were,
         // so every comparison does identical work and the answer depends on nothing but equality.
+        //
+        // Called ONCE PER CONFIGURED KEY by step iii, which accumulates the results rather than returning
+        // on the first match — both halves below are unchanged by that, and both are still required.
         private static bool KeysMatch(string configured, string supplied)
         {
             Span<byte> configuredHash = stackalloc byte[32];

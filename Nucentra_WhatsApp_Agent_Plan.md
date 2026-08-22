@@ -805,9 +805,9 @@ place, because §12 is struck through and this is where a portal owner will look
 
 | # | Change | Where | When |
 |---|---|---|---|
-| **1** | **Add the sixth `screeningState`, `RESULT_PENDING`** | `spAgentPatient_ListScreeningQueue.sql` | 🔴 **Before WF1 goes live.** WF1 switches on this value |
-| **2** | **Re-seed `AGENT_SERVICE` with a `User_Type` no policy admits** | `CRC.Database/Scripts/Seed_Users.sql` | Any time. Cheap hardening |
-| **3** | **`AgentApiOptions.ApiKey` becomes a string array** | `CRC.Api/AgentApiOptions.cs`, `AgentApiKeyFilter.cs` | Before the first key rotation |
+| **1** ✅ | **Add the sixth `screeningState`, `RESULT_PENDING`** | `spAgentPatient_ListScreeningQueue.sql` | ✅ **SHIPPED** (`AgentApiPlan.md` Prompt 5) — was: before WF1 goes live, since WF1 switches on this value |
+| **2** ✅ | **Re-seed `AGENT_SERVICE` with a `User_Type` no policy admits** | `CRC.Database/Scripts/Seed_Users.sql` | ✅ **SHIPPED** (Prompt 5) — was: any time. Cheap hardening |
+| **3** ✅ | **`AgentApiOptions.ApiKey` becomes a string array** | `CRC.Api/AgentApiOptions.cs`, `AgentApiKeyFilter.cs` | ✅ **SHIPPED** (Prompt 5) — was: before the first key rotation |
 | **4** | **Validate `Patient_Phone` on the portal's patient form** | The patient screens — outside everything this project has touched | Any time. It stops a category growing |
 
 ---
@@ -830,6 +830,11 @@ No C# change — `screeningState` is passed through as a string the whole way. P
 update `CoreFlow.md` §13 where the five values are enumerated. **`Test-AgentApi.ps1` asserts on the
 queue endpoint; check whether it pins the value set before you publish.**
 
+> ✅ **SHIPPED in `AgentApiPlan.md` Prompt 5.** One line in the `.sql`, four comments corrected, and
+> `CoreFlow.md` §13.1 / §13.4 rewritten. `Test-AgentApi.ps1` was checked and needed no change — it never
+> reads `screeningState`. `CoreFlow.md` §13.4 now also records that adding a value to this enum is a
+> **breaking change to n8n that no compiler here can see**: it was free only because WF1 does not exist yet.
+
 ---
 
 **Change 2 — `AGENT_SERVICE` is a real ADMIN account.**
@@ -849,6 +854,19 @@ every page refuses. The API does not care: `AgentApiKeyFilter` resolves the row 
 > re-seeds, so changing the file changes nothing on an existing database — the row has to be updated by
 > hand, or deleted and left for the next publish to recreate (which is safe: nothing stores its id).
 
+> ✅ **SHIPPED in `AgentApiPlan.md` Prompt 5, as `User_Type = 9`** — with **two corrections to the
+> paragraph above, which is left in place as the record of what was asked for**:
+>
+> 1. 🔴 **"No screen lists it today" is FALSE.** `GET /Account/GetUsers` (`SuperUserOnly`) reads
+>    `spUsers_GetAll`, which returns every `dbo.Users` row, and `wwwroot/js/account/register.js` renders
+>    `userTypeName` into the user-management table. The account **is** listed. It is safe because both
+>    integer-to-name mappers in `AccountController` end in `_ => t.ToString()`, so the row renders with the
+>    literal text **`9`** where the others read `SUPERUSER` / `ADMIN` / `STAFF`. Confirmed on screen.
+> 2. **The row did not have to be updated by hand.** `Seed_Users.sql` gained a guarded
+>    `UPDATE … WHERE [Username] = 'AGENT_SERVICE' AND [User_Type] <> 9` below the insert, so every
+>    already-seeded database — local and Azure — is corrected by the next DACPAC publish, with no manual SQL
+>    and no Azure action. It touches no other row and never writes a password.
+
 ---
 
 **Change 3 — one key is a hard cutover.**
@@ -862,6 +880,14 @@ collection.
 In Azure the app setting becomes `Agent__ApiKey__0`, `Agent__ApiKey__1` (🔴 still two underscores
 between segments). It is also the only change that solves **per-consumer keys** later, which
 `CoreFlow.md` §13.7 recommends first if a second consumer ever appears.
+
+> ✅ **SHIPPED in `AgentApiPlan.md` Prompt 5.** The fail-closed property was kept and proved by running the
+> site: two keys both work simultaneously, `[]` answers 401, and `[""]` — one blank member — answers 401
+> too. 🔴 **One deployment consequence, and it is a one-time hard cutover**: a scalar `Agent__ApiKey`
+> binds to nothing against an array, so **`Agent__ApiKey__0` must be added BEFORE the web app is
+> published**, or every agent request answers 401 until it is. The rotation procedure now lives in
+> `CoreFlow.md` §13.6, and §13.7 records that per-caller keys are now half-built — the array and the loop
+> exist; what is missing is a **name** on each key, and the log line that names the consumer.
 
 ---
 
