@@ -1,9 +1,13 @@
 # CRC Portal — Agent API Plan (the portal grows a machine-callable surface, and `CoreFlow.md` gets §13)
 
 This file slices **§4 of `Nucentra_WhatsApp_Agent_Plan.md`** — *"PART A — The Agent API (portal code change)"* —
-into an ordered series of **5 self-contained prompts**. Each prompt is meant to be pasted into a **fresh chat**
+into an ordered series of **7 self-contained prompts**. Each prompt is meant to be pasted into a **fresh chat**
 of an AI coding tool that has **no memory** of the earlier prompts. Run them **in order**; each one assumes
 every earlier prompt is finished and builds on it.
+
+**Prompts 0–4 built the API and are done.** **Prompts 5 and 6 are the second wave**: they carry the four
+portal changes in `Nucentra_WhatsApp_Agent_Plan.md` **§4.8**, which came out of §12's questionnaire *after*
+the API shipped. They change no endpoint's contract and add no endpoint — see *"The second wave"* below.
 
 > ## What this is, and what it is not
 >
@@ -13,10 +17,11 @@ every earlier prompt is finished and builds on it.
 > patient lookup by phone number, and no single call that answers *"who at this hospital is free this week?"*.
 > **Nothing in n8n can run until those exist.** This plan builds them.
 >
-> **It is not the agent.** No workflow, no template, no system prompt, no n8n node. When these five prompts
-> are done, the portal exposes eight authenticated endpoints and `curl` can drive every one of them — and the
+> **It is not the agent.** No workflow, no template, no system prompt, no n8n node. When Prompts 0–4 are
+> done, the portal exposes eight authenticated endpoints and `curl` can drive every one of them — and the
 > agent has not been started. That is the correct boundary, and it is why the owner asked for this half on its
-> own.
+> own. **Prompts 5 and 6 do not move that boundary**: they relabel one SQL literal, harden one seeded row,
+> widen one config value and tighten one form field. Still no n8n, still no WhatsApp.
 >
 > ```
 > Nucentra_WhatsApp_Agent_Plan.md §4   ──▶   THIS PLAN   ──▶   CRC.Api + 5 procedures + CoreFlow.md §13
@@ -107,6 +112,71 @@ for this controller on purpose, and if the filter is ever removed, mis-registere
 `/api/agent/patients/queue` becomes an unauthenticated dump of every active patient in the programme. Prompt 1
 exists to build and prove that filter **before a single patient-shaped endpoint exists**, and its verification
 step is the most important one in this document.
+
+---
+
+## The second wave — §4.8's four changes, and the two prompts that carry them
+
+`Nucentra_WhatsApp_Agent_Plan.md` **§4.8** lists four portal changes that came out of §12's questionnaire,
+after Prompts 0–4 had shipped. **None of them changes the eight-endpoint contract, and none of them is n8n
+work.** They are here because §12 is struck through and this file is where a portal owner will look.
+
+| # | Change | Where | Prompt |
+|---|---|---|---|
+| **1** | Add the sixth `screeningState`, **`RESULT_PENDING`** | `spAgentPatient_ListScreeningQueue.sql` | **5** |
+| **2** | Re-seed `AGENT_SERVICE` with a `User_Type` **no policy admits** | `Scripts/Seed_Users.sql` | **5** |
+| **3** | **`AgentApiOptions.ApiKey` becomes a `string[]`** | `CRC.Api/AgentApiOptions.cs`, `AgentApiKeyFilter.cs` | **5** |
+| **4** | **Validate `Patient_Phone`** on the portal's patient form | `PatientController`, `edit-basic.js`, `Edit.cshtml` | **6** |
+
+**Why two prompts and not one.** Changes 1–3 are the agent surface: one DACPAC publish, one `dotnet build`,
+one `Test-AgentApi.ps1` run and both 401 tests verify all three together, and all three land in
+`CoreFlow.md` §13. Change 4 is a different animal — it edits a screen every administrator uses daily,
+it needs a human logging in and saving a patient to verify, and it lands in §3.8 and §4.7. It also
+**breaks this plan's own shared preamble**, which says no prompt edits a `.js`, a `.cshtml`, a validation
+rule or a user-facing message. That exception is real and is stated inside Prompt 6, where it applies —
+not blanket-granted across work that does not need it.
+
+### The four decisions locked before writing these two prompts
+
+Answered by the owner against the real code, exactly as the original four were. **Do not re-open them while
+building.**
+
+| # | Question | Decision |
+|---|---|---|
+| 5 | Packaging | **Two prompts.** 5 = changes 1–3 (agent surface). 6 = change 4 (patient form). Split by blast radius and by verification harness, not by size. |
+| 6 | What is change 4's rule, given blank is *already* rejected? | **Malaysian mobile: strip non-digits, then require 10 or 11 digits beginning `01`.** Client and server, same message, mirroring the existing twelve-digit NRIC rule's shape. This is the rule that actually makes `spAgentPatient_FindByPhone`'s last-9-digits match able to find the patient. |
+| 7 | How does change 2 reach a database that is already seeded? | **The seed file *and* a guarded `UPDATE` in the post-deployment script.** The insert is guarded on `[Username]` and never re-seeds, so editing it alone corrects nothing that exists. The `UPDATE` corrects local `CRC_DB` and Azure SQL on the next publish, with no manual SQL and no Azure action. |
+| 8 | What shape does change 3's key take? | **`ApiKey` becomes `string[]`, keeping the name** — exactly what §4.8 specifies. Not a parallel scalar, and not named per-caller keys (that stays §13.7's recommendation for when a second consumer appears). |
+
+### 🔴 Three things that were checked against the code, and one that §4.8 gets wrong
+
+**1. §4.8 says of change 2: *"No screen lists it today."* That is false.**
+`GET /Account/GetUsers` (`CRC.Web/Controllers/AccountController.cs`, `SuperUserOnly`) reads
+`spUsers_GetAll`, which selects **every** `dbo.Users` row — `AGENT_SERVICE` included — and
+`wwwroot/js/account/register.js` renders `userTypeName` straight into the user-management table. So the
+account **is** listed, on the Register/Users screen, to a SUPERUSER.
+
+**It still works, and that is why the change is safe.** Both mappers — `UserTypeName` inside `GetUsers` and
+`UserTypeDisplay` used by the profile paths — end in `_ => t.ToString()`, so an unknown integer renders as
+the bare number rather than throwing or rendering blank. The honest statement of the cost is therefore:
+**the SUPERUSER user list will show `AGENT_SERVICE` with a `User_Type` of `9` and the literal text `9`
+where the other rows read `ADMIN`.** Prompt 5 verifies that on screen rather than asserting it.
+
+**2. Change 4's premise needs restating, because as written it describes a state the form already
+prevents.** §4.8 frames change 4 around `NO_PHONE` — the empty string that `VARCHAR(100) NOT NULL`
+cheerfully accepts. But `PatientController.SaveBasic`'s sixteen-field `IsNullOrWhiteSpace` block already
+rejects a blank phone, and `wwwroot/js/patient/edit-basic.js` rejects it client-side first. **An empty
+`Patient_Phone` is already unreachable through the only form that writes one.** What the form accepts today
+is `"N/A"`, `"-"`, `"none"` — values that are not `NO_PHONE`, are equally uncontactable, and are equally
+invisible to `spAgentPatient_FindByPhone`. **Change 4 is therefore a FORMAT rule, not a presence rule**,
+and Prompt 6 says so in its own words rather than repeating a premise that no longer holds.
+
+**3. `Test-AgentApi.ps1` does not pin the `screeningState` value set.** §4.8 tells you to check before
+publishing change 1. The answer is **no**: the E1 check asserts `success`, counts rows, and picks the first
+row with a non-blank `phone` to feed endpoint 2. It never reads `screeningState`. **Change 1 needs no edit
+to that script** — and Prompt 5 adds no assertion on the value set either, because a state's presence
+depends on the data in `CRC_DB` and a smoke test that fails on a lightly seeded database is worse than no
+assertion at all.
 
 ---
 
@@ -386,6 +456,11 @@ in place — §2.2's is the only one that does.
 - [x] **Prompt 3** — The write: endpoint 8, `SaveAppointmentAsync` reused, the typed failure reasons, and the audit assertion
 - [x] **Prompt 4** — Harden and hand off: `CoreFlow.md` §2.2 / §10 / §11 / §12, §13 finished, the smoke script, the Azure settings sheet
 
+**The second wave — `Nucentra_WhatsApp_Agent_Plan.md` §4.8:**
+
+- [ ] **Prompt 5** — `RESULT_PENDING`, the hardened `AGENT_SERVICE` type, and a key that is a list (§4.8 changes 1, 2, 3)
+- [ ] **Prompt 6** — The patient form learns what a phone number looks like (§4.8 change 4)
+
 ---
 
 ## Coverage map (prompt → files, procedures, `CoreFlow.md`)
@@ -397,19 +472,26 @@ in place — §2.2's is the only one that does.
 | **2** | `AgentApiController`, `IDatabaseData`/`SqlData` +4, `Models/` +4 | 4 wired + 2 reused | **1, 2, 3, 4, 6, 7** | §13.4, §13.1 completed |
 | **3** | `AgentApiController` | 0 new — `SaveAppointmentAsync` reused whole | **8** | §13.5 |
 | **4** | `CoreFlow.md`, `AgentApiPlan.md`, a smoke script | 0 | 0 — verification only | §2.2, §10, §11, §12, §13.6, §13.7 |
+| **5** | `spAgentPatient_ListScreeningQueue.sql`, `Scripts/Seed_Users.sql`, `CRC.Api/AgentApiOptions.cs`, `Infrastructure/AgentApiKeyFilter.cs`, `appsettings*.json`, `Program.cs` (comment), `AgentScreeningQueueItem.cs`, `IDatabaseData.cs` (comment), `AgentApiController.cs` (comment), `SEEDING.md` | 1 **edited**, 0 new | 0 new — **contract unchanged**, one enum value added | §13.1, §13.3, §13.4, §13.6, §13.7 |
+| **6** | `CRC.Web/Controllers/Patient/PatientController.cs`, `wwwroot/js/patient/edit-basic.js`, `Views/Patient/Edit.cshtml` | 0 | 0 | §3.8, §4.7, §13.1 |
 
 **Dependency order — strictly sequential:**
 
 ```
-P0 ─→ P1 ─→ P2 ─→ P3 ─→ P4
- │     │     │     │     │
- └─────┴─────┴─────┴─────┴─→ CoreFlow.md §13
+P0 ─→ P1 ─→ P2 ─→ P3 ─→ P4 ─→ P5 ─→ P6      ← P5 and P6 are Nucentra_WhatsApp_Agent_Plan.md §4.8
+ │     │     │     │     │     │     │
+ └─────┴─────┴─────┴─────┴─────┴─────┴─→ CoreFlow.md
 ```
 
 Every prompt from 1 onwards edits `IDatabaseData.cs`, `SqlData.cs`, `AgentApiController.cs` and `CoreFlow.md`;
 running two in parallel means merging four files by hand. **P0 is the only prompt that changes nothing about
 how the application behaves** — it adds procedures nothing calls yet and one user row nothing uses yet — so it
 is also the cheapest place to stop and look around.
+
+**P5 and P6 are independent of each other and could be run in either order** — they share no file and no
+section of `CoreFlow.md`. They are numbered 5 and 6 because 5 is the one with a deadline: **change 1 must
+land before WF1 goes live**, since the n8n workflow switches on `screeningState`. P6 has no deadline at all
+and stops a category growing rather than fixing something broken.
 
 ---
 
@@ -423,6 +505,9 @@ is also the cheapest place to stop and look around.
 | 4 | **`SlotTaken` is a normal outcome, not an error.** Endpoint 7 reads slots outside any transaction; an administrator can take that hour a second later | **P3** | The response is `200 { success: false, reason: "SlotTaken", … }` — not a `4xx`. n8n's WF0 re-runs slot discovery on it. A `4xx` here would make an expected race look like a client bug. |
 | 5 | **Two escapes from global filters** — `AuthorizeFilter` and `AutoValidateAntiforgeryTokenAttribute` | **P1** | `[AllowAnonymous]` + `[IgnoreAntiforgeryToken]` on the controller, each with a comment saying what it disables and what replaces it. P1's verification is the two 401 tests; forgetting `[IgnoreAntiforgeryToken]` shows up in P3 as a `400` on every POST. |
 | 6 | **Option C's single appointment type** | **P3** | `pjAppTypeId` must equal `"01"`. A constant, a comment naming decision 4, and a typed refusal — not a silent acceptance of `"04"` that books an appointment nobody will ever be able to clinically record (`CoreFlow.md` §7.3). |
+| 7 | 🔴 **A scalar app setting does not bind to a `string[]`.** `Agent__ApiKey=abc` binds to `AgentApiOptions.ApiKey` today; the moment that property is an array, the same setting binds **nothing** and the array is empty | **P5** | **Named as a one-time hard cutover and not hidden.** The empty array hits the filter's fail-closed first branch, so the failure is a clean `401` with a `LogError` naming the setting — not an open door. P5 rewrites that log message to name `Agent__ApiKey__0`, and produces a ready-to-paste Azure section telling the owner to add the indexed setting **before** publishing the web app. |
+| 8 | 🔴 **Fail-closed is easy to lose when a scalar becomes a collection.** `string.IsNullOrWhiteSpace(x)` is one call; "every member is blank, or there are none" is a predicate somebody will get wrong | **P5** | The refusal condition is written once, as a single expression, with a comment saying what it must mean — and P5's verification runs the site with **`Agent:ApiKey` set to `[]`** and to `[""]` and proves both answer `401`. An absent or empty array must never mean "no key required". |
+| 9 | **P6 breaks this plan's shared preamble on purpose** — it edits a `.js`, a `.cshtml`, a validation rule and a user-facing message, all four of which every other prompt forbids | **P6** | The exception is written into P6 itself, scoped to **one field on one form**, with the reason (§4.8 change 4 is a portal-screen change by definition) and the boundary (no other field, no other screen, no other message, no endpoint's JSON). The blanket rule stays in force everywhere else. |
 
 ---
 
@@ -456,6 +541,15 @@ Every copy block tells the AI to:
   document.
 - **Use the right builder per project** — `dotnet build` for `CRC.Web`, MSBuild `/t:Rebuild` for the classic
   SSDT `CRC.Database.sqlproj` — and hold the baseline at **exactly two** `SQL71502` warnings.
+
+> **🔴 One rule above is suspended in Prompt 6, and nowhere else.** *"Do not change any existing endpoint's
+> JSON, any route, any `[Authorize]` policy, any validation rule, or any user-facing message"* and *"no
+> prompt in this plan edits a `.js` or `.cshtml` file"* are both **deliberately broken by Prompt 6**, because
+> §4.8 change 4 is a change to a portal screen and cannot be made anywhere else. The suspension is scoped in
+> that prompt to **one field on one form**: `Patient_Phone` on Patient > Edit > Basic. Every other field,
+> every other screen, every other message and every endpoint's JSON stay exactly as they are — including
+> `Patient_EmergencyNumber`, which is a phone number the agent never dials and is therefore **out of scope on
+> purpose**, not by oversight.
 
 ---
 
@@ -1462,12 +1556,532 @@ DapperLayerPlan.md. DO NOT edit any .js, .cshtml or .sql file. DO NOT add an end
 
 ---
 
+## Prompt 5 — `RESULT_PENDING`, a service account no policy admits, and a key that is a list
+
+**Status:** ⬜ Not started
+**Depends on:** Prompts 0–4
+**Source:** `Nucentra_WhatsApp_Agent_Plan.md` §4.8 changes **1, 2 and 3**
+
+> **What exists before this prompt:** the Agent API is built, documented and smoke-tested. Eight endpoints,
+> five `Agent/` procedures, one seeded `AGENT_SERVICE` row with `User_Type = 2`, one **scalar** `Agent:ApiKey`,
+> and `CoreFlow.md` §13 written end to end. `Test-AgentApi.ps1` passes twelve checks.
+>
+> **Nothing here is broken.** All three changes are hardening and one relabelling, and each was named in §4.8
+> as a thing to do *before* a specific event: change 1 before WF1 goes live, change 3 before the first key
+> rotation, change 2 whenever. 🔴 **Change 3 is the one with a deployment consequence** — a scalar
+> `Agent__ApiKey` app setting does not bind to a `string[]`, so Azure needs `Agent__ApiKey__0` before the web
+> app is published. That is a one-time cutover and this prompt's job is to make it impossible to be surprised
+> by it.
+
+```text
+You are an AI coding agent on the CRC Portal, also called "nucentra" (ASP.NET Core 10 MVC + a classic SSDT
+database project). Fresh chat — no prior memory. The repo root is CRC_Portal. The projects are CRC.Web
+(net10.0), CRC.Api (net10.0 class library), CRC.Data (net10.0) and CRC.Database (classic SSDT .sqlproj,
+MSBuild only).
+
+WHAT'S ALREADY DONE: nucentra has a machine-callable Agent API — eight endpoints under /api/agent, behind a
+shared key in an X-Agent-Key header, called by an external WhatsApp agent built in n8n (which does not exist
+yet). It is specified in full in CoreFlow.md §13. It works, it is smoke-tested by Test-AgentApi.ps1 at the
+repo root, and NOTHING ABOUT IT IS BROKEN.
+
+WHY THIS PROMPT: Nucentra_WhatsApp_Agent_Plan.md §4.8 lists four portal changes that came out of that plan's
+§12 questionnaire, AFTER the API shipped. You are making THREE of them. The fourth (patient-form phone
+validation) is a different prompt and is NOT your job — do not touch the patient screens.
+
+  1. spAgentPatient_ListScreeningQueue's CASE has a sixth state that is currently mislabelled as one of the
+     five. n8n's WF1 switches on this value, so the label has to be right BEFORE that workflow exists.
+  2. The AGENT_SERVICE row is seeded User_Type = 2 (ADMIN), which is a real portal administrator type.
+  3. Agent:ApiKey is one scalar string, so rotating it is a hard cutover with no overlap window.
+
+🔴 NONE OF THE THREE CHANGES ANY ENDPOINT'S ROUTE, SHAPE OR PROPERTY NAMES. One enum VALUE is added to a
+published contract; nothing is renamed and nothing is removed.
+
+READ FIRST — all of these, before writing anything:
+  CoreFlow.md                       (§0 and §0.1 in full; §2.1 THE UserType CLAIM — read it twice, change 2
+                                     depends on exactly what it says; §2.3 the five policies; §3.3 dbo.Users
+                                     INCLUDING its "The seeded row" sub-section; §13 IN FULL — you are
+                                     editing §13.1, §13.3, §13.4, §13.6 and §13.7)
+  AgentApiPlan.md                   (this plan — "The second wave" section IN FULL, and hard cases 7 and 8)
+  Nucentra_WhatsApp_Agent_Plan.md   (§4.7 and §4.8 in full. NOTE: §4.8 contains one factual error about
+                                     change 2, which "The second wave" corrects — read that correction
+                                     before you write the change-2 comment block)
+  DOCUMENTSTORAGE.md                (the Configuration section — the two-underscore rule. DO NOT EDIT IT.)
+  SEEDING.md                        (all of it — you are editing it)
+  CRC.Database/Stored Procedures/Agent/spAgentPatient_ListScreeningQueue.sql
+  CRC.Database/Scripts/Seed_Users.sql
+  CRC.Api/AgentApiOptions.cs, CRC.Api/Infrastructure/AgentApiKeyFilter.cs
+  CRC.Web/Program.cs (the Agent block, ~line 97), CRC.Web/appsettings.json, appsettings.Development.json
+  CRC.Web/Controllers/AccountController.cs (GetUsers and UserTypeDisplay — change 2 is visible there)
+  Test-AgentApi.ps1
+
+YOUR TASK (Prompt 5). Three changes, in this order. Verify after each — do not batch them.
+
+================================================================================================
+CHANGE 1 — THE SIXTH screeningState: RESULT_PENDING
+================================================================================================
+
+1. EDIT ONE LINE of CRC.Database/Stored Procedures/Agent/spAgentPatient_ListScreeningQueue.sql. The CASE's
+   final branch reads `ELSE 'UNRECORDED'`. It becomes `ELSE 'RESULT_PENDING'`.
+
+   🔴 FIRST, PROVE TO YOURSELF THAT THE ELSE IS REACHABLE ONLY IN ONE STATE, AND WRITE THE PROOF INTO THE
+   COMMENT. Walk the branches: Patient_iFOBTStatus IS NULL is caught, = 0 is caught, Patient_iFOBTResults = 1
+   is caught, = 0 is caught — and a NULL result satisfies NEITHER of the last two, because a comparison with
+   NULL is UNKNOWN, not false. So the ELSE is reachable if and only if `status = 1 AND results IS NULL`: the
+   sample is done and the lab result is not in yet. THE WHOLE CHANGE IS THE LABEL. Do not restructure the
+   CASE, do not add a branch, do not reorder anything — NO_PHONE stays first for the reason already
+   commented there.
+
+2. NO C# LOGIC CHANGES. screeningState is passed through as a string from SQL to the wire, so nothing
+   parses it and nothing switches on it in this repository. BUT FOUR COMMENTS ENUMERATE THE FIVE VALUES AND
+   ARE NOW WRONG. Find them by grepping the solution for UNRECORDED and fix every hit:
+     • CRC.Data/Models/AgentScreeningQueueItem.cs — "one of five literals" becomes six, AND the paragraph
+       about "the sixth state that reports as UNRECORDED" is now OBSOLETE: delete the claim, keep the fact,
+       and say what it means now (status = 1 with a NULL result has its OWN label and is no longer
+       indistinguishable from "nothing recorded at all").
+     • CRC.Data/Data/IDatabaseData.cs — the ScreeningState bullet in the GetAgentScreeningQueueAsync comment.
+     • CRC.Api/Controllers/AgentApiController.cs — the one-line enumeration above `screeningState = ...`.
+     • Anything else the grep finds. Report the full grep, before and after.
+
+3. UPDATE CoreFlow.md FOR CHANGE 1 — three places, and one of them is a rewrite, not an edit:
+     • §13.1's finding 4 currently begins "ScreeningState has a sixth case that reports as one of the five".
+       🔴 THAT SENTENCE IS NOW FALSE AND THE FINDING'S CONCLUSION IS REVERSED. Rewrite it. KEEP the
+       reachability proof — it is the valuable half and it is what makes the new label correct — and change
+       the conclusion: the state now carries its own name, RESULT_PENDING. Say plainly WHY it was changed
+       rather than left: both states mean "do not message this patient about a result", which is why the
+       original sketch collapsed them, but they mean DIFFERENT THINGS TO A HUMAN — one is "chase the lab",
+       the other is "chase the patient" — and n8n's WF1 branches on this value, so a label that merges them
+       forces the agent to guess. Record that the merge was deliberate when it was written and that this is
+       a decision reversed with new information, not a bug fixed.
+     • §13.4's enumeration under endpoint 1: "NO_PHONE / UNRECORDED / INCOMPLETE / POSITIVE / NEGATIVE"
+       becomes six, with RESULT_PENDING defined in half a sentence.
+     • 🔴 CHECK, DO NOT ASSUME, whether §13.4's sample JSON payload needs changing. The row it shows with
+       screeningState "UNRECORDED" has iFobtStatus null — which is the status-IS-NULL branch, still
+       UNRECORDED, still correct. Say in your report which you found and why you did or did not change it.
+
+4. 🔴 SAY THIS OUT LOUD IN §13.4, WHERE THE PUBLISHED CONTRACT IS DESCRIBED: adding a value to an enum that
+   an external consumer switches on is a BREAKING CHANGE to that consumer, and no compiler in this
+   repository can see it. It is free right now ONLY because n8n does not exist yet. Once WF1 is built, a
+   sixth value arriving at a Switch node with five branches falls through to whatever the default is. Name
+   that, so the next person who wants a seventh state knows what it costs.
+
+VERIFY CHANGE 1:
+  a) MSBuild rebuild — the pass condition is unchanged and is a tripwire:
+     "C:/Program Files/Microsoft Visual Studio/18/Insiders/MSBuild/Current/Bin/MSBuild.exe" CRC.Database/CRC.Database.sqlproj /t:Rebuild /p:Configuration=Debug /p:VisualStudioVersion=18.0 /nologo /v:minimal
+     "Build succeeded", 0 Error(s), EXACTLY TWO SQL71502 warnings, both in spStaffSlots_CreateRange.sql at
+     lines 46 and 52. Paste them verbatim.
+  b) Publish the DACPAC to local CRC_DB:
+     "C:/Program Files/Microsoft Visual Studio/18/Insiders/Common7/IDE/Extensions/Microsoft/SQLDB/DAC/SqlPackage.exe" /Action:Publish /SourceFile:CRC.Database/bin/Debug/CRC.Database.dacpac /TargetServerName:localhost /TargetDatabaseName:CRC_DB /TargetTrustServerCertificate:True
+  c) sqlcmd -S localhost -d CRC_DB -E -C -Q "EXEC dbo.spAgentPatient_ListScreeningQueue"
+     Report the distinct ScreeningState values you actually got.
+  d) 🔴 PROVE THE NEW STATE IS PRODUCIBLE, and prove it WITHOUT changing patient data permanently. Run this
+     read-only query, which counts the rows the new branch will catch:
+       sqlcmd -S localhost -d CRC_DB -E -C -Q "SELECT COUNT(*) AS ResultPendingRows FROM dbo.PatientBasic WHERE DischargeType_ID IS NULL AND LTRIM(RTRIM(ISNULL(Patient_Phone,''))) <> '' AND Patient_iFOBTStatus = 1 AND Patient_iFOBTResults IS NULL"
+     If it is 0, the state is CORRECTLY absent from a lightly seeded database — say so, do not treat it as a
+     failure, and do not invent a patient to make it appear. If it is greater than 0, confirm those exact
+     patients now report RESULT_PENDING in (c).
+
+================================================================================================
+CHANGE 2 — AGENT_SERVICE GETS A User_Type NO POLICY ADMITS
+================================================================================================
+
+5. WHAT THE HARDENING IS. AGENT_SERVICE is seeded User_Type = 2 (ADMIN) with Staff_ID NULL, and
+   spUsers_ValidateLogin selects any row by username without filtering on type. Its password is a random
+   secret generated once and discarded, so nothing about this is exploitable today. The hardening is ONE
+   DIGIT: re-seed it with a User_Type that NO POLICY ADMITS — all five policies require "1", "2" or "3"
+   (CoreFlow.md §2.3) — so that even a successful login lands on a principal every page refuses.
+
+   🔴 USE User_Type = 9. The API does not care: AgentApiKeyFilter resolves the row by username and uses its
+   User_ID as the audit actor, and NOTHING ON THAT CONTROLLER APPLIES A POLICY. Confirm that yourself by
+   reading AgentApiController's attributes before you change anything, and report what you found.
+
+6. EDIT CRC.Database/Scripts/Seed_Users.sql. TWO edits, and the second one is the one that matters:
+     • The INSERT's User_Type value: 2 becomes 9, with its inline comment rewritten.
+     • 🔴 ADD A GUARDED UPDATE BELOW THE INSERT. The insert is guarded on [Username] and NEVER RE-SEEDS, so
+       editing it alone corrects nothing on a database that already holds the row — which is every database
+       that exists, including local CRC_DB and Azure SQL. The UPDATE is what actually delivers this change:
+           UPDATE [dbo].[Users] SET [User_Type] = 9
+            WHERE [Username] = 'AGENT_SERVICE' AND [User_Type] <> 9;
+       Guard it on `<> 9` so a re-publish against an already-corrected database writes nothing.
+       🔴 This is NEW BEHAVIOUR for this file, which has only ever INSERTed. The comment must say so
+       explicitly, must say why an insert-guard alone was not enough, and must say what it does NOT do: it
+       touches no other row, it never changes a password, and it will not resurrect a deleted account.
+
+7. REWRITE THE COMMENT BLOCK. The section headed "User_Type 2 (ADMIN)" argues that booking appointments and
+   reading patients is administrator work. THAT ARGUMENT IS NOW REVERSED and must be replaced, not patched.
+   The new block says: the account performs its writes through a filter that never consults User_Type at
+   all, so the type buys the account nothing and costs it a login path it should not have; 9 is chosen
+   because it satisfies none of the five policies; and — this is the honest part —
+
+   🔴 §4.8 CLAIMS "No screen lists it today". THAT IS WRONG, AND YOU MUST NOT REPEAT IT.
+   GET /Account/GetUsers (AccountController, SuperUserOnly) reads spUsers_GetAll, which returns EVERY
+   dbo.Users row including this one, and wwwroot/js/account/register.js renders userTypeName into the
+   user-management table. Read both before you write the comment. The account IS listed. What saves the
+   change is that BOTH integer-to-name mappers in AccountController — UserTypeName inside GetUsers, and
+   UserTypeDisplay — end in `_ => t.ToString()`, so an unrecognised type renders as the bare number instead
+   of throwing or rendering blank. State the cost as what it actually is: the SUPERUSER user list shows
+   AGENT_SERVICE with the literal text "9" where every other row reads SUPERUSER, ADMIN or STAFF.
+
+   Also record the one thing CoreFlow.md §2.1 already says and a reader will ask about: an unrecognised
+   User_Type produces UserType = "9" AND Role = "STAFF", because the role derivation's final branch is an
+   `else`. That fallback lives in AccountController's LOGIN path, which this account cannot reach;
+   AgentApiKeyFilter builds its own three claims and adds no role claim at all. Verify that by reading the
+   filter, and say so — do not assert it from this prompt.
+
+8. UPDATE SEEDING.md: the "What is seeded" table's dbo.Users row says AGENT_SERVICE is User_Type = 2. Change
+   it to 9 and add half a sentence saying what 9 means (a type no policy admits — deliberately unusable).
+   Do not touch the SUPERUSER warning at the top.
+
+9. UPDATE CoreFlow.md FOR CHANGE 2:
+     • §13.3 — "A real dbo.Users row — Username = 'AGENT_SERVICE', User_Type = 2, …" becomes 9, with the
+       reasoning above compressed to two or three sentences, and the user-list consequence named.
+     • 🔴 §3.3's "The seeded row" sub-section says "Exactly one row is seeded" AND DESCRIBES ONLY SUPERUSER.
+       That has been STALE SINCE PROMPT 0, which added a second row — nobody caught it. Fix it now: two
+       rows, the second being AGENT_SERVICE with User_Type 9 and Staff_ID NULL, pointing at §13.3 for what
+       it is for. Report that you found it stale.
+     • §2.1 already says a row with an unrecognised User_Type "inserts fine, satisfies no policy". Add a
+       short note there that the portal now HAS such a row on purpose, naming it and pointing at §13.3. Do
+       not restructure §2.1 — it is load-bearing for the whole authorization story.
+
+VERIFY CHANGE 2:
+  e) Publish the DACPAC again and confirm the UPDATE fired:
+     sqlcmd -S localhost -d CRC_DB -E -C -Q "SELECT User_ID, Username, User_Type, Staff_ID FROM dbo.Users ORDER BY User_ID"
+     AGENT_SERVICE must now read User_Type 9. Paste the rows.
+  f) Publish a SECOND time and confirm the UPDATE is idempotent — no error, and the value is still 9.
+  g) 🔴 RUN THE SITE AND LOOK AT THE SCREEN. `dotnet run --project CRC.Web --launch-profile https`, log in as
+     a SUPERUSER, open the user-management page, and CONFIRM WITH YOUR EYES that AGENT_SERVICE appears with
+     the literal "9" in the type column and that the page does not error. THIS IS THE POINT OF THE CHECK —
+     §4.8 said no screen lists it, and a screen does.
+  h) Run Test-AgentApi.ps1 with a valid key. ALL CHECKS MUST STILL PASS. If any fails, the filter is
+     consulting User_Type somewhere and you have found something this plan did not know.
+
+================================================================================================
+CHANGE 3 — Agent:ApiKey BECOMES A LIST
+================================================================================================
+
+10. WHY. There is one key, no version and no overlap window, so rotating it is a HARD CUTOVER: n8n's
+    credential must change in the same minute the App Service setting does. With an array, two keys are
+    valid at once and a rotation becomes: add the new key, move n8n over, remove the old one.
+
+11. CRC.Api/AgentApiOptions.cs — ApiKey becomes a string[]. KEEP THE NAME (§4.8 specifies it; in Azure the
+    setting becomes Agent__ApiKey__0, Agent__ApiKey__1, still TWO underscores between segments). Default it
+    to an EMPTY ARRAY, never null. Rewrite the XML doc: what an array means, that an empty or absent one is
+    the fail-closed default and never "no key required", and 🔴 that a SCALAR Agent__ApiKey app setting
+    BINDS TO NOTHING once this property is an array — which is exactly why the failure is a clean 401 and
+    not an open door, and exactly why the Azure setting must be added before the web app is published.
+
+12. CRC.Api/Infrastructure/AgentApiKeyFilter.cs. Read its header comment and steps i–vii before touching it;
+    the ORDER of the steps is a security property and you are changing two of them in place.
+      • Step i (is a key configured at all) must now mean "there is not a single usable key". 🔴 WRITE THE
+        REFUSAL CONDITION ONCE, AS ONE EXPRESSION, and comment what it must mean. An array that is null, an
+        array with no members, an array whose only members are "" or whitespace — ALL THREE ARE "not
+        configured" and all three answer 401. This is the property that is easiest to lose when a scalar
+        becomes a collection, and losing it is an open API.
+      • Step iii (does it match) loops the usable keys. KEEP BOTH HALVES OF KeysMatch: hash each value to 32
+        bytes with SHA-256 FIRST, then CryptographicOperations.FixedTimeEquals. The hash is not paranoia
+        about the key's contents — it is what makes the fixed-time comparison honest, because FixedTimeEquals
+        needs two spans of EQUAL LENGTH and would otherwise leak the configured key's length. That reasoning
+        is in the existing comment; carry it over rather than rewriting it from scratch.
+        🔴 ACCUMULATE THE RESULT ACROSS THE LOOP — do not `return true` on the first match. Being honest
+        about why: an early return leaks WHICH key matched through timing, and a caller holding a valid key
+        already knows which one they hold, so the practical risk is close to nil. It is written this way
+        because it costs one line and removes the need to have this argument again the next time somebody
+        reads it.
+      • The LogError in step i names the setting. It currently says "In Azure the value is the App Service
+        app setting Agent__ApiKey (TWO underscores)". 🔴 REWRITE IT TO NAME THE INDEXED FORM —
+        Agent__ApiKey__0 — because an operator reading that line after this change will otherwise add
+        exactly the setting that does not work. This log line is the only thing that separates "the portal
+        is misconfigured" from "the caller's key is wrong", so its text is load-bearing.
+      • Do NOT change what goes on the wire. All three 401 paths still answer the identical body, the 503
+        path is untouched, and steps ii, iv, v, vi and vii are not yours to edit.
+
+13. CONFIG FILES:
+      • CRC.Web/appsettings.json — "ApiKey": "" becomes an empty ARRAY. Still a placeholder, still no key.
+      • CRC.Web/appsettings.Development.json — the dev value becomes a ONE-MEMBER array. Keep the same
+        worthless-if-it-leaks development string; do not invent a new one and do not add a second.
+      • CRC.Web/Program.cs — the Agent block's comment says "An empty key is treated as a misconfiguration".
+        Update it for the array, and name Agent__ApiKey__0. Do not change the Configure<> call itself.
+
+14. 🔴 PROVE THE TWO-KEY BEHAVIOUR AND THE FAIL-CLOSED BEHAVIOUR. This is the most important verification in
+    this prompt and it is four runs of the site, not a code review:
+      • TWO keys in appsettings.Development.json: run Test-AgentApi.ps1 with the FIRST and confirm every
+        check passes; run it again with the SECOND and confirm every check passes. THAT is the overlap
+        window this whole change exists to create.
+      • Set the array to [] and confirm every endpoint answers 401 and the LogError appears in
+        CRC.Web/Logs/app-*.log naming Agent__ApiKey__0. Paste the log line.
+      • Set the array to [""] — one blank member — and confirm it ALSO answers 401. This is the case a naive
+        `.Length == 0` check lets through, and letting it through is an open API.
+      • Put the dev config back to one real key before you finish, and say that you did.
+
+15. UPDATE CoreFlow.md FOR CHANGE 3 — five places, and grep to find any sixth:
+      • §13.6 "The one app setting" — the table's three rows all show a scalar. They become arrays, and the
+        Azure row becomes Agent__ApiKey__0 (and __1, __2 for more). The two-underscore paragraph is still
+        true and still important; ADD to it that the INDEX is a further segment, so Agent__ApiKey__0 has two
+        underscores in both places.
+      • §13.6's rotation paragraph currently ends "Making that overlappable is a small change —
+        AgentApiOptions.ApiKey becomes a string array and the filter accepts any member — and it is a change
+        to make BEFORE the first rotation, not during one". 🔴 THAT IS NOW DONE. Rewrite it as the rotation
+        PROCEDURE it has become: add the new key as __1, move n8n over, remove __0, restart. Say what has
+        NOT changed — there is still no expiry, no revocation list and nothing that notices an unexpected
+        caller.
+      • §13.3's step table, whose first row reads "Agent:ApiKey is null or whitespace".
+      • §13.7's per-caller-keys paragraph describes the first hardening to reach for as "an options property
+        that is an array of named keys, and one loop in AgentApiKeyFilter where there is one comparison
+        today". 🔴 HALF OF THAT IS NOW BUILT. Rewrite it precisely: the array and the loop EXIST; what is
+        still missing is the NAME on each key, and therefore the log line that says which consumer made the
+        request. Keep the conclusion — per-caller keys are still first — and say honestly that the remaining
+        work is now smaller than it was.
+      • §10's file map, which describes AgentApiOptions.cs as "the ONE setting: Agent:ApiKey" and describes
+        appsettings.json's Agent:ApiKey as an EMPTY STRING.
+      • Grep CoreFlow.md for Agent__ApiKey and Agent:ApiKey and check every hit.
+
+16. Test-AgentApi.ps1 — read it and decide. It takes -ApiKey and sends one key in a header, so its BEHAVIOUR
+    needs no change. If any of its comments or its help text describes the setting as a single scalar,
+    correct that text. DO NOT add a check, do not change its parameters, and do not make it read a key from
+    anywhere. Report what you found and what you did.
+
+================================================================================================
+FINISH
+================================================================================================
+
+17. FULL REGRESSION — all of it, and report each:
+      • dotnet build CRC.Web/CRC.Web.csproj — 0 errors, 0 new warnings.
+      • MSBuild /t:Rebuild of CRC.Database — Build succeeded, 0 Error(s), EXACTLY TWO SQL71502 warnings.
+      • The site starts, a human logs in, a normal page loads, and the user-management page renders
+        AGENT_SERVICE as type "9".
+      • Test-AgentApi.ps1 passes every check with a valid key, and fails as it should with a wrong one.
+      • 🔴 THE AUDIT ASSERTION. Book one appointment through endpoint 8 (Test-AgentApi.ps1 -IncludeWrite, or
+        by hand) and run the joined query from this plan's actor-identity section: dbo.AuditTrails joined to
+        dbo.Users must name AGENT_SERVICE, not 0 and not blank. Change 2 moved that account's User_Type, and
+        this is the check that proves the actor chain still works. Paste the row.
+
+18. UPDATE Nucentra_WhatsApp_Agent_Plan.md §4.8 — and ONLY §4.8. Mark changes 1, 2 and 3 as done in the
+    four-row table (a ✅ in the # column or the When column, whichever reads better against the existing
+    style), and add one line under each of those three sub-sections recording that it shipped and in which
+    prompt. 🔴 DO NOT restructure §4.8, do not touch any other section of that file, and do not delete the
+    original text — it is the record of why the change was asked for.
+
+19. 🔴 OUTPUT, AT THE END OF YOUR REPORT, A READY-TO-PASTE MARKDOWN SECTION for
+    Nucentra_Azure_Deployment_Guide.md — written in that guide's voice and numbering style, as a new §18
+    (Prompt 4 produced §17). DO NOT EDIT THAT FILE; the owner performs every Azure action by hand. It must
+    cover, click by click:
+      • Delete the existing scalar Agent__ApiKey app setting, and add Agent__ApiKey__0 with the same value.
+      • 🔴 THE ORDER: the app setting goes in BEFORE the web app is published. Publish first and every agent
+        request answers 401 until the setting is fixed — fail-closed and logged, not an open door, but an
+        outage.
+      • How a rotation works from now on: add Agent__ApiKey__1, Apply, move n8n's Header Auth credential
+        over, confirm, then remove __0. Note that each Apply restarts the app (~30 seconds).
+      • That the DACPAC must be published too, for changes 1 and 2, and that change 2's UPDATE means an
+        already-seeded Azure database is corrected automatically by that publish.
+
+WHEN DONE: lead with (i) the distinct ScreeningState values from local CRC_DB, (ii) the dbo.Users row showing
+AGENT_SERVICE at User_Type 9, and (iii) the four-run result from step 14 — two keys both working, [] refused,
+[""] refused. Then the full grep of UNRECORDED before and after, the audit-trail row, the Test-AgentApi.ps1
+output, every file you edited, and the ready-to-paste Azure §18. Then edit AgentApiPlan.md — tick the Prompt 5
+box in the Progress Tracker, set Prompt 5's Status to "✅ Done", and mark open items 1 and 3 as CLOSED with
+one line each saying which prompt closed them.
+
+DO NOT touch Azure. DO NOT edit Nucentra_Azure_Deployment_Guide.md, DOCUMENTSTORAGE.md or DapperLayerPlan.md.
+DO NOT edit any .js or .cshtml file. DO NOT touch the patient screens — that is Prompt 6. DO NOT add, remove
+or rename an endpoint, a route, a JSON property or a stored procedure. DO NOT change any other stored
+procedure, and DO NOT change any part of spAgentPatient_ListScreeningQueue except the one ELSE label and the
+comments around it.
+```
+
+---
+
+## Prompt 6 — The patient form learns what a phone number looks like
+
+**Status:** ⬜ Not started
+**Depends on:** Prompts 0–4 (independent of Prompt 5 — they share no file)
+**Source:** `Nucentra_WhatsApp_Agent_Plan.md` §4.8 change **4**
+
+> **What exists before this prompt:** `PatientController.SaveBasic` validates sixteen fields with one
+> `IsNullOrWhiteSpace` block and validates exactly one of them for FORMAT — the NRIC, *"must be exactly 12
+> digits"*. `wwwroot/js/patient/edit-basic.js` mirrors both checks client-side. `Patient_Phone` is
+> `VARCHAR(100) NOT NULL` and passes through untouched.
+>
+> 🔴 **§4.8 frames this change around `NO_PHONE` — the empty string — and that premise no longer holds.**
+> The mandatory-field block already rejects a blank phone on both sides, so an empty `Patient_Phone` is
+> unreachable through the only form that writes one. What the form accepts today is `"N/A"`, `"-"`, `"x"`:
+> not `NO_PHONE`, equally uncontactable, and equally invisible to `spAgentPatient_FindByPhone`, which gives
+> up below nine digits. **This prompt adds a format rule, and says so in those words.**
+>
+> **It is also the one prompt in this plan that edits a `.js`, a `.cshtml`, a validation rule and a
+> user-facing message.** That is a deliberate, scoped exception — see the note under the shared preamble.
+
+```text
+You are an AI coding agent on the CRC Portal, also called "nucentra" (ASP.NET Core 10 MVC + a classic SSDT
+database project). Fresh chat — no prior memory. The repo root is CRC_Portal. The web project is CRC.Web
+(net10.0); wwwroot/js holds 59 hand-written JavaScript files and there is no build step for them.
+
+WHY THIS PROMPT: nucentra now has a machine-callable Agent API that an external WhatsApp agent will use to
+message patients about their bowel-cancer screening results. Building it surfaced a category nobody was
+counting before: PATIENTS THE PROGRAMME CANNOT CONTACT. The register permits them, because Patient_Phone is
+VARCHAR(100) NOT NULL and NOT NULL rejects a NULL while cheerfully accepting an empty string — or, just as
+usefully to nobody, the string "N/A".
+
+🔴 READ THIS BEFORE YOU BELIEVE THE SOURCE DOCUMENT. Nucentra_WhatsApp_Agent_Plan.md §4.8 change 4 describes
+this as the empty-string problem. IT IS NOT, ANY MORE. Check for yourself, first, and report what you find:
+PatientController.SaveBasic's sixteen-field IsNullOrWhiteSpace block ALREADY rejects a blank phone, and
+wwwroot/js/patient/edit-basic.js rejects it client-side before the request is sent. An empty Patient_Phone
+cannot be created through this form. What CAN be created is a phone number that is not a phone number, and
+that is what you are stopping.
+
+WHAT YOU ARE ADDING — decided by the owner, do not re-open it:
+  Strip every non-digit from what the user typed. Then require 10 OR 11 DIGITS BEGINNING "01".
+  That is a Malaysian mobile number. It is the rule that makes the number actually reachable on WhatsApp,
+  and it is the rule under which spAgentPatient_FindByPhone's match — the LAST NINE DIGITS of the stored
+  value, after a TRANSLATE strip of + - ( ) space and full stop — can find the patient when Meta sends the
+  number as 60123456789.
+
+🔴 THIS PROMPT BREAKS TWO RULES THAT EVERY OTHER PROMPT IN AgentApiPlan.md ENFORCES, ON PURPOSE:
+"do not change any validation rule or user-facing message", and "no prompt edits a .js or .cshtml file".
+§4.8 change 4 is a change to a portal screen and cannot be made anywhere else. THE EXCEPTION IS SCOPED TO
+ONE FIELD ON ONE FORM: Patient_Phone on Patient > Edit > Basic. Every other field, every other screen, every
+other message and every endpoint's JSON stay exactly as they are.
+
+🔴 Patient_EmergencyNumber IS OUT OF SCOPE, DELIBERATELY, NOT BY OVERSIGHT. It is a phone number, it sits on
+the same form, and it is tempting. It is not what the agent dials, no code reads it, and widening the change
+to it would block a second set of existing rows for no benefit this project can name. Leave it alone, and
+say in your write-up that it was considered and excluded.
+
+READ FIRST — all of these, before writing anything:
+  CoreFlow.md                       (§0 the conventions; §3.8 dbo.PatientBasic IN FULL, especially the
+                                     sub-section "Which columns are mandatory, and where that is actually
+                                     enforced"; §4.7 the Patient page IN FULL, especially the numbered
+                                     validation ORDER and the list of failure messages; §11.3 and §11.4 the
+                                     controller and front-end checklists; §13.1 finding 2 — the last-nine-
+                                     digits match and exactly what it cannot match)
+  AgentApiPlan.md                   ("The second wave" section, and hard case 9)
+  Nucentra_WhatsApp_Agent_Plan.md   (§3.10 how Meta and the portal write phone numbers differently, and
+                                     §4.8 change 4 — whose premise you are correcting)
+  CRC.Web/Controllers/Patient/PatientController.cs   (SaveBasic in full — the trimming, the sixteen-field
+                                                      block, the NRIC rule, and the ORDER they run in)
+  CRC.Web/wwwroot/js/patient/edit-basic.js           (the collect-and-validate function that mirrors it)
+  CRC.Web/Views/Patient/Edit.cshtml                  (the PatientPhone and PatientNRIC inputs — note what
+                                                      the NRIC input carries that the phone input does not)
+  CRC.Database/Stored Procedures/Agent/spAgentPatient_FindByPhone.sql   (READ IT, DO NOT EDIT IT — it is
+                                                      why the rule is what it is)
+
+YOUR TASK (Prompt 6).
+
+1. 🔴 MEASURE THE DAMAGE FIRST, BEFORE YOU WRITE A LINE. Run this against local CRC_DB and report the FULL
+   result, every row:
+     sqlcmd -S localhost -d CRC_DB -E -C -Q "SELECT [Patient_ID], [Patient_Phone], LEN(REPLACE(TRANSLATE([Patient_Phone], '+-() .', '######'), '#', '')) AS Digits FROM [dbo].[PatientBasic] WHERE REPLACE(TRANSLATE([Patient_Phone], '+-() .', '######'), '#', '') NOT LIKE '01%' OR LEN(REPLACE(TRANSLATE([Patient_Phone], '+-() .', '######'), '#', '')) NOT IN (10, 11) ORDER BY [Patient_ID]"
+   These are the existing rows the new rule would reject. THIS MATTERS AND IS NOT A FORMALITY: once the rule
+   is in, EDITING ANY OF THESE PATIENTS FOR ANY REASON — a corrected address, a discharge — WILL BE BLOCKED
+   UNTIL THE PHONE IS FIXED, because SaveBasic validates the whole form on every save. That is the intended
+   trade-off, and the owner needs the number to be a number rather than a surprise.
+   🔴 DO NOT UPDATE, CLEAN OR "FIX" A SINGLE PATIENT ROW. Report them. That is all.
+
+2. SERVER SIDE — CRC.Web/Controllers/Patient/PatientController.cs, SaveBasic.
+   Add the phone-format check IMMEDIATELY AFTER the sixteen-field mandatory block and BEFORE the NRIC check,
+   so the messages arrive in the order a user fills the form. Follow the NRIC rule's shape exactly — it is
+   the neighbour and it is the house style:
+     • Strip non-digits the same way the NRIC check does.
+     • Require length 10 or 11 AND a leading "01".
+     • Return the house envelope: Ok(new { success = false, message = "..." }). NOT a 400, NOT ModelState,
+       NOT a data annotation — CoreFlow.md §4.7 and §11.3 are explicit that every validation answer on this
+       controller is this shape, and 59 .js files read it.
+   THE MESSAGE. One sentence, in the voice of "NRIC must be exactly 12 digits." — plain, specific about the
+   rule, and NOT apologetic. It must tell the user what is wanted, not what is wrong. Include an example.
+   🔴 DO NOT MODIFY the value that is SAVED. phone stays exactly what the user typed, trimmed, as today:
+   this prompt validates and does not normalise. Storing digits-only was considered and rejected — it would
+   make existing rows and new rows display differently on every screen with no backfill, and
+   spAgentPatient_FindByPhone already handles the separators. Write that reasoning into a comment above the
+   check, because "why didn't you just clean it" is the first question a reader will have.
+
+3. CLIENT SIDE — CRC.Web/wwwroot/js/patient/edit-basic.js.
+   Mirror the rule in the collect-and-validate function, in the same place relative to the existing checks,
+   using the file's existing idiom (it already does `nricRaw.replace(/\D/g, '')` — reuse that shape) and the
+   file's existing failure mechanism. 🔴 THE TWO MESSAGES MUST BE CHARACTER-FOR-CHARACTER IDENTICAL to the
+   server's. Nucentra's client-side checks are a convenience and the server's are the authority (§11.4);
+   two wordings for one rule is how they drift apart.
+
+4. THE VIEW — CRC.Web/Views/Patient/Edit.cshtml.
+   The PatientNRIC input carries maxlength and a placeholder showing a real example; the PatientPhone input
+   carries neither. Give the phone input the same treatment — a placeholder with a realistic Malaysian
+   mobile, and a maxlength generous enough to allow the separators people actually type (011-2345 6789 is
+   longer than eleven characters — count it before you choose a number).
+   🔴 DO NOT add a `pattern` attribute or change the input's `type`. This form is submitted by JavaScript,
+   not by a native form post, so browser constraint validation NEVER RUNS on it — a pattern attribute would
+   be dead code that looks like a control. Say that in your report.
+
+5. UPDATE CoreFlow.md — three places, surgically. Renumber nothing.
+     • §3.8's "Which columns are mandatory, and where that is actually enforced" table. 🔴 READ IT BEFORE
+       YOU EDIT IT — its four rows are about PRESENCE, and not one of them is a format rule today. The
+       sixteen-field row lists Patient_Phone among columns checked only for non-blankness, and that is now
+       incomplete. Add a row for format enforcement in the same voice, carrying BOTH format rules this
+       controller has: Patient_NRIC's twelve digits (already true, already described elsewhere in §3.8 and
+       in §4.7, and never in this table) and Patient_Phone's new one. Keep the paragraph underneath about
+       what a new column needs — it is still true and gains one more thing to remember.
+     • §4.7 — the numbered validation ORDER (the list that runs "the sixteen-field mandatory check", "NRIC:
+       strip non-digits, require exactly twelve", …) gains a step in its real position, and the list of
+       failure messages gains the new one verbatim.
+     • §13.1's finding 2 explains the last-nine-digits match and what it cannot match. Add two or three
+       sentences: the portal now REFUSES to store a number the match could not find, so the gap that finding
+       describes is closed going FORWARD, and 🔴 say plainly that it is NOT closed BACKWARD — the rows from
+       step 1 are still there and nothing in this change touches them.
+
+6. VERIFY BY DRIVING THE FORM, NOT BY READING THE DIFF. `dotnet run --project CRC.Web --launch-profile https`,
+   log in, open Patient > Edit > Basic, and do all of these. Report each, and say which layer refused:
+     a) A valid new patient with 0123456789 — SAVES.
+     b) 011-2345 6789 (eleven digits, with separators) — SAVES. If it does not, your strip is wrong.
+     c) +60123456789 — 🔴 DECIDE, THEN REPORT AND EXPLAIN. Stripping non-digits gives 60123456789: eleven
+        digits, but it starts "60", not "01", so the rule as specified REFUSES IT. That is correct — the
+        portal stores local-format numbers and the API's match handles the country code at read time — but
+        it is a real thing a user might type, so the MESSAGE must make the expected format obvious enough
+        that they know what to do. If your message does not, rewrite the message. DO NOT relax the rule.
+     d) "N/A" — REFUSED. This is the case the whole prompt exists for.
+     e) 012345678 (nine digits) — REFUSED.
+     f) 01234567890123 (fourteen digits) — REFUSED.
+     g) 🔴 SERVER-SIDE PROOF. Bypass the JavaScript entirely and POST "N/A" straight to /Patient/SaveBasic
+        with Invoke-RestMethod (you will need a session cookie and the X-CSRF-TOKEN header — antiforgery is
+        global and header-named, CoreFlow.md §2.4). It MUST be refused with the same message. A rule that
+        lives only in the browser is not a rule.
+     h) EDIT AN EXISTING PATIENT that already passes, change something unrelated, and SAVE — confirm nothing
+        regressed.
+     i) If step 1 found any bad rows, open ONE of them, confirm the save is blocked with the new message,
+        and then CANCEL WITHOUT SAVING. Do not fix the data.
+
+7. FULL REGRESSION:
+     • dotnet build CRC.Web/CRC.Web.csproj — 0 errors, 0 new warnings.
+     • The Patient Active and Discharged lists still load; the Appointment, Journey and Documents tabs on
+       Patient > Edit still work. You touched a shared page.
+     • Test-AgentApi.ps1 passes — you changed no API code, and this proves it.
+     • 🔴 NO STORED PROCEDURE AND NO .sql FILE WAS EDITED. `git status --short` must show only
+       PatientController.cs, edit-basic.js, Edit.cshtml, CoreFlow.md, AgentApiPlan.md and
+       Nucentra_WhatsApp_Agent_Plan.md. Paste it.
+
+8. UPDATE Nucentra_WhatsApp_Agent_Plan.md §4.8 — and ONLY §4.8. Mark change 4 done, and 🔴 add two sentences
+   under it correcting its premise for whoever reads it next: blank was already rejected by the form before
+   this change; what shipped is a FORMAT rule, and the category it stops growing is "a phone number that is
+   not a phone number", not NO_PHONE. Do not restructure the section and do not delete the original text.
+
+WHEN DONE: lead with the bad-row list from step 1 — that is the number the owner needs — and with the exact
+message text you chose, shown once. Then the nine form results from step 6 including which layer refused
+each, the git status from step 7, and the three CoreFlow.md edits. Then edit AgentApiPlan.md — tick the
+Prompt 6 box in the Progress Tracker, set Prompt 6's Status to "✅ Done", and mark open item 4 CLOSED with
+one line saying what shipped and what it does NOT do (it does not clean existing rows).
+
+DO NOT touch Azure. DO NOT edit Nucentra_Azure_Deployment_Guide.md, DOCUMENTSTORAGE.md, SEEDING.md or
+DapperLayerPlan.md. DO NOT edit any .sql file or any stored procedure. DO NOT touch CRC.Api, CRC.Data or any
+Agent endpoint. DO NOT validate, normalise or reformat any other field on this form or any other form. DO NOT
+UPDATE A SINGLE PATIENT ROW.
+```
+
+---
+
 ## Open items — decide before go-live
 
-These are **not** blockers for the five prompts. They are decisions the owner should take before n8n points at
+These are **not** blockers for Prompts 0–4. They are decisions the owner should take before n8n points at
 a production key, and each one is recorded here so it is not discovered later.
 
-1. **🔴 `AGENT_SERVICE` is a real ADMIN account.** This plan follows `Nucentra_WhatsApp_Agent_Plan.md` §4.1 and
+**Three of the six have since been decided, and Prompts 5 and 6 carry them:** item **1** → Prompt 5 change 2,
+item **3** → Prompt 5 change 3, item **4** → Prompt 6. They are left below **unedited**, because they are the
+record of what was open and why — each prompt ticks its own when it lands.
+
+1. **🔴 `AGENT_SERVICE` is a real ADMIN account.** *(Decided → **Prompt 5**, change 2: `User_Type = 9`.)* This plan follows `Nucentra_WhatsApp_Agent_Plan.md` §4.1 and
    seeds it with `User_Type = 2`. `spUsers_ValidateLogin` selects any row by username, so **if anyone ever
    learns or resets its password, it is a working portal administrator.** The password is a discarded random
    secret, so this is theoretical — but there is a cheap hardening available: seed it with a `User_Type` that
@@ -1483,13 +2097,13 @@ a production key, and each one is recorded here so it is not discovered later.
    **Revisit the moment the access restriction is not in place**, because then the key is the only thing
    between the internet and `/patients/queue`, and a key can be brute-forced given enough requests.
 
-3. **Key rotation.** There is one key, shared by one caller, with no version, no overlap window and no
+3. **Key rotation.** *(Decided → **Prompt 5**, change 3: `ApiKey` becomes a `string[]`.)* There is one key, shared by one caller, with no version, no overlap window and no
    expiry. Rotating it is a one-setting change plus a restart — and a hard cutover, so n8n must be updated in
    the same minute. If that is unacceptable, the change is to make `AgentApiOptions.ApiKey` a string array and
    have the filter accept any member, which allows an overlap. **Decide before the first rotation, not
    during one.**
 
-4. **The `NO_PHONE` patients.** `spAgentPatient_ListScreeningQueue` classifies them and the API returns them,
+4. **The `NO_PHONE` patients.** *(Decided → **Prompt 6**, with its premise corrected: the form already rejects a blank, so what ships is a FORMAT rule.)* `spAgentPatient_ListScreeningQueue` classifies them and the API returns them,
    and then nothing happens — the agent digests them to a coordinator and stops. `Patient_Phone` is
    `VARCHAR(100) NOT NULL` but nothing stops it being an empty string or a placeholder. **That may be a real
    gap in the programme worth closing in the portal**, with validation on the patient form rather than in the
@@ -1576,5 +2190,41 @@ anywhere can say which consumer made a request. Rate limiting is second, and bec
 platform access restriction is not in place. Open items 1, 3, 4, 5 and 6 are unchanged and remain the
 owner's.
 
+---
+
+## Definition of done — the second wave (Prompts 5 and 6)
+
+Both boxes ticked, and every one of these true. **Nothing in the first Definition of done stops being true**
+— these are additional, and any of them failing means an earlier one has been broken.
+
+- [ ] `dotnet build CRC.Web/CRC.Web.csproj` — 0 errors, **0 new warnings**. `CRC.Database` MSBuild
+      `/t:Rebuild` — `Build succeeded`, `0 Error(s)`, **exactly two** `SQL71502` warnings. Still two.
+- [ ] 🔴 **`Test-AgentApi.ps1` passes every check, unchanged in behaviour**, with a valid key — and fails as
+      it should with a wrong one. Nothing in this wave adds an endpoint or a check.
+- [ ] 🔴 `dbo.AuditTrails` joined to `dbo.Users` still names **`AGENT_SERVICE`** on an appointment booked
+      through endpoint 8. Change 2 moved that row's `User_Type`; this is the check that proves the actor
+      chain survived it.
+- [ ] `spAgentPatient_ListScreeningQueue` returns **`RESULT_PENDING`** where it returned `UNRECORDED` for
+      `status = 1 AND results IS NULL`, and a `grep` for `UNRECORDED` finds **no comment claiming five
+      values**.
+- [ ] `dbo.Users` reads `User_Type = 9` for `AGENT_SERVICE` on local `CRC_DB`, **after two consecutive
+      publishes** — the guarded `UPDATE` is idempotent.
+- [ ] 🔴 The SUPERUSER user-management page **renders `AGENT_SERVICE` with the literal `9`** and does not
+      error. Confirmed on screen, not inferred from `_ => t.ToString()`.
+- [ ] 🔴 **Two keys work simultaneously**, `[]` answers `401`, and `[""]` answers `401`. All four proven by
+      running the site, and the `[]` case leaves a `LogError` naming **`Agent__ApiKey__0`**.
+- [ ] The patient form refuses `"N/A"`, `012345678` and `+60123456789`, accepts `0123456789` and
+      `011-2345 6789`, and **refuses `"N/A"` posted straight to `/Patient/SaveBasic` with the JavaScript
+      bypassed**. The client and server messages are character-for-character identical.
+- [ ] 🔴 **No patient row was updated, cleaned or deleted.** The bad-row list from Prompt 6 step 1 is a
+      report handed to the owner, not a migration.
+- [ ] `Nucentra_WhatsApp_Agent_Plan.md` §4.8's four changes are marked done, its change-2 claim that *"No
+      screen lists it today"* is corrected, and its change-4 premise is corrected. Nothing else in that file
+      was touched.
+- [ ] `CoreFlow.md` §3.3's *"Exactly one row is seeded"* — **stale since Prompt 0** — says two, and §2.1,
+      §3.8, §4.7, §13.1, §13.3, §13.4, §13.6 and §13.7 are amended in place. Nothing renumbered.
+
 **Then, and only then, §5 of `Nucentra_WhatsApp_Agent_Plan.md` becomes the next thing to read** — the WhatsApp
 Business setup, which is the long pole and should have been started in parallel with all of the above.
+🔴 **Prompt 5's change 1 is the one with a real deadline**: WF1 switches on `screeningState`, so the label
+has to be right before that workflow is built, not after.
