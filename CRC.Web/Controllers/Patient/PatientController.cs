@@ -542,6 +542,29 @@ namespace CRC.Web.Controllers.Patient
                 return Ok(new { success = false, message = "Please fill in all mandatory fields." });
             }
 
+            // Phone: strip non-digits, then require 10 or 11 digits beginning "01" — a Malaysian mobile.
+            // This runs AFTER the sixteen-field block (which has already refused a blank) and BEFORE the
+            // NRIC check, so the messages arrive in the order the fields sit on the form. It is a FORMAT
+            // rule, not a presence rule: what it stops is "N/A", "-", "none" — a phone number that is not a
+            // phone number, which the register accepted happily and no agent can ever dial.
+            //
+            // 🔴 WHY THIS DOES NOT JUST CLEAN THE VALUE, since that is the first question a reader has.
+            // `phone` is saved exactly as the user typed it, trimmed, as it always was — this check
+            // validates and does not normalise. Storing the digits-only form was considered and REJECTED:
+            // every existing row holds what an administrator typed, nothing backfills them, and writing
+            // "0123456789" on save would make new rows and old rows render differently on every screen that
+            // shows a phone number. There is also nothing to gain — spAgentPatient_FindByPhone already
+            // TRANSLATEs + - ( ) space and full stop out of the column before it compares (CoreFlow.md
+            // §13.1 finding 2), so the separators cost the agent's lookup nothing. The 10-or-11-digits-from-
+            // "01" rule is precisely what makes that lookup's LAST NINE DIGITS able to find the patient when
+            // Meta delivers the same number as 60123456789.
+            var phoneDigits = new string(phone.Where(char.IsDigit).ToArray());
+            if ((phoneDigits.Length != 10 && phoneDigits.Length != 11) ||
+                !phoneDigits.StartsWith("01", StringComparison.Ordinal))
+            {
+                return Ok(new { success = false, message = "Phone must be a Malaysian mobile number of 10 or 11 digits starting with 01 (e.g. 012-345 6789)." });
+            }
+
             // NRIC: must be exactly 12 digits
             var nricDigits = new string(nricRaw.Where(char.IsDigit).ToArray());
             if (nricDigits.Length != 12)

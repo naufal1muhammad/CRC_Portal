@@ -1015,14 +1015,25 @@ field" in this feature is required by C# and by nothing else:
 |---|---|---|
 | **`NOT NULL` only** | the 20 non-nullable columns | a direct `INSERT … VALUES ('')` succeeds; the patient has a blank name |
 | **`PatientController.SaveBasic`, one `IsNullOrWhiteSpace` block** | `Patient_Name`, `Patient_Email`, `Patient_Phone`, `Patient_NRIC`, the five lookup ids, `Patient_ResState/City/Postcode`, `Patient_AddLine1`, and the three emergency-contact columns — **sixteen fields**, answered with *"Please fill in all mandatory fields."* | nothing at all stops it — not a constraint, not the procedure |
+| 🔴 **`PatientController.SaveBasic`, FORMAT — the only two columns whose *shape* is checked** | `Patient_NRIC`: strip non-digits, require **exactly twelve** → *"NRIC must be exactly 12 digits."* · `Patient_Phone`: strip non-digits, require **10 or 11 digits beginning `01`** → *"Phone must be a Malaysian mobile number of 10 or 11 digits starting with 01 (e.g. 012-345 6789)."* | nothing at all stops it. Both are `VARCHAR(100)` with no check constraint, and both procedures write whatever they are handed |
 | **`PatientController.SaveBasic`, derived** | `Patient_BirthDate`, `Patient_Age`, `Patient_Gender` | they are never posted, so there is nothing to bypass |
 | **nothing** | `Patient_AddLine2`, the iFOBT trio, the discharge trio | correct — they are genuinely optional |
+
+**The first four rows are about PRESENCE; the format row is the only one about SHAPE, and it is the newer
+idea.** Note what it does *not* say: neither rule rewrites the column. `Patient_NRIC` is stored as the
+stripped twelve digits because the controller passes `nricDigits` on, but `Patient_Phone` is stored **exactly
+as it was typed, separators and all** — the digits are computed to judge the value and then thrown away, so
+`012-345 6789` reaches the table unchanged. `Patient_EmergencyNumber` is deliberately **not** in this row: it
+is a phone number on the same form, but nothing reads it, no agent dials it, and adding the rule there would
+block a second set of existing rows for no benefit.
 
 **That gap is the thing to know before adding a field here.** A new column gets its `NOT NULL` from the
 `.sql`, its two parameters from `spPatientBasic_Insert` and `spPatientBasic_Update`, its property from
 `CRC.Data/Models/PatientSaveInput.cs` and `PatientBasicDetail.cs` — and its *requiredness* from a line in
 that one `if` block in the controller. Miss the last one and the column is mandatory in the schema, blank
-in practice, and nothing anywhere reports it.
+in practice, and nothing anywhere reports it. **And if the column has a shape as well as a presence** — a
+number, a code, an identifier — it needs a second check of its own and a mirror of that check in the
+screen's `.js`, worded identically, because the two drift the moment they disagree.
 
 Two more absences worth stating plainly, because both are things a reader may expect:
 
@@ -2140,6 +2151,7 @@ scoping in nucentra at all (§2.7). Any ADMIN sees every patient.
 // POST /Patient/SaveBasic  (the request DTO is SaveBasicRequest — 25 properties)
 { "success": true,  "patientId": "PAT-000042" }             // insert AND update return the same shape
 { "success": false, "message": "Please fill in all mandatory fields." }
+{ "success": false, "message": "Phone must be a Malaysian mobile number of 10 or 11 digits starting with 01 (e.g. 012-345 6789)." }
 { "success": false, "message": "NRIC must be exactly 12 digits." }
 { "success": false, "message": "Invalid NRIC (unable to derive Birth Date)." }
 { "success": false, "message": "Invalid NRIC (unable to derive Gender)." }
@@ -2196,20 +2208,27 @@ Everything else is validation and derivation, and it runs in this order — each
    `true`** — before validation, so a cleared field cannot fail a check it is exempt from.
 3. **The sixteen-field mandatory check**, one `if` with sixteen `IsNullOrWhiteSpace` calls →
    *"Please fill in all mandatory fields."*
-4. **NRIC: strip non-digits, require exactly twelve** → *"NRIC must be exactly 12 digits."*
-5. **Derive the birth date, then the gender, then the age** — two more messages, §3.8.
-6. **Discharge shape**: if `isDischarged`, both the type and the date must be present and the date must
+4. 🔴 **Phone: strip non-digits, require 10 or 11 digits beginning `01`** → *"Phone must be a Malaysian
+   mobile number of 10 or 11 digits starting with 01 (e.g. 012-345 6789)."* It sits here, between the
+   mandatory block and the NRIC rule, so the messages arrive in the order the fields sit on the form. **It
+   validates and does not normalise** — `phone` is saved as typed, trimmed, separators intact, because
+   rewriting it would make new rows and old rows render differently with no backfill and
+   `spAgentPatient_FindByPhone` strips the separators itself (§13.1). `Patient_EmergencyNumber` is on the
+   same form and is **not** checked, on purpose.
+5. **NRIC: strip non-digits, require exactly twelve** → *"NRIC must be exactly 12 digits."*
+6. **Derive the birth date, then the gender, then the age** — two more messages, §3.8.
+7. **Discharge shape**: if `isDischarged`, both the type and the date must be present and the date must
    parse → two messages.
-7. **`isNew` is `string.IsNullOrWhiteSpace(model.PatientId)`** — the client decides insert versus update by
+8. **`isNew` is `string.IsNullOrWhiteSpace(model.PatientId)`** — the client decides insert versus update by
    whether it sends an id, and nothing verifies that an id it *does* send exists.
-8. 🔴 **The discharge-document check, and it is the only step that is a database read.** Discharging a
+9. 🔴 **The discharge-document check, and it is the only step that is a database read.** Discharging a
    *new* patient is refused outright (*"Please save patient details first…"*) because there is no id to
    check documents against. For an existing one, `spPatient_Discharge_CheckMissingDocuments` returns the
    mandatory types that are **missing**, and **an empty result is the pass condition** — any row at all
    blocks the save and names the missing types in the message.
-9. **Insert or update**, and only now does anything get written.
+10. **Insert or update**, and only now does anything get written.
 
-All three states of step 8 were driven end to end: with two types configured for discharge reason `01` and
+All three states of step 9 were driven end to end: with two types configured for discharge reason `01` and
 no documents on file the save was refused naming both; with one of the two uploaded it was refused naming
 the remaining one; with both present it succeeded. The check asks only whether **at least one document of
 each required type exists** — it never counts, and a patient with three copies of one type is no better off
@@ -6077,6 +6096,21 @@ stripped to digits and the last nine compared. Two consequences, both real:
   The strip also costs an index: the expression is not sargable, so the lookup is a table scan. That is
   acceptable at this size and against one lookup per conversation; on a large table the answer is a
   persisted computed column with its own index, not a cleverer predicate.
+
+- 🔴 **The portal now refuses to store a number this match could not find — FORWARD ONLY.**
+  `PatientController.SaveBasic` and `edit-basic.js` require `Patient_Phone` to be 10 or 11 digits beginning
+  `01` once the separators are stripped (§3.8, §4.7), which is exactly the shape whose last nine digits
+  equal the tail of Meta's `60…` form. So `"N/A"`, `"-"` and `"none"` — values that are not `NO_PHONE`, are
+  equally uncontactable, and are equally invisible to this procedure — **cannot be created through the only
+  form that writes this column any more.** Nothing about the procedure changed: the rule was put where the
+  data is written, not where it is read.
+  🔴 **It is NOT closed backward.** No row was cleaned, updated or migrated, and this change touches no
+  existing data whatsoever — a row already holding an unmatchable number still holds it and is still
+  silently not found. Two consequences worth stating: the audit query in this procedure's own header is
+  still the way to find those rows and still worth re-running, and because `SaveBasic` validates the whole
+  form on **every** save, editing such a patient for **any** reason is now blocked until the phone is
+  corrected. Measured against `CRC_DB` at the time the rule shipped: **zero rows out of twelve patients**
+  would be rejected, so nobody is blocked today.
 
 **3. `spAgentSlots_FindOpenByBranch` is advisory, and `SlotTaken` is a normal outcome.** The read runs
 outside any transaction and holds no lock, so a slot it returns can be consumed by an administrator working

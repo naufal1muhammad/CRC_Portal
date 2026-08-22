@@ -808,7 +808,7 @@ place, because §12 is struck through and this is where a portal owner will look
 | **1** ✅ | **Add the sixth `screeningState`, `RESULT_PENDING`** | `spAgentPatient_ListScreeningQueue.sql` | ✅ **SHIPPED** (`AgentApiPlan.md` Prompt 5) — was: before WF1 goes live, since WF1 switches on this value |
 | **2** ✅ | **Re-seed `AGENT_SERVICE` with a `User_Type` no policy admits** | `CRC.Database/Scripts/Seed_Users.sql` | ✅ **SHIPPED** (Prompt 5) — was: any time. Cheap hardening |
 | **3** ✅ | **`AgentApiOptions.ApiKey` becomes a string array** | `CRC.Api/AgentApiOptions.cs`, `AgentApiKeyFilter.cs` | ✅ **SHIPPED** (Prompt 5) — was: before the first key rotation |
-| **4** | **Validate `Patient_Phone` on the portal's patient form** | The patient screens — outside everything this project has touched | Any time. It stops a category growing |
+| **4** ✅ | **Validate `Patient_Phone` on the portal's patient form** | The patient screens — outside everything this project has touched | ✅ **SHIPPED** (Prompt 6) — was: any time. It stops a category growing |
 
 ---
 
@@ -898,6 +898,27 @@ an empty string.** That is the whole of what `NO_PHONE` detects. The digest (§6
 agent-side answer and it is built; **form validation on the portal's patient screens is what stops the
 category growing**, and it is out of scope for n8n. It is named here because this API is what made the
 category visible for the first time — nobody was counting these patients before.
+
+> ✅ **SHIPPED in `AgentApiPlan.md` Prompt 6 — with its premise corrected, and the paragraph above left in
+> place as the record of what was asked for.** 🔴 **The blank phone this change was written around was
+> already unreachable**: `PatientController.SaveBasic`'s sixteen-field `IsNullOrWhiteSpace` block rejected
+> an empty `Patient_Phone` before this change, and `edit-basic.js` rejected it client-side first, so no
+> `NO_PHONE` row could be created through the only form that writes this column. **What shipped is
+> therefore a FORMAT rule, not a presence rule** — strip non-digits, then require 10 or 11 digits beginning
+> `01` — and the category it stops growing is *"a phone number that is not a phone number"*: `"N/A"`,
+> `"-"`, `"none"`, values that are not `NO_PHONE`, are just as uncontactable, and are just as invisible to
+> `spAgentPatient_FindByPhone`.
+>
+> Client and server carry the identical sentence, *"Phone must be a Malaysian mobile number of 10 or 11
+> digits starting with 01 (e.g. 012-345 6789)."* The number is **validated, not normalised** — it is stored
+> exactly as typed, separators and all, because `spAgentPatient_FindByPhone` already strips them and
+> rewriting the column would make new rows and existing rows display differently with no backfill.
+> 🔴 **Nothing was cleaned.** The rule applies to saves from now on; existing rows are untouched. Measured
+> against `CRC_DB` when it shipped, **zero of twelve patients** would be rejected by it — but note that
+> `SaveBasic` validates the whole form on every save, so wherever a bad row *does* exist, editing that
+> patient for any reason is blocked until the phone is corrected. `Patient_EmergencyNumber` was considered
+> and **deliberately excluded**: same form, also a phone number, but no code reads it and the agent never
+> dials it.
 
 ---
 

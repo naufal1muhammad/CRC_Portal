@@ -547,6 +547,7 @@
         const name = (document.getElementById('PatientName').value || '').trim();
         const email = (document.getElementById('PatientEmail').value || '').trim();
         const phone = (document.getElementById('PatientPhone').value || '').trim();
+        const phoneDigits = phone.replace(/\D/g, '');
         const nricRaw = (document.getElementById('PatientNRIC').value || '').trim();
         const nricDigits = nricRaw.replace(/\D/g, '');
 
@@ -592,6 +593,15 @@
         if (!name || !email || !phone || !nricDigits || !raceId || !sourceId || !religionId || !maritalStatusId || !occupationId ||
             !resState || !resCity || !resPostcode || !addLine1 || !emergencyName || !emergencyRelationship || !emergencyNumber) {
             if (msg) msg.textContent = 'Please fill in all mandatory fields.';
+            return null;
+        }
+
+        // Phone: 10 or 11 digits beginning "01" once the separators are stripped — a Malaysian mobile.
+        // The message is character-for-character the server's; the server is the authority and this is the
+        // convenience, so two wordings for one rule is how they drift apart. `phone` itself is sent
+        // untouched — this validates and does not normalise.
+        if (!/^01[0-9]{8,9}$/.test(phoneDigits)) {
+            if (msg) msg.textContent = 'Phone must be a Malaysian mobile number of 10 or 11 digits starting with 01 (e.g. 012-345 6789).';
             return null;
         }
 

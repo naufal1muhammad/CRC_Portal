@@ -119,7 +119,16 @@
 
                                 <div class="mb-2">
                                     <label for="PatientPhone" class="form-label">Phone <span class="text-danger">*</span></label>
-                                    <input id="PatientPhone" type="text" class="form-control form-control-sm" />
+                                    @* maxlength is 20, not 11: the rule counts DIGITS after the separators are
+                                       stripped, and the separators people actually type take real characters —
+                                       "011-2345 6789" is thirteen, "+60 11-2345 6789" is sixteen. Twenty leaves
+                                       room without letting the box become free text. No `pattern` attribute and
+                                       type stays `text` deliberately: this form is submitted by fetch() in
+                                       edit-basic.js, never by a native form post, so browser constraint
+                                       validation never runs on it — a `pattern` here would be dead code wearing
+                                       the costume of a control. The two real checks are in edit-basic.js and in
+                                       PatientController.SaveBasic. *@
+                                    <input id="PatientPhone" type="text" class="form-control form-control-sm" maxlength="20" placeholder="(e.g. 012-345 6789)" />
                                 </div>
 
                                 <div class="mb-2">

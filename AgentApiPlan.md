@@ -459,7 +459,7 @@ in place — §2.2's is the only one that does.
 **The second wave — `Nucentra_WhatsApp_Agent_Plan.md` §4.8:**
 
 - [x] **Prompt 5** — `RESULT_PENDING`, the hardened `AGENT_SERVICE` type, and a key that is a list (§4.8 changes 1, 2, 3)
-- [ ] **Prompt 6** — The patient form learns what a phone number looks like (§4.8 change 4)
+- [x] **Prompt 6** — The patient form learns what a phone number looks like (§4.8 change 4)
 
 ---
 
@@ -1891,7 +1891,7 @@ comments around it.
 
 ## Prompt 6 — The patient form learns what a phone number looks like
 
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 **Depends on:** Prompts 0–4 (independent of Prompt 5 — they share no file)
 **Source:** `Nucentra_WhatsApp_Agent_Plan.md` §4.8 change **4**
 
@@ -2107,7 +2107,12 @@ record of what was open and why — each prompt ticks its own when it lands.
    have the filter accept any member, which allows an overlap. **Decide before the first rotation, not
    during one.**
 
-4. **The `NO_PHONE` patients.** *(Decided → **Prompt 6**, with its premise corrected: the form already rejects a blank, so what ships is a FORMAT rule.)* `spAgentPatient_ListScreeningQueue` classifies them and the API returns them,
+4. **The `NO_PHONE` patients.** ✅ **CLOSED — Prompt 6.** The patient form now requires `Patient_Phone` to be
+   10 or 11 digits beginning `01` once non-digits are stripped, checked in `PatientController.SaveBasic`
+   and mirrored word-for-word in `edit-basic.js`, so a value like `"N/A"` can no longer be saved. 🔴 **What
+   it does NOT do: it does not clean, update or migrate a single existing row** — it is a rule for saves
+   from here on, the number is stored exactly as typed rather than normalised, and
+   `Patient_EmergencyNumber` was deliberately left alone. *(Decided → **Prompt 6**, with its premise corrected: the form already rejects a blank, so what ships is a FORMAT rule.)* `spAgentPatient_ListScreeningQueue` classifies them and the API returns them,
    and then nothing happens — the agent digests them to a coordinator and stops. `Patient_Phone` is
    `VARCHAR(100) NOT NULL` but nothing stops it being an empty string or a placeholder. **That may be a real
    gap in the programme worth closing in the portal**, with validation on the patient form rather than in the
