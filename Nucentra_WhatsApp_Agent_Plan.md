@@ -1,8 +1,27 @@
 # nucentra — WhatsApp Patient & Staff Communicator / Appointment Setter Agent
 
-**Build plan for n8n.** This document is the complete specification for an AI agent that reads the
-nucentra CRC Portal, talks to patients and clinicians over WhatsApp, and books colorectal-cancer
-screening appointments back into the portal.
+**Build plan for n8n — addressed to Claude.** This document is the complete specification for an AI
+agent that reads the nucentra CRC Portal, talks to patients and clinicians over WhatsApp, and books
+colorectal-cancer screening appointments back into the portal.
+
+> ## 🤖 THIS DOCUMENT IS ADDRESSED TO CLAUDE. IT IS NO LONGER ADDRESSED TO n8n's AI ASSISTANT.
+>
+> **It used to say "attach this whole file to n8n's AI Assistant". That does not work.** The file is
+> ~208 KB, and n8n's in-app Assistant refuses it outright — *"File is too large."* It cannot hold a
+> specification this size, and splitting it defeats the point: nearly every workflow in §6.3 depends on a
+> constraint stated in §3 or a response shape stated in §4.
+>
+> **The builder is now Claude (Cowork)**, which reads the whole file, keeps it in context, and creates
+> the workflows through the **n8n MCP server** — as validated SDK code posted straight into the
+> instance — rather than by dragging nodes across a canvas.
+>
+> 🔴 **Read §A and §B before §0.** §A is the connected environment and the credentials. §B is the split
+> between what Claude builds and **what only a human can do** — and that second column is larger than it
+> looks. The whole of §5 is in it.
+>
+> **§0 to §10 are unchanged and still authoritative.** The specification was never the problem; only the
+> delivery mechanism was. Where the older text below says *"you"*, §B is what tells you whether that
+> means Claude or Naufal.
 
 > ## ✅ THE AGENT API IS BUILT AND ANSWERING — AND §12 IS NOW CLOSED
 >
@@ -22,13 +41,15 @@ screening appointments back into the portal.
 > `screeningState` value, `RESULT_PENDING`, and WF1 switches on that value, so **do it before WF1 goes
 > live** or a patient waiting on a lab result is told their test was never completed.
 >
-> **Who this is for.** Attach this whole file to n8n's AI Assistant. §4 is the API your workflows call,
-> §5 is the WhatsApp Cloud API setup you do by hand in a browser, and §6 to §10 are the build
-> instructions: workflows, nodes, credentials, tool definitions and the agent's system prompt.
+> **What each part is for.** §4 is the API the workflows call. §5 is the WhatsApp Cloud API setup, done
+> by hand in a browser by a human — **Claude cannot do §5** (§B says why). §6 to §10 are the build
+> itself: workflows, nodes, credentials, tool definitions and the agent's system prompt, and that is the
+> part Claude executes.
 >
 > **Where this disagrees with `CoreFlow.md`, `CoreFlow.md` wins.** It is the specification of the portal
-> as built, and its **§13 is the Agent API's full specification** — §4 below is the working summary an
-> n8n builder needs, drawn from it.
+> as built, and its **§13 is the Agent API's full specification** — §4 below is the working summary a
+> builder needs, drawn from it. 🔴 **`CoreFlow.md` is in the same repo folder Claude has mounted**
+> (§A.3), so Claude should read it directly rather than infer from §4 when a detail is missing.
 >
 > ---
 >
@@ -51,6 +72,167 @@ screening appointments back into the portal.
 > channel (Q2), the **24-month** surveillance interval (Q15 — a clinical parameter, confirm it with the
 > clinical lead), and the **PDPA position** (Q22 — no opt-in required, recorded in §3.9 as a decision
 > taken, not one this document reasoned its way to).
+
+---
+
+## §A. The build environment — what Claude is connected to
+
+**This section is new and did not exist when the plan was written for n8n's Assistant.** It records what
+Claude can actually reach, so that nothing below has to be guessed at.
+
+### A.1 🔴 The n8n instance and its credential
+
+| | |
+|---|---|
+| **Instance** | `https://maxnaufal.app.n8n.cloud/` |
+| **Plan/host** | n8n **Cloud** (not self-hosted). It is publicly reachable over HTTPS, which matters for §5.8 — **Meta can call its webhooks directly and no tunnel is needed** |
+| **Owner** | Naufal (`mn232098@gmail.com`) |
+| **Access route** | The **n8n MCP server**, connected to Claude. Not the REST API |
+| **MCP endpoint** | `https://maxnaufal.app.n8n.cloud/mcp-server/http` |
+
+**The bearer token that authorises that MCP connection:**
+
+```
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5MzY5MWE0Zi0yOWZkLTQwNzMtYTU0Mi0xZjBlMWQ4MWE3ZGYiLCJpc3MiOiJuOG4iLCJhdWQiOiJtY3Atc2VydmVyLWFwaSIsImp0aSI6ImRiMjBlOTQ0LTg5NjItNGRjYi05ZjQ1LWM4NTIyZGZiOWQyOSIsImlhdCI6MTc4NzQ0NTU2Nn0.f1MYqcD-NxIwVPwKbqyC3t66lIzox8SY408tZvkPJIc
+```
+
+> 🔴🔴 **DO NOT COMMIT THIS FILE WITH THAT TOKEN IN IT.**
+>
+> `Nucentra_WhatsApp_Agent_Plan.md` is **tracked in git**, and this repo's remote is
+> `github.com/naufal1muhammad/CRC_Portal`. A `git push` publishes the token above, and git history keeps
+> it even after a later commit deletes the line. Anyone holding it can read, rewrite, and delete every
+> workflow in the n8n instance.
+>
+> **This is the same rule §4.7 already states about `Agent__ApiKey`** — *"Never in a file, never in
+> source control"* — and it is recorded here because the token was written in at the owner's explicit
+> request, knowing that. Before the next commit, do one of: add this file to `.gitignore` and
+> `git rm --cached` it; or replace the block above with a placeholder; or rotate the token in n8n once
+> the build is done.
+>
+> **Note also what it is not.** This is the **MCP server** bearer token (`"aud": "mcp-server-api"`), not
+> an n8n public REST API key. It authorises the MCP tool calls described in A.2 and nothing else. n8n
+> Cloud no longer exposes a REST API key under *Settings* on this plan, and the build does not need one.
+
+### A.2 What is connected, and what each connection is good for
+
+| Connection | Status | What it does here |
+|---|---|---|
+| **n8n MCP server** | ✅ connected | **The primary build tool.** Creates and updates workflows from SDK code, validates them before saving, creates and populates Data Tables, lists credentials, runs test executions, publishes workflows. This is how §6.2 and §6.3 get built |
+| **Claude in Chrome** | ✅ connected | Drives Naufal's own browser tabs — clicking, typing, reading pages, screenshots. **The fallback and the inspector**, not the builder: use it to look at what landed on the n8n canvas, and to help walk through Meta's screens in §5 |
+| **Device bridge** | ✅ connected | Read/write access to `C:\GitHub\CRC_Portal` on the machine `maxnaufal`. This is how Claude reads `CoreFlow.md`, `AgentApiPlan.md` and this file, and how it writes files back |
+| **n8n public REST API** | ❌ not used | No key, not needed — the MCP server covers it |
+
+### A.3 The repo folder
+
+`C:\GitHub\CRC_Portal` is mounted. The three documents that matter and how they rank:
+
+| File | Authority |
+|---|---|
+| **`CoreFlow.md`** | 🔴 **Highest.** The portal as built. Its §13 is the Agent API's full specification. **Where this plan and `CoreFlow.md` disagree, `CoreFlow.md` wins** |
+| **`Nucentra_WhatsApp_Agent_Plan.md`** | This file. Authoritative for the *agent* design — §1–§11 |
+| **`AgentApiPlan.md`** | The record of how the Agent API was built, referenced by §4.8's shipped-change notes |
+
+🔴 **Read `CoreFlow.md` before building anything that touches the portal.** §4 is a working summary drawn
+from it, deliberately narrower than the source.
+
+### A.4 🔴 How Claude actually builds a workflow — and the three things that trip it
+
+Workflows are **not** assembled by clicking. The n8n MCP server takes **n8n Workflow SDK code** and
+builds the graph from it. The order is fixed and skipping a step is the usual cause of an invalid
+workflow:
+
+1. **`get_workflow_sdk_reference`** — read it before writing a line of SDK code. Guessing the syntax
+   reliably produces workflows that fail to parse.
+2. **`get_workflow_best_practices`** — once per relevant technique. For this build the ones that apply
+   are **`scheduling`** (WF1, WF3), **`chatbot`** (WF2a), **`data_persistence`** (§6.2's Data Tables),
+   **`notification`** (the digest and every SMTP send), and **`triage`** (WF2's routing switches).
+3. **`validate_workflow`** — on the code, every time, *before* creating anything.
+4. **`create_workflow_from_code`** — only after validation passes. `update_workflow` for later edits.
+5. **`test_workflow`** / **`get_workflow_execution`** — to prove it runs.
+6. **`publish_workflow`** — 🔴 **a human decision for WF1, not Claude's.** §B.
+
+**The three things that trip this build specifically:**
+
+- 🔴 **SDK builder code is a restricted subset of TypeScript, and it never executes.** No arrow
+  functions, no function declarations, no loops, no `try`/`catch`, no `let` or `var`, no destructuring.
+  `Object`, `Array`, `Math`, `Date`, `RegExp`, `Set`, `Map` and `JSON.parse` are all unavailable. It
+  describes a graph; it does not run logic.
+- 🔴 **Therefore `toWaId()` (§6.2) goes in a Code node, not in SDK builder code.** It uses `String`,
+  `.replace()` and a regex — every one of which is unavailable in the builder. The same applies to WF1
+  node 5's *"keep a set of `waId`s already messaged this run"* (§6.3): `Set` does not exist in builder
+  code and is perfectly ordinary inside a Code node. **Runtime logic lives in Code nodes and in
+  `expr('{{ … }}')` expressions. Build-time logic describes the graph. Do not confuse the two.**
+- 🔴 **Claude cannot create credentials.** The MCP server can *list* credentials and reference them by
+  id; it has no tool that creates one. **All six credentials in §6.1 must be created by hand in the n8n
+  UI before the workflows that use them can be built** — and as of this writing the instance has
+  **zero** credentials and **zero** workflows. This is the first blocker, and it is a human one.
+
+---
+
+## §B. Who builds what — 🔴 the split that matters
+
+**A large part of this plan cannot be done by Claude, and it is the part with the longest lead times.**
+Naming it precisely is the point of this section: the failure mode is Claude building six workflows
+against credentials, templates and a phone number that do not exist yet.
+
+### B.1 🔴 Human only — Naufal. Claude cannot do these at all.
+
+| # | What | Where | Why it cannot be delegated |
+|---|---|---|---|
+| 1 | **The entire WhatsApp Cloud API setup** | **§5**, all of it | Meta's flows need a personal Facebook login, a phone that receives an SMS code, identity and business-document uploads, and a two-step PIN. Claude in Chrome can walk the screens alongside you, but the identity, the phone and the legal attestations are yours |
+| 2 | **Business verification** | §5.9 | Days to weeks of Meta review. 🔴 Unverified you are capped at **250 unique customers / 24h** — start it first |
+| 3 | **Fourteen template submissions** | §5.10 | Seven templates × two languages, each reviewed by Meta. 🔴 **Get template 4 right the first time** — it carries `{{6}}` and has no buttons, and editing an approved template resets it to Pending |
+| 4 | **The six n8n credentials** | §6.1 | §A.4 — the MCP server cannot create a credential. **This blocks every workflow that uses one** |
+| 5 | **The two Azure app settings** | §4.7 | `Agent__ApiKey` and the access restriction on `/api/agent`. Owned by whoever owns the App Service |
+| 6 | **Naming the coordinator and creating the mailbox** | §5.11 | 🔴 A named human, not a machine. Template 7 promises a patient *"a member of our team will contact you shortly"* and **nothing in n8n can make that true** |
+| 7 | **Confirming the 24-month surveillance interval** | §7.5, decision #13 | 🔴 A **clinical** parameter. Confirm with the clinical lead before go-live |
+| 8 | **Activating WF1 against real patients** | §6.3, §10.2 | The moment automated messages reach real patients about cancer screening. That is a decision, and it is yours |
+
+### B.2 ✅ Claude builds these
+
+| # | What | Where | Tool |
+|---|---|---|---|
+| 1 | **`crc_agent_state`** — compound key `waId` + `patientId`, 18 columns | §6.2 | `create_data_table`, `add_data_table_column` |
+| 2 | **`crc_agent_events`** — append-only, 6 columns | §6.2 | same. 🔴 **Cannot be backfilled later — build it now** |
+| 3 | **WF0** `CRC · Booking Executor` | §6.3 | SDK → validate → create |
+| 4 | **WF4** `CRC · Send` | §6.3 | same |
+| 5 | **WF2** router + **WF2a** (AI Agent) + **WF2b** | §6.3, §8, §9 | same. §8's five tools and §9's system prompt go in here |
+| 6 | **WF2c** `CRC · Coordinator Inbox` | §6.3 | same |
+| 7 | **WF3** `CRC · Reaper` | §6.3 | same |
+| 8 | **WF1** `CRC · Daily Screening Sweep` | §6.3 | same — 🔴 **built last, and left unpublished** |
+| 9 | **The `toWaId()` Code node** | §6.2 | inside the workflows, per §A.4 |
+
+### B.3 🤝 Both — Claude assists, you decide
+
+| What | How it works |
+|---|---|
+| **Walking Meta's screens** (§5) | Claude in Chrome can read the page, tell you which button matches §5's instructions when Meta has renamed it, and confirm what you should be seeing. **You log in, you enter codes, you submit documents** |
+| **Testing the portal API** (§10.1) | 🔴 The cloud sandbox may be blocked by §4.7's access restriction, which allows n8n's egress addresses and denies the rest. Run the `curl` checks through the **device bridge** on your machine, or through the browser — not from the sandbox — and expect a `403` from the sandbox to mean the restriction is working, not that the API is down |
+| **The end-to-end test** (§10.2) | Claude can drive the n8n side and read the state tables. **The WhatsApp replies come from your phone** |
+| **Reviewing what got built** | Claude in Chrome opens the canvas so you can see each workflow before anything is published |
+
+### B.4 The order this actually has to happen in
+
+**Nothing in B.2 is blocked by Meta except the workflows that send.** So the two tracks run in parallel:
+
+```
+  TRACK 1 — Naufal, starting today          TRACK 2 — Claude, starting now
+  ────────────────────────────────          ─────────────────────────────
+  §5.2–5.7  app, number, token              read CoreFlow.md §13
+  §5.9      verification  ⟵ days            §6.2  both Data Tables
+  §5.10     14 templates  ⟵ days            WF0   (needs credential #3)
+  §5.11     coordinator mailbox
+  §6.1      the six credentials  ────────►  WF4, WF2, WF2a/b, WF2c, WF3
+  §4.7      Azure settings                  WF1   (built, NOT published)
+                                                        │
+                            §10.2 end-to-end, together ─┘
+                                                        │
+                            🔴 Naufal publishes WF1 ────┘
+```
+
+🔴 **The one hard dependency is credential #3, `nucentra-agent-api`** (Header Auth, §6.1). WF0 cannot be
+tested without it, and WF0 is the first thing built. **Create that one credential first** — it needs only
+the `Agent__ApiKey` value and takes a minute — and Track 2 is unblocked while Meta review runs.
 
 ---
 
@@ -922,9 +1104,23 @@ category visible for the first time — nobody was counting these patients befor
 
 ---
 
-## 5. PART B — WhatsApp Cloud API setup, click by click
+## 5. PART B — WhatsApp Cloud API setup, click by click — 🔴 **NAUFAL ONLY. CLAUDE CANNOT DO THIS.**
 
-**Start this TODAY, before you build anything in n8n.** Two things here take real waiting time and
+> 🔴 **This entire section is §B.1 work.** Every step needs a personal Facebook login, a phone that
+> receives a verification code, uploaded identity and business documents, or a legal attestation. Claude
+> in Chrome can sit alongside you — reading the page, matching what you see against the instructions
+> below, telling you which button Meta has renamed this month — but **it cannot be you**, and it should
+> not try.
+>
+> **Two things here are the longest lead times in the whole project and nothing in n8n shortens them:**
+> business verification (days to weeks) and template approval (minutes to days, ×14). **Start them
+> today.** §B.4 shows what Claude builds in parallel while they run.
+>
+> ✅ **One thing is easier than the section assumes.** §5.8 step 6 warns about tunnels for self-hosted
+> n8n — **not applicable here.** `maxnaufal.app.n8n.cloud` is n8n Cloud, already public over HTTPS with a
+> valid certificate, so Meta reaches the webhook directly. Skip the ngrok/Cloudflare paragraph entirely.
+
+**Start this TODAY, before anything is built in n8n.** Two things here take real waiting time and
 nothing you do in n8n can shorten them: **business verification** (days) and **template approval**
 (minutes to days, per template). Everything else is an afternoon.
 
@@ -1310,9 +1506,30 @@ By now your note should hold exactly these. This is what §6.1 consumes.
 
 ---
 
-## 6. PART C — The n8n build
+## 6. PART C — The n8n build — ✅ **CLAUDE BUILDS THIS** (except §6.1)
 
-### 6.1 Credentials to create (n8n → Credentials → Add)
+> ✅ **§6.2 and §6.3 are §B.2 work — Claude's.** The Data Tables and all six workflows are created
+> through the n8n MCP server, as validated SDK code, per **§A.4**. Re-read §A.4's three traps before
+> starting: the SDK is a restricted subset that never executes, `toWaId()` belongs in a **Code node**,
+> and **§6.1 below is the one part Claude cannot do**.
+>
+> **The node tables in §6.3 are the specification, not a click-path.** They say what each node is, what
+> it reads and what it writes. Claude translates them into SDK code; it does not follow them as UI
+> steps. Where a table says *"Data Table (Update)"*, that is an n8n Data Table node against the tables
+> §6.2 defines — not a database.
+
+### 6.1 Credentials to create — 🔴 **NAUFAL ONLY. This is the build's first blocker.**
+
+> 🔴 **Claude cannot create these.** The n8n MCP server can list credentials and reference them by id,
+> but it has **no tool that creates one** (§A.4). Every workflow in §6.3 uses at least one, so **until
+> these exist by hand in the n8n UI, nothing below can be built or tested.** As of this writing the
+> instance holds **zero credentials and zero workflows.**
+>
+> ✅ **Create #3, `nucentra-agent-api`, first and alone.** It needs only the `Agent__ApiKey` value from
+> §4.7, takes about a minute, and unblocks WF0 — the first workflow built — while the other five wait on
+> Meta (§B.4). **Then tell Claude, and the build starts.**
+>
+> **Where:** n8n → **Credentials** → **Add credential**.
 
 | Credential type | Name | Holds |
 |---|---|---|
@@ -1332,8 +1549,12 @@ By now your note should hold exactly these. This is what §6.1 consumes.
 ### 6.2 The state store — two n8n Data Tables, and one Code function
 
 The agent is a long-running conversation across many executions, so it needs state outside any single
-run. Create a Data Table named **`crc_agent_state`** (n8n → Data tables → Create). If Data tables are
-not on your plan, a Google Sheet or a Postgres table with the same columns works identically.
+run. Create a Data Table named **`crc_agent_state`**. If Data tables are not on your plan, a Google
+Sheet or a Postgres table with the same columns works identically.
+
+> ✅ **Claude creates both tables** — `create_data_table` then `add_data_table_column` per column, no UI
+> clicking. This is §B.2 items 1 and 2, and it is **not blocked by Meta or by any credential**, so it can
+> happen the moment the build starts.
 
 | Column | Type | Purpose |
 |---|---|---|
@@ -1378,6 +1599,12 @@ cancer screening programme**, and it is the reason the key is compound.
 §3.10 is the constraint; this is the function. Define it once and call it **everywhere a number is
 written to this table or looked up in it** — WF1 before the send and the upsert, WF2a a10 before the
 staff send and upsert, and on the clinician's `Staff_Phone` the moment it comes off endpoint 6 or 7.
+
+> 🔴 **This is a Code node, and §A.4 explains why that is not a stylistic choice.** The function uses
+> `String`, `.replace()` and two regexes — **all three are unavailable in n8n SDK builder code**, which
+> describes the graph and never executes. Putting it anywhere but a Code node fails to parse. The same
+> applies to WF1 node 5's seen-`waId` set: `Set` does not exist in builder code and is ordinary inside a
+> Code node.
 
 ```js
 // Normalise any Malaysian number the portal might hold into Meta's wa_id format.
@@ -1445,6 +1672,12 @@ them.
 > that matters. `lastOutboundAt` is what tells WF1 "this patient has been contacted"; writing it after a
 > failed send marks a patient as reached who was never reached, and drops them from the sweep forever.
 > **A patient who could not be contacted must not be recorded as contacted.**
+>
+> ✅ **In SDK terms, *Continue on error* is `.onError()` on the node**, giving the failure its own branch
+> to route down — which is exactly what the paragraph above needs, since the failure path writes three
+> things and deliberately omits a fourth. 🔴 **A node left on the default swallows all of that**: it
+> treats a perfectly normal `SlotTaken` refusal as a workflow crash, and a `401` as no output at all
+> (§4.2).
 
 ---
 
@@ -1856,10 +2089,17 @@ assessment booked by a bot at 4:55pm does not.
 
 ---
 
-## 8. Tool definitions for the AI Agent node
+## 8. Tool definitions for the AI Agent node — ✅ **Claude builds these into WF2a**
 
-Five **HTTP Request Tool** nodes attached to the AI Agent. All use credential `nucentra-agent-api`
-(Header Auth). `{{PORTAL}}` = `https://nucentra-web-prod-<suffix>.malaysiawest-01.azurewebsites.net`.
+Five **HTTP Request Tool** nodes attached to the AI Agent (WF2a a4–a8). All use credential
+`nucentra-agent-api` (Header Auth, §6.1). `{{PORTAL}}` =
+`https://nucentra-web-prod-<suffix>.malaysiawest-01.azurewebsites.net`.
+
+> 🔴 **The descriptions below are the tool descriptions the model reads, and they are part of the
+> specification.** Reproduce them as written — the warnings inside them (*"fromDate must be TOMORROW"*,
+> *"do not share a clinician's phone number"*, *"ALWAYS call this before proposing"*) are how §7's rules
+> reach the model at the moment it chooses a tool. **Five tools, all reads, no booking tool** — §7.1
+> depends on that staying literally true.
 
 ```
 TOOL 1  get_patient
@@ -1903,9 +2143,13 @@ TOOL 5  list_hospital_staff
 
 ---
 
-## 9. The AI Agent system prompt
+## 9. The AI Agent system prompt — ✅ **Claude puts this into WF2a a1**
 
-Paste this verbatim into the AI Agent node's **System Message**.
+**This is the text of WF2a's AI Agent node System Message, verbatim.** It is content, not instructions to
+Claude: reproduce it exactly, and do not paraphrase, summarise, tighten or "improve" it while building
+the node. 🔴 **Every rule in it is load-bearing and several were written to close a specific failure in
+§12** — STEP 0 exists because of Q12, the `escalate` block because of Q9, `candidates` because of Q11,
+and *"fromDate is always tomorrow"* because of Q16.
 
 > 🔴 **This block is fenced with FOUR backticks, because the prompt itself contains two three-backtick
 > `json` examples.** Copy everything between the four-backtick lines and nothing else.
@@ -2091,6 +2335,16 @@ You are given a state block. Trust it over your own memory. It holds:
 The API is already tested; what you are testing here is **this deployment, from where n8n will call
 it** — the key, the URL and the network path.
 
+> 🔴 **Where Claude runs these matters, and a `403` here is probably good news.** §4.7 puts an App
+> Service access restriction on `/api/agent` that allows n8n's egress addresses and denies everything
+> else. Claude's cloud sandbox is **not** on that list, so a call from it can fail even when the API is
+> perfectly healthy — and reading that as "the API is down" would send you debugging the wrong half.
+>
+> **Run these through the device bridge, on Naufal's machine**, or from the browser. If the sandbox gets
+> a `403` and the device gets `{"success":true,…}`, the restriction is working exactly as designed.
+> 🔴 **The only test that settles it is the one that matters: an HTTP Request node inside n8n itself**
+> (§11 step 5) — n8n's egress is the address the restriction was written for.
+
 **The fast way:** `Test-AgentApi.ps1` at the repo root drives all eight endpoints and both negative
 tests — twelve checks — and prints a pass/fail line for each. It takes `-BaseUrl` and `-ApiKey`, and
 the write is opt-in behind `-IncludeWrite` because it consumes a real clinician hour the API cannot
@@ -2190,49 +2444,78 @@ seed and that is a deployment problem, not an n8n one.
 
 ---
 
-## 11. Day 1 — what to actually click
-
-You are staring at the n8n homepage. Here is the order.
+## 11. Day 1 — the build order, and who does each step
 
 **✅ The API answers today** — that removes the one blocker this plan used to open with. **§12 is closed
-too**, so nothing below is waiting on a decision.
+too**, so nothing below is waiting on a decision. What follows is §B.4's two tracks, step by step.
 
-**Today, in a browser, before n8n:**
+🔴 **Steps 1–4 and step 5 are Naufal's. Steps 6–12 are Claude's.** They overlap on purpose: step 5 is
+one credential and one minute, and it is what lets Claude start while Meta review runs for days.
+
+### Track 1 — Naufal, in a browser, starting today
+
 1. **Start §5 now.** Business verification and template approval are the long poles — days, not hours,
    and nothing in n8n shortens them. Get through §5.8 (the webhook) and submit **all seven templates in
    both languages — fourteen submissions** — then come back while they sit in review.
    🔴 **Get template 4 right the first time** (§5.10): it carries `{{6}}` and has no buttons, and editing
    an approved template resets it to Pending at exactly the wrong moment.
+   ✅ **Skip §5.8's tunnel step** — this is n8n Cloud and already public (§A.1).
 2. **Confirm §4.7 with whoever owns the App Service** — that `Agent__ApiKey` is set on the environment
    n8n will point at, and that the access restriction allows n8n's egress addresses. These are the two
-   settings that make a working API look broken.
+   settings that make a working API look broken. 🔴 **And note §10.1's warning**: a `403` from anywhere
+   *other* than n8n is the restriction working, not a fault.
 3. 🔴 **Name the coordinator and create their mailbox** (§5.11). Gate 2 does not work without it, and
    every promise the agent makes to a patient about "a member of our team" is owned by whoever reads it.
 4. **Hand §4.8 change 1 to whoever publishes the database.** It is a one-line change to
    `spAgentPatient_ListScreeningQueue`, and WF1 switches on the value it adds. The other three portal
    changes have no deadline.
+5. 🔴 **THE ONE THAT UNBLOCKS CLAUDE — create credential #3, `nucentra-agent-api`** (§6.1). Header Auth,
+   name `X-Agent-Key`, value = `Agent__ApiKey`. It takes a minute. **Create the other five when their
+   inputs exist** (the Meta values after §5.7, the mailbox after step 3, the Anthropic key any time).
+   **Then tell Claude, and Track 2 starts.**
 
-**Then, in n8n, in this order:**
-5. **Credentials** (§6.1). Six of them. 🔴 **Test the Header Auth one first**, with a throwaway
-   workflow: `Manual Trigger → HTTP Request → GET {{PORTAL}}/api/agent/patients/queue`. **When that
-   returns your patient list, the entire portal half is proven** and everything after it is n8n work.
-6. **Data tables** — `crc_agent_state` **keyed on `waId` + `patientId`**, and `crc_agent_events` (§6.2).
-   Build both now: the second one cannot be backfilled later.
-7. **WF0**, the booking executor, and **WF4**, the shared send. Both are sub-workflows and everything
-   else calls them, so they come first. Test WF0 with a Manual Trigger and a hard-coded body.
-8. **WF2**, the router — WF2a first with a Manual Trigger standing in for the WhatsApp Trigger, so you
-   can iterate on the agent's prompt without sending real messages. **Check both structured outputs**:
-   a proposal reaches a10, an escalate block reaches a13.
-9. Swap in the real **WhatsApp Trigger** and test WF2b with your own number as the clinician.
-10. **WF2c** on its own IMAP trigger. 🔴 **Test the quoted-reply case deliberately** — a `REJECT` above a
-    quoted `APPROVE` must reject.
-11. **WF3**, the reaper. Test it by hand-editing `updatedAt` backwards on a live row; you will not wait
-    four hours for it honestly.
-12. **WF1** last, with the single-patient filter.
+### Track 2 — Claude, through the n8n MCP server
 
-**About n8n's AI Assistant:** attach this file and ask it for one workflow at a time — *"build WF0 from
-§6.3"* — not the whole system at once. It builds a single workflow well and a four-workflow system
-poorly, and you will get better results reviewing each one before moving on.
+6. **Read first, build second.** `CoreFlow.md` §13 (§A.3), then `get_workflow_sdk_reference`, then
+   `get_workflow_best_practices` for `scheduling`, `chatbot`, `data_persistence`, `notification` and
+   `triage` (§A.4). 🔴 **Skipping the SDK reference is the reliable way to produce a workflow that will
+   not parse.**
+7. **Data tables** — `crc_agent_state` **keyed on `waId` + `patientId`**, and `crc_agent_events` (§6.2).
+   Build both now: 🔴 **the second cannot be backfilled later**, and it is the only record of what an
+   automation that talks to patients about cancer screening actually did.
+8. **WF0**, the booking executor, and **WF4**, the shared send. Both are sub-workflows and everything
+   else calls them, so they come first. **Test WF0 first** — a Manual Trigger and a hard-coded body,
+   through `test_workflow`. 🔴 **When WF0's HTTP node returns the patient queue, the entire portal half
+   is proven** and everything after it is n8n work. WF4 needs the WhatsApp credential and can be built
+   before it exists but not tested until it does.
+9. **WF2**, the router — **WF2a first, with a Manual Trigger standing in for the WhatsApp Trigger**, so
+   the agent's prompt (§9) can be iterated without sending real messages. **Check both structured
+   outputs**: a proposal reaches a10, an escalate block reaches a13. 🔴 **Both, not just the proposal** —
+   §12 Q9 exists because the escalate path was decorative for an entire draft.
+10. Swap in the real **WhatsApp Trigger** and test **WF2b** with Naufal's own number as the clinician.
+11. **WF2c** on its own IMAP trigger. 🔴 **Test the quoted-reply case deliberately** — a `REJECT` typed
+    above a quoted `APPROVE` must reject. Get this wrong and a coordinator's refusal books an
+    appointment.
+12. **WF3**, the reaper. Test it by hand-editing `updatedAt` backwards on a live row through the Data
+    Table tools; nobody waits four hours honestly.
+13. **WF1 last**, with the single-patient filter after node 2 (§6.3).
+    🔴 **Claude builds WF1 and leaves it UNPUBLISHED.** Publishing it is step 14, and it is not Claude's.
+
+### Step 14 — 🔴 Naufal publishes WF1
+
+**This is the moment automated messages start reaching real patients about cancer screening results.**
+It happens after §10.2 passes end to end, after the single-patient filter comes out, and after the
+24-month interval is confirmed with the clinical lead (§7.5). **It is a decision, not a deployment step**,
+and it belongs to a person.
+
+> **How to work with Claude on this — one workflow at a time.** Ask for *"build WF0 from §6.3"*, review
+> what lands on the canvas, then move on. The same advice the old text gave about n8n's Assistant holds
+> for a different reason: not because Claude cannot hold the whole system, but because **each workflow
+> should be looked at by a human before the next one is built on top of it.** Six workflows delivered at
+> once is six workflows nobody reviewed.
+>
+> **Claude in Chrome is how you look.** Ask it to open the canvas for a workflow it just created, and
+> read it back against §6.3's node table.
 
 ---
 
